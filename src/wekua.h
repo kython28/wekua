@@ -3,6 +3,8 @@
 
 #include <CL/cl.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define WEKUA_DEVICE_TYPE_CPU CL_DEVICE_TYPE_CPU
 #define WEKUA_DEVICE_TYPE_GPU CL_DEVICE_TYPE_GPU
@@ -37,11 +39,29 @@ typedef struct {
 	cl_command_queue command_queue;
 	cl_program *programs;
 	cl_kernel *kernels;
+	uint64_t max_work_item_dimensions;
+	uint64_t max_work_group_size, *max_work_item_sizes;
 } wekuaContext;
 
 wekuaContext *createWekuaContext(wDevice *dev);
+void freeWekuaContext(wekuaContext *context);
 
 
+// Tensor
 
+typedef struct {
+	cl_mem data;
+	double *raw_data;
+	uint32_t *shape, dim;
+	uint64_t size;
+} wTensor;
+
+wTensor *wekuaAllocTensor(wekuaContext *ctx, uint32_t dim, uint32_t *shape, double alpha); // x = alpha*e
+void wekuaFreeTensor(wekuaContext *ctx, wTensor *tensor);
+
+wTensor *wekuaTensorCopy(wekuaContext *ctx, wTensor *a);  // y = 0*y + x
+void wekuaTensorAdd(wekuaContext *ctx, wTensor *a, wTensor *b); // y = 1*x + y
+void wekuaTensorSub(wekuaContext *ctx, wTensor *a, wTensor *b); // y = -1*x + y
+void wekuaTensorDot(wekuaContext *ctx, wTensor *a, double alpha); // x = alpha*x
 
 #endif

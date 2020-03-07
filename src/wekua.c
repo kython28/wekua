@@ -1,16 +1,16 @@
 #include "wekua.h"
-#include <stdlib.h>
-#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 
-#define KERNEL_NUM 0
+#define KERNEL_NUM 3
 #define KEID 8
 
 uint8_t kernels[][20] = {
-	"kernels/"
+	"kernels/alloc.cl",
+	"kernels/axpy.cl",
+	"kernels/scal.cl"
 };
 
 uint32_t getPlatforms(wPlatform **platform){
@@ -83,6 +83,7 @@ uint8_t *getKernelData(const uint8_t *name, uint64_t *size){
 		free(cont);
 		return NULL;
 	}
+	close(fd);
 	return cont;
 }
 
@@ -99,5 +100,19 @@ wekuaContext *createWekuaContext(wDevice *dev){
 		clBuildProgram(context->programs[x], 1, &dev->device, NULL, NULL, NULL);
 		context->kernels[x] = clCreateKernel(context->programs[x], &kernels[x][KEID], NULL);
 	}
+	context->max_work_group_size = dev->max_work_group_size;
+	context->max_work_item_dimensions = context->max_work_item_dimensions;
+	context->max_work_item_sizes = calloc(context->max_work_item_dimensions, 8);
+	memcpy(context->max_work_item_sizes, dev->max_work_item_sizes, 8*dev->max_work_item_dimensions);
 	return context;
+}
+
+void freeWekuaContext(wekuaContext *context){
+	clReleaseContext(context->ctx);
+	clReleaseCommandQueue(context->command_queue);
+	for (uint32_t x=0; x<KERNEL_NUM; x++){
+		clReleaseProgram(context->programs[x]);
+		clReleaseKernel(context->kernels[x]);
+	}
+	free(context);
 }
