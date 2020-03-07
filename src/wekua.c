@@ -57,6 +57,8 @@ uint32_t getDevices(wPlatform platform , wDevice **device, wekua_device_type typ
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_ITEM_SIZES, s, (*device)[x].max_work_item_sizes, NULL);
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_GROUP_SIZE, 0, NULL, &s);
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_GROUP_SIZE, s, &(*device)[x].max_work_group_size, NULL);
+			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_MEM_ALLOC_SIZE, 0, NULL, &s);
+			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_MEM_ALLOC_SIZE, s, &(*device)[x].max_size, NULL);
 			clGetDeviceInfo(dev[x], CL_DEVICE_NAME, 0, NULL, &(*device)[x].nlen);
 			(*device)[x].name = (uint8_t*) calloc((*device)[x].nlen, 1);
 			clGetDeviceInfo(dev[x], CL_DEVICE_NAME, s, (*device)[x].name, NULL);

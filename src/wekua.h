@@ -26,7 +26,7 @@ typedef struct {
 	cl_device_type type;
 	uint8_t *name;
 	uint32_t compute_units, clock_frequency, max_work_item_dimensions;
-	uint64_t max_work_group_size, *max_work_item_sizes, nlen;
+	uint64_t max_work_group_size, *max_work_item_sizes, nlen, max_size;
 } wDevice;
 
 uint32_t getPlatforms(wPlatform **platform);
