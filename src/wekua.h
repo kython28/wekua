@@ -32,7 +32,7 @@ typedef struct {
 uint32_t getPlatforms(wPlatform **platform);
 uint32_t getDevices(wPlatform platform , wDevice **device, wekua_device_type type);
 void freeWekuaPlatform(wPlatform *plat);
-void freeWekuaDevice(wDevice *dev);
+void freeWekuaDevice(wDevice *dev, uint32_t ndev);
 
 typedef struct {
 	cl_context ctx;

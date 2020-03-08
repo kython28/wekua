@@ -68,9 +68,12 @@ uint32_t getDevices(wPlatform platform , wDevice **device, wekua_device_type typ
 	return ndev;
 }
 
-void freeWekuaDevice(wDevice *dev){
-	free(dev->name);
-	free(dev->max_work_item_sizes);
+void freeWekuaDevice(wDevice *dev, uint32_t ndev){
+	for (uint32_t x=0; x<ndev; x++){
+		free(dev[x].name);
+		free(dev[x].max_work_item_sizes);
+	}
+	free(dev);
 }
 
 uint8_t *getKernelData(const uint8_t *name, uint64_t *size){
