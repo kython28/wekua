@@ -77,7 +77,7 @@ void wekuaTensorDot(wekuaContext *ctx, wTensor *a, double alpha){
 	if (work_items > ctx->max_work_item_sizes[0]){
 		work_items = ctx->max_work_item_sizes[0];
 	}
-	clSetKernelArg(ctx->kernels[0], 0, sizeof(cl_mem), &a->data);
-	clSetKernelArg(ctx->kernels[0], 1, sizeof(double), &alpha);
-	clEnqueueNDRangeKernel(ctx->command_queue, ctx->kernels[0], 1, NULL, &a->size, &work_items, 0, NULL, NULL);
+	clSetKernelArg(ctx->kernels[2], 0, sizeof(cl_mem), &a->data);
+	clSetKernelArg(ctx->kernels[2], 1, sizeof(double), &alpha);
+	clEnqueueNDRangeKernel(ctx->command_queue, ctx->kernels[2], 1, NULL, &a->size, &work_items, 0, NULL, NULL);
 }
