@@ -18,7 +18,7 @@ wTensor *wekuaAllocTensor(wekuaContext *ctx, uint32_t dim, uint32_t *shape, doub
 	memcpy(tensor->shape, shape, dim*4);
 	tensor->raw_data = clEnqueueMapBuffer(ctx->command_queue, tensor->data, CL_TRUE, CL_MAP_READ|CL_MAP_WRITE, 0, size, 0, 0, NULL, NULL);
 	uint64_t work_items = tensor->size;
-	if (work_items < ctx->max_work_item_sizes[0]){
+	if (work_items > ctx->max_work_item_sizes[0]){
 		work_items = ctx->max_work_item_sizes[0];
 	}
 	clSetKernelArg(ctx->kernels[0], 0, sizeof(cl_mem), &tensor->data);
@@ -38,7 +38,7 @@ wTensor *wekuaTensorCopy(wekuaContext *ctx, wTensor *a){
 	wTensor *b = wekuaAllocTensor(ctx, a->dim, a->shape, 0.0);
 	double alpha = 0;
 	uint64_t work_items = a->size;
-	if (work_items < ctx->max_work_item_sizes[0]){
+	if (work_items > ctx->max_work_item_sizes[0]){
 		work_items = ctx->max_work_item_sizes[0];
 	}
 	clSetKernelArg(ctx->kernels[1], 0, sizeof(cl_mem), &b->data);
@@ -51,7 +51,7 @@ wTensor *wekuaTensorCopy(wekuaContext *ctx, wTensor *a){
 void wekuaTensorAdd(wekuaContext *ctx, wTensor *a, wTensor *b){
 	double alpha = 1;
 	uint64_t work_items = a->size;
-	if (work_items < ctx->max_work_item_sizes[0]){
+	if (work_items > ctx->max_work_item_sizes[0]){
 		work_items = ctx->max_work_item_sizes[0];
 	}
 	clSetKernelArg(ctx->kernels[1], 0, sizeof(cl_mem), &a->data);
@@ -63,7 +63,7 @@ void wekuaTensorAdd(wekuaContext *ctx, wTensor *a, wTensor *b){
 void wekuaTensorSub(wekuaContext *ctx, wTensor *a, wTensor *b){
 	double alpha = -1;
 	uint64_t work_items = a->size;
-	if (work_items < ctx->max_work_item_sizes[0]){
+	if (work_items > ctx->max_work_item_sizes[0]){
 		work_items = ctx->max_work_item_sizes[0];
 	}
 	clSetKernelArg(ctx->kernels[1], 0, sizeof(cl_mem), &a->data);
@@ -74,7 +74,7 @@ void wekuaTensorSub(wekuaContext *ctx, wTensor *a, wTensor *b){
 
 void wekuaTensorDot(wekuaContext *ctx, wTensor *a, double alpha){
 	uint64_t work_items = a->size;
-	if (work_items < ctx->max_work_item_sizes[0]){
+	if (work_items > ctx->max_work_item_sizes[0]){
 		work_items = ctx->max_work_item_sizes[0];
 	}
 	clSetKernelArg(ctx->kernels[0], 0, sizeof(cl_mem), &a->data);
