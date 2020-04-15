@@ -31,7 +31,7 @@ typedef struct {
 
 uint32_t getPlatforms(wPlatform **platform);
 uint32_t getDevices(wPlatform platform , wDevice **device, wekua_device_type type);
-void freeWekuaPlatform(wPlatform *plat);
+void freeWekuaPlatform(wPlatform *plat, uint32_t nplat);
 void freeWekuaDevice(wDevice *dev, uint32_t ndev);
 
 typedef struct {
@@ -47,21 +47,22 @@ wekuaContext *createWekuaContext(wDevice *dev);
 void freeWekuaContext(wekuaContext *context);
 
 
-// Tensor
+// Matrix
 
 typedef struct {
 	cl_mem data;
 	double *raw_data;
-	uint32_t *shape, dim;
-	uint64_t size;
-} wTensor;
+	wekuaContext *ctx;
+	uint32_t r,c;
+	uint64_t size, work_items;
+} wMatrix;
 
-wTensor *wekuaAllocTensor(wekuaContext *ctx, uint32_t dim, uint32_t *shape, double alpha); // x = alpha*e
-void wekuaFreeTensor(wekuaContext *ctx, wTensor *tensor);
+wMatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha);
+void wekuaFreeMatrix(wMatrix *Matrix);
 
-wTensor *wekuaTensorCopy(wekuaContext *ctx, wTensor *a);  // y = 0*y + x
-void wekuaTensorAdd(wekuaContext *ctx, wTensor *a, wTensor *b); // y = 1*x + y
-void wekuaTensorSub(wekuaContext *ctx, wTensor *a, wTensor *b); // y = -1*x + y
-void wekuaTensorDot(wekuaContext *ctx, wTensor *a, double alpha); // x = alpha*x
+wMatrix *wekuaMatrixCopy(wMatrix *a);  // y = 0*y + x
+void wekuaMatrixAdd(wMatrix *a, wMatrix *b); // y = 1*x + y
+void wekuaMatrixSub(wMatrix *a, wMatrix *b); // y = -1*x + y
+void wekuaMatrixDot(wMatrix *a, double alpha); // x = alpha*x
 
 #endif
