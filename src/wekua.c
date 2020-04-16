@@ -6,18 +6,33 @@
 
 #include <stdio.h>
 
-#define KERNEL_NUM 4
+#define KERNEL_NUM 9
 
 const char kernels[][20] = {
 	"kernels/alloc.cl",
 	"kernels/axpy.cl",
 	"kernels/scal.cl",
-	"kernels/copy.cl"
+	"kernels/copy.cl",
+	"kernels/rand.cl",
+	"kernels/trans.cl",
+	"kernels/iden.cl",
+	"kernels/cut.cl",
+	"kernels/product.cl"
 };
 
 const char ker_name[][20] = {
-	"alloc", "axpy", "scal", "copy"
+	"alloc", "axpy", "scal", "copy", "rand", "trans", "iden", "cut",
+	"product"
 };
+
+
+void getRandomBuffer(void *buf, uint64_t size){
+	int fd = open("/dev/urandom", O_RDONLY);
+	if (fd > 0){
+		read(fd, buf, size);
+	}
+	close(fd);
+}
 
 uint32_t getPlatforms(wPlatform **platform){
 	uint32_t nplat;
@@ -94,7 +109,7 @@ uint8_t *getKernelData(const uint8_t *name, uint64_t *size){
 	}
 	*size = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
-	uint8_t *cont = (uint8_t*) malloc(size[0]);
+	uint8_t *cont = (uint8_t*) calloc(size[0], 1);
 	if (read(fd, cont, size[0]) != size[0]){
 		free(cont);
 		close(fd);
@@ -114,8 +129,19 @@ wekuaContext *createWekuaContext(wDevice *dev){
 		uint64_t size;
 		uint8_t *source = getKernelData(kernels[x], &size);
 		context->programs[x] = clCreateProgramWithSource(context->ctx, 1, &source, &size, NULL);
-		clBuildProgram(context->programs[x], 1, &dev->device, NULL, NULL, NULL);
+		if (clBuildProgram(context->programs[x], 1, &dev->device, "-Werror", NULL, NULL) != 0){
+			clGetProgramBuildInfo(context->programs[x], dev->device, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
+			free(source);
+			source = (uint8_t*) malloc(size);
+			clGetProgramBuildInfo(context->programs[x], dev->device, CL_PROGRAM_BUILD_LOG, size, source, NULL);
+			printf("%s\n", source);
+			free(source);
+			freeWekuaContext(context);
+			return NULL;
+		}
 		context->kernels[x] = clCreateKernel(context->programs[x], ker_name[x], NULL);
+
+		free(source);
 	}
 	context->max_work_group_size = dev->max_work_group_size;
 	context->max_work_item_dimensions = dev->max_work_item_dimensions;
@@ -125,12 +151,15 @@ wekuaContext *createWekuaContext(wDevice *dev){
 }
 
 void freeWekuaContext(wekuaContext *context){
-	clReleaseContext(context->ctx);
-	clFlush(context->command_queue);
-	clReleaseCommandQueue(context->command_queue);
 	for (uint32_t x=0; x<KERNEL_NUM; x++){
 		clReleaseProgram(context->programs[x]);
 		clReleaseKernel(context->kernels[x]);
 	}
+	clReleaseContext(context->ctx);
+	clFlush(context->command_queue);
+	clReleaseCommandQueue(context->command_queue);
+	free(context->kernels);
+	free(context->programs);
+	free(context->max_work_item_sizes);
 	free(context);
 }

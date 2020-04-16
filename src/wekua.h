@@ -46,6 +46,7 @@ typedef struct {
 wekuaContext *createWekuaContext(wDevice *dev);
 void freeWekuaContext(wekuaContext *context);
 
+void getRandomBuffer(void *buf, uint64_t size);
 
 // Matrix
 
@@ -54,15 +55,24 @@ typedef struct {
 	double *raw_data;
 	wekuaContext *ctx;
 	uint32_t r,c;
-	uint64_t size, work_items;
+	uint64_t size, work_items[3];
 } wMatrix;
 
 wMatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha);
+wMatrix *wekuaAllocMatrixRand(wekuaContext *ctx, uint32_t r, uint32_t c);
+wMatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint32_t r, uint32_t c, void *buf);
 void wekuaFreeMatrix(wMatrix *Matrix);
+
+double wekuaMatrixGet(wMatrix *a, uint32_t x, uint32_t y);
+void wekuaMatrixPut(wMatrix *a, uint32_t x, uint32_t y, double n);
 
 wMatrix *wekuaMatrixCopy(wMatrix *a);  // y = 0*y + x
 void wekuaMatrixAdd(wMatrix *a, wMatrix *b); // y = 1*x + y
 void wekuaMatrixSub(wMatrix *a, wMatrix *b); // y = -1*x + y
 void wekuaMatrixDot(wMatrix *a, double alpha); // x = alpha*x
+wMatrix *wekuaMatrixTrans(wMatrix *a);
+wMatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c);
+wMatrix *wekuaSubMatrix(wMatrix *a, uint32_t x, uint32_t w, uint32_t y, uint32_t h);
+wMatrix *wekuaMatrixProduct(wMatrix *a, wMatrix *b);
 
 #endif
