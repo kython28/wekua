@@ -3,15 +3,12 @@
 
 uint64_t getWI(uint64_t a, uint64_t max){
 	if (a == 1 || max == 1){
-		printf("1 %ld %ld\n", a, max);
 		return 1;
 	}else if (a <= max){
-		printf("2 %ld %ld\n", a, max);
 		return a;
 	}
 	uint64_t x;
 	for (x=2; max < a/x || a%x != 0; x++);
-	printf("3 %ld %ld\n", a/x, a);
 	return a/x;
 }
 
