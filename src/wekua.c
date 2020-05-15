@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-#define KERNEL_NUM 9
+#define KERNEL_NUM 16
 
 const char kernels[][20] = {
 	"kernels/alloc.cl",
@@ -17,12 +17,19 @@ const char kernels[][20] = {
 	"kernels/trans.cl",
 	"kernels/iden.cl",
 	"kernels/cut.cl",
-	"kernels/product.cl"
+	"kernels/product.cl",
+	"kernels/abs.cl",
+	"kernels/sum.cl",
+	"kernels/mul.cl",
+	"kernels/gauss.cl",
+	"kernels/gauss2.cl",
+	"kernels/det.cl",
+	"kernels/resize.cl"
 };
 
 const char ker_name[][20] = {
 	"alloc", "axpy", "scal", "copy", "rand", "trans", "iden", "cut",
-	"product"
+	"product", "absolute", "sum", "mul", "gauss", "gaus", "det", "resize"
 };
 
 
@@ -102,14 +109,14 @@ void freeWekuaDevice(wDevice *dev, uint32_t ndev){
 	free(dev);
 }
 
-uint8_t *getKernelData(const uint8_t *name, uint64_t *size){
+char *getKernelData(const char *name, long int *size){
 	int fd = open(name, O_RDONLY);
 	if (fd < 0){
 		return NULL;
 	}
 	*size = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
-	uint8_t *cont = (uint8_t*) calloc(size[0], 1);
+	char *cont = (char*) calloc(size[0], 1);
 	if (read(fd, cont, size[0]) != size[0]){
 		free(cont);
 		close(fd);
@@ -127,12 +134,12 @@ wekuaContext *createWekuaContext(wDevice *dev){
 	context->kernels = (cl_kernel*) calloc(KERNEL_NUM, sizeof(cl_kernel));
 	for (uint32_t x=0; x<KERNEL_NUM; x++){
 		uint64_t size;
-		uint8_t *source = getKernelData(kernels[x], &size);
-		context->programs[x] = clCreateProgramWithSource(context->ctx, 1, &source, &size, NULL);
+		char *source = getKernelData(kernels[x], (long int*)&size);
+		context->programs[x] = clCreateProgramWithSource(context->ctx, 1, (const char**)&source, &size, NULL);
 		if (clBuildProgram(context->programs[x], 1, &dev->device, "-Werror", NULL, NULL) != 0){
 			clGetProgramBuildInfo(context->programs[x], dev->device, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
 			free(source);
-			source = (uint8_t*) malloc(size);
+			source = (char*) malloc(size);
 			clGetProgramBuildInfo(context->programs[x], dev->device, CL_PROGRAM_BUILD_LOG, size, source, NULL);
 			printf("%s\n", source);
 			free(source);

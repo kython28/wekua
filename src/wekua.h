@@ -58,6 +58,11 @@ typedef struct {
 	uint64_t size, work_items[3];
 } wMatrix;
 
+void MapBufferMatrix(wMatrix *a);
+void UnmapBufferMatrix(wMatrix *a);
+
+void wekuaMatrixPrint(wMatrix *a);
+
 wMatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha);
 wMatrix *wekuaAllocMatrixRand(wekuaContext *ctx, uint32_t r, uint32_t c);
 wMatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint32_t r, uint32_t c, void *buf);
@@ -66,13 +71,32 @@ void wekuaFreeMatrix(wMatrix *Matrix);
 double wekuaMatrixGet(wMatrix *a, uint32_t x, uint32_t y);
 void wekuaMatrixPut(wMatrix *a, uint32_t x, uint32_t y, double n);
 
-wMatrix *wekuaMatrixCopy(wMatrix *a);  // y = 0*y + x
-void wekuaMatrixAdd(wMatrix *a, wMatrix *b); // y = 1*x + y
-void wekuaMatrixSub(wMatrix *a, wMatrix *b); // y = -1*x + y
-void wekuaMatrixDot(wMatrix *a, double alpha); // x = alpha*x
+wMatrix *wekuaMatrixCopy(wMatrix *a);
+wMatrix *wekuaMatrixReshape(wMatrix *a, uint32_t r, uint32_t c);
+wMatrix *wekuaMatrixResize(wMatrix *a, uint32_t r, uint32_t c);
+
+void wekuaMatrixAdd(wMatrix *a, wMatrix *b); // a = 1*b + a
+void wekuaMatrixAbs(wMatrix *a); // |a|
+void wekuaMatrixSub(wMatrix *a, wMatrix *b); // a = -1*b + a
+void wekuaMatrixAbsdiff(wMatrix *a, wMatrix *b); // a = |-1*b + a|
+void wekuaMatrixDot(wMatrix *a, double alpha); // a = alpha*a
+
+double wekuaMatrixSum(wMatrix *a);
+double wekuaMatrixMul(wMatrix *a);
+double wekuaMatrixMean(wMatrix *a);
+
 wMatrix *wekuaMatrixTrans(wMatrix *a);
 wMatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c);
-wMatrix *wekuaSubMatrix(wMatrix *a, uint32_t x, uint32_t w, uint32_t y, uint32_t h);
+wMatrix *wekuaSubMatrix(wMatrix *a, uint32_t x, uint32_t w, uint32_t y, uint32_t h); // a[y:y+h, x:x+w]
 wMatrix *wekuaMatrixProduct(wMatrix *a, wMatrix *b);
+
+double wekuaMatrixDet(wMatrix *a);
+wMatrix *wekuaMatrixInv(wMatrix *a);
+
+/*
+	ax = b
+	x = a^-1 b
+*/
+wMatrix *wekuaMatrixSolve(wMatrix *a, wMatrix *b);
 
 #endif
