@@ -33,18 +33,20 @@ void MapBufferMatrix(wMatrix *a){
 
 void UnmapBufferMatrix(wMatrix *a){
 	clEnqueueUnmapMemObject(a->ctx->command_queue, a->data, a->raw_data, 0, NULL, NULL);
+	a->raw_data = NULL;
 }
 
 void runKernel(cl_command_queue cmd, cl_kernel kernel, uint32_t ndim, uint64_t *offsi, uint64_t *glosi, uint64_t *losi){
-	cl_event event;
-	uint32_t ret = clEnqueueNDRangeKernel(cmd, kernel, ndim, offsi, glosi, losi, 0, NULL, &event);
+	cl_event *event = (cl_event*) malloc(sizeof(event));
+	uint32_t ret = clEnqueueNDRangeKernel(cmd, kernel, ndim, offsi, glosi, losi, 0, NULL, event);
 	if (ret != 0){
 		printf("Failed to run kernel %i :-(\n", ret);
 	}
-	ret = clWaitForEvents(1, &event);
+	ret = clWaitForEvents(1, event);
 	if (ret != 0){
 		printf("Failed to run kernel %i :-(\n", ret);
 	}
+	free(event);
 }
 
 void wekuaMatrixPrint(wMatrix *a){
@@ -128,9 +130,12 @@ void wekuaFreeMatrix(wMatrix *Matrix){
 	if (Matrix == NULL){
 		return;
 	}
-	UnmapBufferMatrix(Matrix);
+	if (Matrix->raw_data != NULL){
+		UnmapBufferMatrix(Matrix);	
+	}
 	clReleaseMemObject(Matrix->data);
 	free(Matrix);
+	Matrix = NULL;
 }
 
 double wekuaMatrixGet(wMatrix *a, uint32_t x, uint32_t y){
@@ -204,7 +209,6 @@ wMatrix *wekuaMatrixResize(wMatrix *a, uint32_t r, uint32_t c){
 	runKernel(a->ctx->command_queue, a->ctx->kernels[15], 2, NULL, shape, wi);
 	MapBufferMatrix(b);
 	return b;
-
 }
 
 void wekuaMatrixAdd(wMatrix *a, wMatrix *b){
@@ -229,8 +233,12 @@ void wekuaMatrixAbs(wMatrix *a){
 		return;
 	}
 	UnmapBufferMatrix(a);
-	clSetKernelArg(a->ctx->kernels[9], 0, sizeof(cl_mem), a->data);
-	runKernel(a->ctx->command_queue, a->ctx->kernels[9], 1, NULL, &a->size, a->work_items);
+	clSetKernelArg(a->ctx->kernels[9], 0, sizeof(cl_mem), &a->data);
+	clSetKernelArg(a->ctx->kernels[9], 1, sizeof(uint32_t), &a->c);
+	uint64_t shape[2];
+	shape[0] = a->r;
+	shape[1] = a->c;
+	runKernel(a->ctx->command_queue, a->ctx->kernels[9], 2, NULL, shape, &a->work_items[1]);
 	MapBufferMatrix(a);
 }
 
@@ -305,7 +313,7 @@ double wekuaMatrixSum(wMatrix *a){
 	uint64_t shape[2], wi[2];
 	shape[0] = a->r;
 	shape[1] = a->c;
-	getLWI(shape, wi, 1, a->ctx->max_work_group_size);
+	wi[0] = a->work_items[1];
 	wi[1] = 1;
 	UnmapBufferMatrix(b);
 	UnmapBufferMatrix(c);
@@ -374,9 +382,10 @@ wMatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c){
 		return NULL;
 	}
 	UnmapBufferMatrix(a);
+	uint64_t r = (uint64_t)c;
 	clSetKernelArg(a->ctx->kernels[6], 0, sizeof(cl_mem), &a->data);
-	clSetKernelArg(a->ctx->kernels[6], 1, sizeof(uint32_t), &c);
-	runKernel(a->ctx->command_queue, a->ctx->kernels[6], 1, NULL, &a->size, a->work_items);
+	clSetKernelArg(a->ctx->kernels[6], 1, sizeof(uint32_t), &a->c);
+	runKernel(a->ctx->command_queue, a->ctx->kernels[6], 1, NULL, &r, &a->work_items[1]);
 	MapBufferMatrix(a);
 	return a;
 }
@@ -459,8 +468,8 @@ wMatrix *wekuaMatrixInv(wMatrix *a){
 	clSetKernelArg(a->ctx->kernels[13], 1, sizeof(cl_mem), &i->data);
 	clSetKernelArg(a->ctx->kernels[13], 2, sizeof(uint32_t), &b->r);
 	runKernel(b->ctx->command_queue, b->ctx->kernels[13], 2, NULL, shape, &a->work_items[1]);
-	wekuaFreeMatrix(b);
 	MapBufferMatrix(i);
+	wekuaFreeMatrix(b);
 	return i;
 }
 
@@ -502,4 +511,67 @@ wMatrix *wekuaMatrixSolve(wMatrix *a, wMatrix *b){
 	wMatrix *c = wekuaMatrixProduct(ia, b);
 	wekuaFreeMatrix(ia);
 	return c;
+}
+
+uint32_t wekuaMatrixRang(wMatrix *a){
+	if (a == NULL){
+		return 0;
+	}
+	uint32_t rang=0, c=a->r, r=a->c;
+	wMatrix *b = wekuaMatrixCopy(a);
+	if (a->r > a->c){
+		c = a->c;
+	}
+	UnmapBufferMatrix(b);
+	uint64_t shape[2], wi[2];
+	shape[0] = (uint64_t)c;
+	shape[1] = a->r;
+	getLWI(shape, wi, 2, a->ctx->max_work_group_size);
+	clSetKernelArg(a->ctx->kernels[16], 0, sizeof(cl_mem), &b->data);
+	clSetKernelArg(a->ctx->kernels[16], 1, sizeof(uint32_t), &c);
+	clSetKernelArg(a->ctx->kernels[16], 2, sizeof(uint32_t), &r);
+	runKernel(a->ctx->command_queue, a->ctx->kernels[16], 2, NULL, shape, wi);
+	MapBufferMatrix(b);
+	wekuaMatrixAbs(b);
+	shape[0] = a->r;
+	shape[1] = a->c;
+	wi[0] = a->work_items[1];
+	wi[1] = 1;
+	wMatrix *cd = wekuaAllocMatrix(a->ctx, a->r, 1, 0.0);
+	UnmapBufferMatrix(cd);
+	clSetKernelArg(a->ctx->kernels[10], 0, sizeof(cl_mem), &b->data);
+	clSetKernelArg(a->ctx->kernels[10], 1, sizeof(cl_mem), &cd->data);
+	clSetKernelArg(a->ctx->kernels[10], 2, sizeof(uint32_t), &a->c);
+	runKernel(a->ctx->command_queue, a->ctx->kernels[10], 2, NULL, shape, wi);
+	MapBufferMatrix(cd);
+	for (uint32_t j=0; j<a->r; j++){
+		if (cd->raw_data[j] != 0){
+			rang++;
+		}
+	}
+	wekuaFreeMatrix(cd);
+	wekuaFreeMatrix(b);
+	return rang;
+}
+
+wMatrix *wekuaMatrixPinv(wMatrix *a){
+	if (a == NULL){
+		return NULL;
+	}
+	wMatrix *pinv, *ta, *te, *ti;
+	ta = wekuaMatrixTrans(a);
+	uint32_t rang = wekuaMatrixRang(a);
+	if (rang == a->r){
+		te = wekuaMatrixProduct(a, ta);
+		ti = wekuaMatrixInv(te);
+		pinv = wekuaMatrixProduct(ta, ti);
+	}else{
+		te = wekuaMatrixProduct(ta, a);
+		ti = wekuaMatrixInv(te);
+		pinv = wekuaMatrixProduct(ti, ta);
+	}
+	wekuaFreeMatrix(ta);
+	wekuaFreeMatrix(te);
+	wekuaFreeMatrix(ti);
+	return pinv;
 }

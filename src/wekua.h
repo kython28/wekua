@@ -99,4 +99,7 @@ wMatrix *wekuaMatrixInv(wMatrix *a);
 */
 wMatrix *wekuaMatrixSolve(wMatrix *a, wMatrix *b);
 
+uint32_t wekuaMatrixRang(wMatrix *a);
+wMatrix *wekuaMatrixPinv(wMatrix *a);
+
 #endif

@@ -16,7 +16,12 @@ __kernel void det(__global double *a, __global double *b, unsigned int c){
 		for (unsigned int j=0; j<c; j++){
 			a[i*c+j] = aa*a[k*c+k]*a[i*c+j] + a[k*c+j]*bb;
 		}
-		b[i*c+k] = 1/a[k*c+k];
+		if (a[k*c+k] != 0.0){
+			b[i*c+k] = 1/a[k*c+k];	
+		}else{
+			b[i*c+k] = 0.0;
+		}
+		
 	}
 	b[k*c+k] = a[k*c+k];
 }

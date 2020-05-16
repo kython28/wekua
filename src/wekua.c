@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-#define KERNEL_NUM 16
+#define KERNEL_NUM 17
 
 const char kernels[][20] = {
 	"kernels/alloc.cl",
@@ -24,12 +24,14 @@ const char kernels[][20] = {
 	"kernels/gauss.cl",
 	"kernels/gauss2.cl",
 	"kernels/det.cl",
-	"kernels/resize.cl"
+	"kernels/resize.cl",
+	"kernels/rang.cl"
 };
 
 const char ker_name[][20] = {
 	"alloc", "axpy", "scal", "copy", "rand", "trans", "iden", "cut",
-	"product", "absolute", "sum", "mul", "gauss", "gaus", "det", "resize"
+	"product", "absolute", "sum", "mul", "gauss", "gaus", "det", "resize",
+	"rang"
 };
 
 
