@@ -104,8 +104,14 @@ wMatrix *wekuaAllocMatrixRand(wekuaContext *ctx, uint32_t r, uint32_t c){
 	if (a == NULL){
 		return NULL;
 	}
-	cl_mem rn_buf = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE, a->size*8, NULL, NULL);
-	int64_t *ran_buf = clEnqueueMapBuffer(ctx->command_queue, rn_buf, CL_TRUE, CL_MAP_READ|CL_MAP_WRITE, 0, r*c*8, 0, 0, NULL, NULL);
+	int ret;
+	cl_mem rn_buf = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE, a->size*8, NULL, &ret);
+	if (ret != 0){
+		wekuaFreeMatrix(a);
+		printf("Failed to allocate new memory :-(\n");
+		return NULL;
+	}
+	int64_t *ran_buf = clEnqueueMapBuffer(ctx->command_queue, rn_buf, CL_TRUE, CL_MAP_READ|CL_MAP_WRITE, 0, a->size*8, 0, 0, NULL, NULL);
 	getRandomBuffer(ran_buf, a->size*8);
 	clEnqueueUnmapMemObject(a->ctx->command_queue, rn_buf, ran_buf, 0, NULL, NULL);
 	UnmapBufferMatrix(a);
@@ -500,6 +506,9 @@ double wekuaMatrixDet(wMatrix *a){
 		wekuaFreeMatrix(b);
 		wekuaFreeMatrix(c);
 	}
+	if (isnan(det)){
+		det = 0.0;
+	}
 	return det;
 }
 
@@ -574,4 +583,19 @@ wMatrix *wekuaMatrixPinv(wMatrix *a){
 	wekuaFreeMatrix(te);
 	wekuaFreeMatrix(ti);
 	return pinv;
+}
+
+double wekuaMatrixNorm(wMatrix *a){
+	wMatrix *b = wekuaMatrixCopy(a);
+	if (a == NULL){
+		return 0.0;
+	}
+	UnmapBufferMatrix(b);
+	clSetKernelArg(a->ctx->kernels[17], 0, sizeof(cl_mem), &b->data);
+	runKernel(a->ctx->command_queue, a->ctx->kernels[17], 1, NULL, &a->size, a->work_items);
+	MapBufferMatrix(b);
+	double norm = wekuaMatrixSum(b);
+	norm = sqrt(norm);
+	wekuaFreeMatrix(b);
+	return norm;
 }
