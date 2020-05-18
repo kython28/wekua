@@ -16,11 +16,13 @@ __kernel void gauss(__global double *a, __global double *b, unsigned int t, unsi
 		}else{
 			bb = -1.0;
 		}
-		aa *= a[k*c+k];
-		bb *= a[i*c+k];
-		for (unsigned int j=0; j<c; j++){
-			b[i*c+j] = aa*b[i*c+j] + b[k*c+j]*bb;
-			a[i*c+j] = aa*a[i*c+j] + a[k*c+j]*bb;	
+		if (a[i*c+k] != 0.0){
+			aa *= a[k*c+k];
+			bb *= a[i*c+k];
+			for (unsigned int j=0; j<c; j++){
+				b[i*c+j] = aa*b[i*c+j] + b[k*c+j]*bb;
+				a[i*c+j] = aa*a[i*c+j] + a[k*c+j]*bb;	
+			}
 		}
 	}
 }
