@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #define WEKUA_DEVICE_TYPE_CPU CL_DEVICE_TYPE_CPU
 #define WEKUA_DEVICE_TYPE_GPU CL_DEVICE_TYPE_GPU
@@ -16,15 +17,16 @@
 typedef cl_device_type wekua_device_type;
 
 typedef struct {
-	cl_platform_id platform;
-	uint8_t *name;
-	uint64_t nlen;
+	cl_platform_id platform; // Platform ID
+	uint8_t *name; // Platform name
+	uint64_t nlen; // Devices numbers
 } wPlatform;
 
 typedef struct {
-	cl_device_id device;
-	cl_device_type type;
-	uint8_t *name;
+	cl_device_id device; // Device ID
+	cl_device_type type; // Device type
+	uint8_t *name; // Device name
+	// Device Info
 	uint32_t compute_units, clock_frequency, max_work_item_dimensions;
 	uint64_t max_work_group_size, *max_work_item_sizes, nlen, max_size;
 } wDevice;
@@ -35,65 +37,90 @@ void freeWekuaPlatform(wPlatform *plat, uint32_t nplat);
 void freeWekuaDevice(wDevice *dev, uint32_t ndev);
 
 typedef struct {
-	cl_context ctx;
-	cl_command_queue command_queue;
-	cl_program *programs;
-	cl_kernel *kernels;
+	cl_context ctx; // OpenCL Context
+	cl_command_queue command_queue; // OpenCL Command Queue
+	cl_program *programs; // OpenCL programs
+	cl_kernel *kernels; // OpenCL kernels
+	// Info
 	uint64_t max_work_item_dimensions;
 	uint64_t max_work_group_size, *max_work_item_sizes;
 } wekuaContext;
 
 wekuaContext *createWekuaContext(wDevice *dev);
+wekuaContext *createSomeWekuaContext(wekua_device_type type);
 void freeWekuaContext(wekuaContext *context);
 
 void getRandomBuffer(void *buf, uint64_t size);
 
-// Matrix
-
+// Wekua Matrix
 typedef struct {
-	cl_mem data;
-	double *raw_data;
+	cl_mem real; // Real numbers
+	cl_mem imag; // Imaginary numbers
+
+	double *raw_real; // Real numbers array mapped
+	double *raw_imag; // Imaginary numbers array mapped
+
 	wekuaContext *ctx;
-	uint32_t r,c;
+
+	uint32_t r,c; // Dimensions
+
+	// Does the matrix use complex elements?
+	uint8_t com;
+
+	// Info for OpenCL
 	uint64_t size, work_items[3];
-} wMatrix;
+} wmatrix;
 
-void MapBufferMatrix(wMatrix *a);
-void UnmapBufferMatrix(wMatrix *a);
+void wekuaMatrixPrint(wmatrix *a);
+uint8_t createComplexMatrix(wmatrix *a);
+void removeComplexMatrix(wmatrix *a);
 
-void wekuaMatrixPrint(wMatrix *a);
+wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To alloc an empty matrix
+wmatrix *wekuaAllocComplexMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To Alloc an empty matrix with complex elements
+wmatrix *wekuaFillMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha, double beta); // To get matrix filled with same elements. Alpha is real number and Beta is imaginary number
+wmatrix *wekuaMatrixRandn(wekuaContext *ctx, uint32_t r, uint32_t c, uint8_t com); // To get matrix with random elements
+wmatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint32_t r, uint32_t c, void *rbuf, void *ibuf); // To create Matrix from buffer
+wmatrix *wekuaMatrixCopy(wmatrix *a); // To copy a matrix
+wmatrix *wekuaCutMatrix(wmatrix *a, uint32_t x, uint32_t w, uint32_t y, uint32_t h); // To get a submatrix
+wmatrix *wekuaMatrixResize(wmatrix *a, uint32_t r, uint32_t c); // To resize a matrix
 
-wMatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha);
-wMatrix *wekuaAllocMatrixRand(wekuaContext *ctx, uint32_t r, uint32_t c);
-wMatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint32_t r, uint32_t c, void *buf);
-wMatrix *wekuaMatrixTrans(wMatrix *a);
-wMatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c);
-wMatrix *wekuaSubMatrix(wMatrix *a, uint32_t x, uint32_t w, uint32_t y, uint32_t h); // a[y:y+h, x:x+w]
-wMatrix *wekuaMatrixProduct(wMatrix *a, wMatrix *b);
-wMatrix *wekuaMatrixInv(wMatrix *a);
-wMatrix *wekuaMatrixSolve(wMatrix *a, wMatrix *b);
-wMatrix *wekuaMatrixPinv(wMatrix *a);
-wMatrix *wekuaMatrixCopy(wMatrix *a);
-wMatrix *wekuaMatrixReshape(wMatrix *a, uint32_t r, uint32_t c);
-wMatrix *wekuaMatrixResize(wMatrix *a, uint32_t r, uint32_t c);
+// Basic functions
+wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c); // Identity Matrix
+wmatrix *wekuaMatrixTrans(wmatrix *a); // Matrix Transpose
+wmatrix *wekuaMatrixProduct(wmatrix *a, wmatrix *b); // Matrix Product
+wmatrix *wekuaMatrixDiag(wmatrix *a);
+void wekuaMatrixAdd(wmatrix *a, wmatrix *b); // Matrix addition
+void wekuaMatrixSub(wmatrix *a, wmatrix *b); // Matrix Substration
+void wekuaMatrixDot(wmatrix *a, double alpha, double beta); // Dot all elements in a matrix for a number. Alpha is real number and Beta is imaginary number
+void wekuaMatrixAbs(wmatrix *a);
+void wekuaMatrixAbsdiff(wmatrix *a, wmatrix *b);
+//void wekuaMatrixSort(wmatrix *a);
 
-void wekuaMatrixAdd(wMatrix *a, wMatrix *b); // a = 1*b + a
-void wekuaMatrixAbs(wMatrix *a); // |a|
-void wekuaMatrixSub(wMatrix *a, wMatrix *b); // a = -1*b + a
-void wekuaMatrixAbsdiff(wMatrix *a, wMatrix *b); // a = |-1*b + a|
-void wekuaMatrixDot(wMatrix *a, double alpha); // a = alpha*a
-void wekuaFreeMatrix(wMatrix *Matrix);
-void wekuaMatrixPut(wMatrix *a, uint32_t x, uint32_t y, double n);
+// Trigonometric functions
+void wekuaMatrixSin(wmatrix *a);
+void wekuaMatrixCos(wmatrix *a);
+void wekuaMatrixTan(wmatrix *a);
+void wekuaMatrixSinh(wmatrix *a);
+void wekuaMatrixCosh(wmatrix *a);
+void wekuaMatrixTanh(wmatrix *a);
 
-double wekuaMatrixSum(wMatrix *a);
-double wekuaMatrixMul(wMatrix *a);
-double wekuaMatrixMean(wMatrix *a);
-double wekuaMatrixDet(wMatrix *a);
-double wekuaMatrixGet(wMatrix *a, uint32_t x, uint32_t y);
-double wekuaMatrixNorm(wMatrix *a);
+// Extra functions
+void wekuaMatrixSum(wmatrix *a, double *real, double *imag);
+void wekuaMatrixMul(wmatrix *a, double *real, double *imag);
+void wekuaMatrixMean(wmatrix *a, double *real, double *imag);
+void wekuaMatrixNorm(wmatrix *a, double *real, double *imag);
+void wekuaMatrixTrace(wmatrix *a, double *real, double *imag);
+wmatrix *wekuaMatrixPoly(wmatrix *a);
+//wmatrix *wekuaMatrixRoot(wmatrix *a);
 
-uint32_t wekuaMatrixRang(wMatrix *a);
+// Linalg functions
+void wekuaMatrixDet(wmatrix *a, double *real, double *imag);
+wmatrix *wekuaMatrixInv(wmatrix *a);
+wmatrix *wekuaMatrixSolve(wmatrix *a, wmatrix *b);
+wmatrix *wekuaMatrixPinv(wmatrix *a);
+uint32_t wekuaMatrixRang(wmatrix *a);
 
+void wekuaFreeMatrix(wmatrix *a); // To free a matrix
 
 
 #endif

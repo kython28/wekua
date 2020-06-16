@@ -4,37 +4,40 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <stdio.h>
-
-#define KERNEL_NUM 18
+#define KERNEL_NUM 23
 
 const char kernels[][20] = {
 	"kernels/alloc.cl",
-	"kernels/axpy.cl",
-	"kernels/scal.cl",
-	"kernels/copy.cl",
 	"kernels/rand.cl",
-	"kernels/trans.cl",
 	"kernels/iden.cl",
+	"kernels/trans.cl",
 	"kernels/cut.cl",
+	"kernels/axpy.cl",
 	"kernels/product.cl",
+	"kernels/sin.cl",
+	"kernels/cos.cl",
+	"kernels/tan.cl",
+	"kernels/sinh.cl",
+	"kernels/cosh.cl",
+	"kernels/tanh.cl",
+	"kernels/dot.cl",
 	"kernels/abs.cl",
+	"kernels/diag.cl",
 	"kernels/sum.cl",
 	"kernels/mul.cl",
-	"kernels/gauss.cl",
-	"kernels/gauss2.cl",
-	"kernels/det.cl",
+	"kernels/norm.cl",
 	"kernels/resize.cl",
-	"kernels/rang.cl",
-	"kernels/cuad.cl"
+	"kernels/det.cl",
+	"kernels/gauss.cl",
+	"kernels/gauss2.cl"
 };
 
 const char ker_name[][20] = {
-	"alloc", "axpy", "scal", "copy", "rand", "trans", "iden", "cut",
-	"product", "absolute", "sum", "mul", "gauss", "gaus", "det", "resize",
-	"rang", "cuad"
+	"alloc", "rand", "iden", "trans", "cut", "axpy",
+	"product", "sen", "cose", "tg", "senh", "coseh", "tgh",
+	"dots", "absolute", "diag", "sum", "mul", "norm",
+	"resize", "det", "gauss", "gauss2"
 };
-
 
 void getRandomBuffer(void *buf, uint64_t size){
 	int fd = open("/dev/urandom", O_RDONLY);
@@ -130,6 +133,9 @@ char *getKernelData(const char *name, long int *size){
 }
 
 wekuaContext *createWekuaContext(wDevice *dev){
+	if (dev->max_work_item_dimensions < 3){
+		return NULL;
+	}
 	wekuaContext *context = (wekuaContext*) malloc(sizeof(wekuaContext));
 	context->ctx = clCreateContext(NULL, 1, &dev->device, NULL, NULL, NULL);
 	context->command_queue = clCreateCommandQueueWithProperties(context->ctx, dev->device, NULL, NULL);
@@ -158,6 +164,35 @@ wekuaContext *createWekuaContext(wDevice *dev){
 	context->max_work_item_sizes = calloc(context->max_work_item_dimensions, 8);
 	memcpy(context->max_work_item_sizes, dev->max_work_item_sizes, 8*dev->max_work_item_dimensions);
 	return context;
+}
+
+wekuaContext *createSomeWekuaContext(wekua_device_type type){
+	wDevice **devs;
+	wPlatform *plat;
+	wekuaContext *ctx;
+	uint32_t nplat, *ndev, ps=0, ds=0;
+	nplat = getPlatforms(&plat);
+	devs = (wDevice**) calloc(nplat, sizeof(wDevice*));
+	ndev = (uint32_t*) calloc(nplat, 4);
+	for (uint32_t p=0; p<nplat; p++){
+		ndev[p] = getDevices(plat[p], &devs[p], type);
+		for (uint32_t d=0; d<ndev[p]; d++){
+			if (devs[p][d].compute_units*devs[p][d].clock_frequency*devs[p][d].max_work_group_size > devs[ps][ds].compute_units*devs[ps][ds].clock_frequency*devs[ps][ds].max_work_group_size){
+				ps = p; ds = d;
+			}else if (devs[p][d].compute_units*devs[p][d].clock_frequency*devs[p][d].max_work_group_size == devs[ps][ds].compute_units*devs[ps][ds].clock_frequency*devs[ps][ds].max_work_group_size){
+				if (devs[p][d].max_size > devs[ps][ds].max_size){
+					ps = p; ds = d;
+				}
+			}
+		}
+	}
+	ctx = createWekuaContext(&devs[ps][ds]);
+	freeWekuaPlatform(plat, nplat);
+	for (uint32_t p=0; p<nplat; p++){
+		freeWekuaDevice(devs[p], ndev[p]);
+	}
+	free(devs); free(ndev);
+	return ctx;
 }
 
 void freeWekuaContext(wekuaContext *context){
