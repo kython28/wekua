@@ -18,52 +18,40 @@ void wekuaMatrixSin(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
-	UnmapBufferMatrix(a);
-	wTrig(a, 7);
-	MapBufferMatrix(a);
+	wTrig(a, 6);
 }
 
 void wekuaMatrixCos(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
-	UnmapBufferMatrix(a);
-	wTrig(a, 8);
-	MapBufferMatrix(a);
+	wTrig(a, 7);
 }
 
 void wekuaMatrixTan(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
-	UnmapBufferMatrix(a);
-	wTrig(a, 9);
-	MapBufferMatrix(a);
+	wTrig(a, 8);
 }
 
 void wekuaMatrixSinh(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
-	UnmapBufferMatrix(a);
-	wTrig(a, 10);
-	MapBufferMatrix(a);
+	wTrig(a, 9);
 }
 
 void wekuaMatrixCosh(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
-	UnmapBufferMatrix(a);
-	wTrig(a, 11);
-	MapBufferMatrix(a);
+	wTrig(a, 10);
 }
 
 void wekuaMatrixTanh(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
-	UnmapBufferMatrix(a);
-	wTrig(a, 12);
-	MapBufferMatrix(a);
+	wTrig(a, 11);
 }

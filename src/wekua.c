@@ -6,8 +6,7 @@
 
 #define KERNEL_NUM 23
 
-const char kernels[][20] = {
-	"kernels/alloc.cl",
+const char kernels[][25] = {
 	"kernels/rand.cl",
 	"kernels/iden.cl",
 	"kernels/trans.cl",
@@ -29,14 +28,15 @@ const char kernels[][20] = {
 	"kernels/resize.cl",
 	"kernels/det.cl",
 	"kernels/gauss.cl",
-	"kernels/gauss2.cl"
+	"kernels/gauss2.cl",
+	"kernels/randuniform.cl"
 };
 
 const char ker_name[][20] = {
-	"alloc", "rand", "iden", "trans", "cut", "axpy",
+	"rand", "iden", "trans", "cut", "axpy",
 	"product", "sen", "cose", "tg", "senh", "coseh", "tgh",
 	"dots", "absolute", "diag", "sum", "mul", "norm",
-	"resize", "det", "gauss", "gauss2"
+	"resize", "det", "gauss", "gauss2", "uniform"
 };
 
 void getRandomBuffer(void *buf, uint64_t size){

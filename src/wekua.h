@@ -79,10 +79,11 @@ wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To allo
 wmatrix *wekuaAllocComplexMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To Alloc an empty matrix with complex elements
 wmatrix *wekuaFillMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha, double beta); // To get matrix filled with same elements. Alpha is real number and Beta is imaginary number
 wmatrix *wekuaMatrixRandn(wekuaContext *ctx, uint32_t r, uint32_t c, uint8_t com); // To get matrix with random elements
+wmatrix *wekuaMatrixRandUniform(wekuaContext *ctx, uint32_t r, uint32_t c, double ra, double ia, double re, double ie, uint8_t com); // To get matrix with random numbers in the range [a, b) or [a, b] depending on rounding.
 wmatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint32_t r, uint32_t c, void *rbuf, void *ibuf); // To create Matrix from buffer
 wmatrix *wekuaMatrixCopy(wmatrix *a); // To copy a matrix
 wmatrix *wekuaCutMatrix(wmatrix *a, uint32_t x, uint32_t w, uint32_t y, uint32_t h); // To get a submatrix
-wmatrix *wekuaMatrixResize(wmatrix *a, uint32_t r, uint32_t c); // To resize a matrix
+wmatrix *wekuaMatrixResize(wmatrix *a, uint32_t r, uint32_t c, double alpha, double beta); // To resize a matrix
 
 // Basic functions
 wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c); // Identity Matrix
@@ -94,7 +95,6 @@ void wekuaMatrixSub(wmatrix *a, wmatrix *b); // Matrix Substration
 void wekuaMatrixDot(wmatrix *a, double alpha, double beta); // Dot all elements in a matrix for a number. Alpha is real number and Beta is imaginary number
 void wekuaMatrixAbs(wmatrix *a);
 void wekuaMatrixAbsdiff(wmatrix *a, wmatrix *b);
-//void wekuaMatrixSort(wmatrix *a);
 
 // Trigonometric functions
 void wekuaMatrixSin(wmatrix *a);
@@ -105,20 +105,27 @@ void wekuaMatrixCosh(wmatrix *a);
 void wekuaMatrixTanh(wmatrix *a);
 
 // Extra functions
-void wekuaMatrixSum(wmatrix *a, double *real, double *imag);
-void wekuaMatrixMul(wmatrix *a, double *real, double *imag);
-void wekuaMatrixMean(wmatrix *a, double *real, double *imag);
-void wekuaMatrixNorm(wmatrix *a, double *real, double *imag);
-void wekuaMatrixTrace(wmatrix *a, double *real, double *imag);
-wmatrix *wekuaMatrixPoly(wmatrix *a);
-//wmatrix *wekuaMatrixRoot(wmatrix *a);
+void wekuaMatrixSum(wmatrix *a, double *real, double *imag); // Sum of all the elements
+void wekuaMatrixMul(wmatrix *a, double *real, double *imag); // Mul of all the elements
+void wekuaMatrixMean(wmatrix *a, double *real, double *imag); // Mean of all the elements
+void wekuaMatrixNorm(wmatrix *a, double *real, double *imag); // Matrix Norm
+void wekuaMatrixTrace(wmatrix *a, double *real, double *imag); // Matrix Trace
+void wekuaMatrixToComplex(wmatrix *a, double *real, double *imag); // Matrix to Complex number
+void wekuaMatrixMax(wmatrix *a, double *real, double *imag); // To get max value.
+void wekuaMatrixMin(wmatrix *a, double *real, double *imag); // To get min value.
+wmatrix *wekuaComplexToMatrix(wekuaContext *ctx, double r, double i); // Complex number to Matrix
+wmatrix *wekuaComplexRandomToMatrix(wekuaContext *ctx); // Random Complex number to Matrix
+wmatrix *wekuaMatrixPoly(wmatrix *a); // Matrix Poly (Leverrier)
+wmatrix *wekuaMatrixRoot(wmatrix *a); // Polynomial roots
+wmatrix *wekuaMatrixPower(wmatrix *a, int64_t n); // Matrix power
 
 // Linalg functions
-void wekuaMatrixDet(wmatrix *a, double *real, double *imag);
-wmatrix *wekuaMatrixInv(wmatrix *a);
+void wekuaMatrixDet(wmatrix *a, double *real, double *imag); // Matrix Determinant
+wmatrix *wekuaMatrixInv(wmatrix *a); // Matrix Inverse
 wmatrix *wekuaMatrixSolve(wmatrix *a, wmatrix *b);
-wmatrix *wekuaMatrixPinv(wmatrix *a);
-uint32_t wekuaMatrixRang(wmatrix *a);
+wmatrix *wekuaMatrixPinv(wmatrix *a); // Matrix Pseudoinverse
+uint32_t wekuaMatrixRang(wmatrix *a); // Matrix Rang
+wmatrix *wekuaMatrixEigenvalues(wmatrix *a); // Eigenvalues
 
 void wekuaFreeMatrix(wmatrix *a); // To free a matrix
 
