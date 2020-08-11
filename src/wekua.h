@@ -72,8 +72,8 @@ typedef struct {
 } wmatrix;
 
 void wekuaMatrixPrint(wmatrix *a);
-uint8_t createComplexMatrix(wmatrix *a);
-void removeComplexMatrix(wmatrix *a);
+uint8_t createComplexMatrix(wmatrix *a); // To enable complex numbers.
+void removeComplexMatrix(wmatrix *a); // To disable complex numbers.
 
 wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To alloc an empty matrix
 wmatrix *wekuaAllocComplexMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To Alloc an empty matrix with complex elements
@@ -95,6 +95,7 @@ void wekuaMatrixSub(wmatrix *a, wmatrix *b); // Matrix Substration
 void wekuaMatrixDot(wmatrix *a, double alpha, double beta); // Dot all elements in a matrix for a number. Alpha is real number and Beta is imaginary number
 void wekuaMatrixAbs(wmatrix *a);
 void wekuaMatrixAbsdiff(wmatrix *a, wmatrix *b);
+void WekuaMatrixLn(wmatrix *a);
 
 // Trigonometric functions
 void wekuaMatrixSin(wmatrix *a);
@@ -125,9 +126,51 @@ wmatrix *wekuaMatrixInv(wmatrix *a); // Matrix Inverse
 wmatrix *wekuaMatrixSolve(wmatrix *a, wmatrix *b);
 wmatrix *wekuaMatrixPinv(wmatrix *a); // Matrix Pseudoinverse
 uint32_t wekuaMatrixRang(wmatrix *a); // Matrix Rang
-wmatrix *wekuaMatrixEigenvalues(wmatrix *a); // Eigenvalues
+
+// I've not look at this, if you want to help me, let me know :-)
+// wmatrix *wekuaMatrixEigenvalues(wmatrix *a); // Eigenvalues
+// wmatrix *wekuaMatrixEigenvectors(wmatrix *a); // Eigenvectors
+// wmatrix **wekuaMatrixEig(wmatrix *a); // Eigenvalues and EigenVectors
 
 void wekuaFreeMatrix(wmatrix *a); // To free a matrix
+
+// Wekua Network Module
+typedef struct {
+	void **data; // Module data
+	void (*acti_func)(wmatrix *a); // Activation function
+	wmatrix *(*func)(void *module, wmatrix *input); // Module function
+	void (*get_data)(void *module); // To get module data
+	void (*free_func)(void *m); // Free function
+	uint8_t com;
+	int64_t arch_id; // Position of the output into architecture cache
+} wmodule;
+
+// Wekua Network Architecture
+typedef struct {
+	wmodule **modules; // Modules
+	uint32_t nmodule; // Modules number
+	wmatrix **cache; // Cache
+	wmatrix *(*run)(wmatrix *input, wmodule **modules);
+	void (*free_func)(void *a); // Free function
+} warch;
+
+// Activations functions
+void wekuaHardlim(wmatrix *a);
+void wekuaHardlims(wmatrix *a);
+void wekuaSatlin(wmatrix *a);
+void wekuaSatlins(wmatrix *a);
+void wekuaSigmoid(wmatrix *a);
+void wekuaTanh(wmatrix *a);
+void wekuaReLU(wmatrix *a);
+void wekuaLeakyReLU(wmatrix *a);
+void wekuaSoftplus(wmatrix *a);
+
+// Modules
+wmodule *wekuaLinear(wekuaContext *ctx, uint32_t input, uint32_t output, uint32_t deep, void (*acti_func)(wmatrix *a), uint8_t com);
+wmatrix *runWekuaLinear(void *m, wmatrix *input);
+void freeWekuaLinear(void *m);
+
+
 
 
 #endif

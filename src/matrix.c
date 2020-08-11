@@ -122,13 +122,14 @@ void wekuaMatrixComplexPrint(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
+	char num[23];
 	for (uint32_t y=0; y<a->r; y++){
 		for (uint32_t x=0; x<a->c; x++){
 			if (x == 0 && (y < 3 || y >= a->r-2)){
 				printf("[");
 			}
 			if ((x < 2 || x >= a->c-2) && (y < 2 || y >= a->r-2)){
-				char num[23];
+				memset(num, 0, 23);
 				sprintf(num, "%.2e%+.2ei", a->raw_real[y*a->c+x], a->raw_imag[y*a->c+x]);
 				printf("%23s", num);
 			}else if ((x == 2 && (y < 3 || y >= a->r-2)) || (y == 2 && (x < 2 || x >= a->c-2))){
@@ -149,6 +150,7 @@ void wekuaMatrixPrint(wmatrix *a){
 	}else{
 		wekuaMatrixRealPrint(a);
 	}
+	printf("\n");
 }
 
 wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c){
@@ -535,6 +537,18 @@ void wekuaMatrixAbsdiff(wmatrix *a, wmatrix *b){
 	wekuaMatrixAbs(a);
 }
 
+void WekuaMatrixLn(wmatrix *a){
+	if (a == NULL){
+		return;
+	}
+
+	clSetKernelArg(a->ctx->kernels[32], 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(a->ctx->kernels[32], 1, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(a->ctx->kernels[32], 2, 1, &a->com);
+
+	runKernel(a->ctx->command_queue, a->ctx->kernels[32], 1, NULL, &a->size, a->work_items);
+}
+
 wmatrix *wekuaMatrixDiag(wmatrix *a){
 	if (a == NULL){
 		return NULL;
@@ -814,6 +828,7 @@ wmatrix *wekuaMatrixInv(wmatrix *a){
 			clSetKernelArg(a->ctx->kernels[20], 6, 1, &a->com);
 			clSetKernelArg(a->ctx->kernels[20], 7, 1, &otherm);
 			clSetKernelArg(a->ctx->kernels[20], 8, 1, &t);
+			clSetKernelArg(a->ctx->kernels[20], 9, 1, &otherm);
 
 			clEnqueueNDRangeKernel(a->ctx->command_queue, a->ctx->kernels[20], 1, NULL, shape, &wi, we, befo, &event[t*(a->c-1)+k]);
 			if (we == 0){
@@ -885,6 +900,7 @@ uint32_t wekuaMatrixRang(wmatrix *a){
 		clSetKernelArg(a->ctx->kernels[20], 6, 1, &a->com);
 		clSetKernelArg(a->ctx->kernels[20], 7, 1, &otherm);
 		clSetKernelArg(a->ctx->kernels[20], 8, 1, &t);
+		clSetKernelArg(a->ctx->kernels[20], 9, 1, &otherm);
 
 		clEnqueueNDRangeKernel(a->ctx->command_queue, a->ctx->kernels[20], 1, NULL, shape, &wi, we, befo, &event[k]);
 		if (we == 0){
@@ -998,7 +1014,6 @@ void wekuaMatrixMin(wmatrix *a, double *real, double *imag){
 		}
 	}
 }
-
 
 void wekuaMatrixToComplex(wmatrix *a, double *real, double *imag){
 	if (a == NULL){

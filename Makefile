@@ -1,13 +1,16 @@
 COMPILER=gcc
+ARGS=-W -Wall -fPIC -O2 -march=native
 
 main:
-	$(COMPILER) -W -Wall -fPIC -O2 -march=native -c src/wekua.c -o wekua.o
-	$(COMPILER) -W -Wall -fPIC -O2 -march=native -c src/matrix.c -o matrix.o
-	$(COMPILER) -W -Wall -fPIC -O2 -march=native -c src/trig.c -o trig.o
-	$(COMPILER) -W -Wall -fPIC -O2 -march=native -c src/roots.c -o roots.o
+	$(COMPILER) $(ARGS) -c src/wekua.c -o wekua.o
+	$(COMPILER) $(ARGS) -c src/matrix.c -o matrix.o
+	$(COMPILER) $(ARGS) -c src/trig.c -o trig.o
+	$(COMPILER) $(ARGS) -c src/roots.c -o roots.o
+	$(COMPILER) $(ARGS) -c src/activation.c -o activation.o
+	$(COMPILER) $(ARGS) -c src/linear.c -o linear.o
 
 install:
-	$(COMPILER) -W -Wall -fPIC -O2 -march=native -lOpenCL -shared wekua.o matrix.o trig.o roots.o -o libwekua.so -lm
+	$(COMPILER) $(ARGS) -lOpenCL -shared wekua.o matrix.o trig.o roots.o activation.o linear.o -o libwekua.so -lm
 	cp libwekua.so /usr/lib/
 	cp src/wekua.h /usr/include/wekua.h
 

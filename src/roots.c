@@ -41,25 +41,6 @@ wmatrix *getRoots(wmatrix *ran, uint32_t degree){
 	return roots;
 }
 
-void complex_mul(double *a, double *b, double c, double d){
-	double e, f;
-	e = a[0]*c - b[0]*d;
-	f = a[0]*d + b[0]*c;
-	a[0] = e;
-	b[0] = f;
-}
-
-void calc_poly(double r, double i, double *a, double *b, wmatrix *poly){
-	a[0] = 0.0;
-	b[0] = 0.0;
-	double c = 1.0, d = 0.0;
-	for (unsigned int x=0; x<poly->c; x++){
-		a[0] += poly->raw_real[x]*c - poly->raw_imag[x]*d;
-		b[0] += poly->raw_real[x]*d + poly->raw_imag[x]*c;
-		complex_mul(&c, &d, r, i);
-	}
-}
-
 wmatrix *calc_dev(wmatrix *poly){
 	wmatrix *a = wekuaAllocComplexMatrix(poly->ctx, poly->r, poly->c-1);
 	for (uint32_t x=1; x < poly->c; x++){
@@ -69,28 +50,11 @@ wmatrix *calc_dev(wmatrix *poly){
 	return a;
 }
 
-void calc_inv_complex(double *a, double *b){
-	double c, d;
-	c = a[0]/(a[0]*a[0]+b[0]*b[0]);
-	d = -1.0*b[0]/(a[0]*a[0]+b[0]*b[0]);
-	a[0] = c;
-	b[0] = d;
-}
-
-void calc_ratio(double r, double i, double *fr, double *fi, wmatrix *poly, wmatrix *dpoly){
-	double dr, di;
-
-	calc_poly(r, i, fr, fi, poly);
-	calc_poly(r, i, &dr, &di, dpoly);
-
-	calc_inv_complex(&dr, &di);
-
-	complex_mul(fr, fi, dr, di);
-}
-
 
 wmatrix *wekuaMatrixRoot(wmatrix *a){
 	if (a == NULL){
+		return NULL;
+	}else if (a->r != 1){
 		return NULL;
 	}
 	wmatrix *ran, *roots, *d;
@@ -105,43 +69,17 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 	}
 	d = calc_dev(a);
 
-	double ratior, ratioi, devr, devi;
-	double ro, io;
-	uint32_t valid;
+	clSetKernelArg(a->ctx->kernels[23], 0, sizeof(cl_mem), &roots->real);
+	clSetKernelArg(a->ctx->kernels[23], 1, sizeof(cl_mem), &roots->imag);
+	clSetKernelArg(a->ctx->kernels[23], 2, sizeof(cl_mem), &a->real);
+	clSetKernelArg(a->ctx->kernels[23], 3, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(a->ctx->kernels[23], 4, sizeof(cl_mem), &d->real);
+	clSetKernelArg(a->ctx->kernels[23], 5, sizeof(cl_mem), &d->imag);
+	clSetKernelArg(a->ctx->kernels[23], 6, 4, &roots->c);
 
-	while (1){
-		valid = 0;
-		for (uint32_t i=0; i < roots->c; i++){
-			calc_ratio(roots->raw_real[i], roots->raw_imag[i], &ratior, &ratioi, a, d);
+	runKernel(a->ctx->command_queue, a->ctx->kernels[23], 1, NULL, &roots->size, roots->work_items);
 
-			devr = 0.0; devi = 0.0;
-			for (uint32_t x=0; x < roots->c; x++){
-				if (x != i){
-					ro = roots->raw_real[i]; io = roots->raw_imag[i];
-					ro -= roots->raw_real[x]; io -= roots->raw_imag[x];
-
-					calc_inv_complex(&ro, &io);
-					devr += ro; devi += io;
-				}
-			}
-
-			complex_mul(&devr, &devi, ratior, ratioi);
-			devr = 1.0 - devr;
-			devi *= -1.0;
-			calc_inv_complex(&devr, &devi);
-			complex_mul(&ratior, &ratioi, devr, devi);
-
-			roots->raw_real[i] -= ratior;
-			roots->raw_imag[i] -= ratioi;
-
-			if (sqrt(ratior*ratior + ratioi*ratioi) < 1e-14){
-				valid++;
-			}
-		}
-		if (valid == roots->c){
-			break;
-		}
-	}
-
+	wekuaFreeMatrix(d);
+	wekuaFreeMatrix(ran);
 	return roots;
 }

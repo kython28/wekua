@@ -5,8 +5,7 @@ __kernel void absolute(__global double *a, __global double *b,
 	if (com){
 		a[i*c+j] = sqrt(a[i*c+j]*a[i*c+j]+b[i*c+j]*b[i*c+j]);
 	}else{
-		if (a[i*c+j] < 0.0){
-			a[i*c+j] *= -1.0;
-		}
+		a[i*c+j] = fabs(a[i*c+j]);
+		
 	}
 }

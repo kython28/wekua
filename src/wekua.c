@@ -4,9 +4,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define KERNEL_NUM 23
+#define KERNEL_NUM 33
 
-const char kernels[][25] = {
+const char kernels[KERNEL_NUM][25] = {
 	"kernels/rand.cl",
 	"kernels/iden.cl",
 	"kernels/trans.cl",
@@ -29,14 +29,26 @@ const char kernels[][25] = {
 	"kernels/det.cl",
 	"kernels/gauss.cl",
 	"kernels/gauss2.cl",
-	"kernels/randuniform.cl"
+	"kernels/randuniform.cl",
+	"kernels/aberth.cl",
+	"kernels/hardlim.cl",
+	"kernels/hardlims.cl",
+	"kernels/satlin.cl",
+	"kernels/satlins.cl",
+	"kernels/logsig.cl",
+	"kernels/relu.cl",
+	"kernels/leakyrelu.cl",
+	"kernels/softplus.cl",
+	"kernels/ln.cl"
 };
 
-const char ker_name[][20] = {
+const char ker_name[KERNEL_NUM][20] = {
 	"rand", "iden", "trans", "cut", "axpy",
 	"product", "sen", "cose", "tg", "senh", "coseh", "tgh",
 	"dots", "absolute", "diag", "sum", "mul", "norm",
-	"resize", "det", "gauss", "gauss2", "uniform"
+	"resize", "det", "gauss", "gauss2", "uniform",
+	"aberth", "hardlim", "hardlims", "satlin", "satlins",
+	"logsig", "relu", "lerelu", "softplus", "lognatu"
 };
 
 void getRandomBuffer(void *buf, uint64_t size){
