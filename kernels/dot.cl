@@ -1,13 +1,19 @@
-__kernel void dots(__global double *a, __global double *b, unsigned char com,
-	double alpha, double beta){
+void complex_mul(__global double *a, __global double *b, double c, double d){
+	double e, f, g, h;
+	g = a[0]; h = b[0];
+	e = g*c - h*d;
+	f = g*d + h*c;
+	a[0] = e;
+	b[0] = f;
+}
+
+__kernel void dotm(__global double *a, __global double *b,
+	__global double *c, __global double *d,
+	unsigned char com){
 	unsigned long i = get_global_id(0);
-	double aa, bb;
 	if (com){
-		aa = a[i];
-		bb = b[i];
-		a[i] = alpha*aa-beta*bb;
-		b[i] = alpha*bb+beta*aa;
+		complex_mul(&a[i], &b[i], c[i], d[i]);
 	}else{
-		a[i] *= alpha;
+		a[i] *= c[i];
 	}
 }

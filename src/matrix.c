@@ -1,4 +1,5 @@
 #include "wekua.h"
+#include <unistd.h>
 #include <math.h>
 
 uint64_t getWI(uint64_t a, uint64_t max){
@@ -60,8 +61,11 @@ void runKernel(cl_command_queue cmd, cl_kernel kernel, uint32_t ndim, uint64_t *
 }
 
 uint8_t createComplexMatrix(wmatrix *a){
+	if (a->com){
+		return 0;
+	}
 	int ret;
-	a->imag = clCreateBuffer(a->ctx->ctx, CL_MEM_READ_WRITE, sizeof(double)*a->size, NULL, &ret);
+	a->imag = clCreateBuffer(a->ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, sizeof(double)*a->size, NULL, &ret);
 	if (ret != 0){
 		printf("Failed to allocate new memory :-(\n");
 		return 1;
@@ -71,6 +75,7 @@ uint8_t createComplexMatrix(wmatrix *a){
 	double beta = 0.0;
 	clEnqueueFillBuffer(a->ctx->command_queue, a->imag, &beta, sizeof(double), 0, a->size*sizeof(double), 0, NULL, &ie);
 	clWaitForEvents(1, &ie);
+	clReleaseEvent(ie);
 	a->com = 1;
 	return 0;
 }
@@ -101,18 +106,26 @@ void wekuaMatrixRealPrint(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
+	uint8_t d = 0;
 	for (uint32_t y=0; y<a->r; y++){
 		for (uint32_t x=0; x<a->c; x++){
 			if (x == 0 && (y < 5 || y >= a->r-4)){
-				printf("[");
+				if (d){
+					printf("         ");
+				}else{
+					d ^= 1;
+				}
 			}
 			if ((x < 4 || x >= a->c-4) && (y < 4 || y >= a->r-4)){
 				printf("%14.5e", a->raw_real[y*a->c+x]);
+				if (y+1 != a->r || x+1 != a->c){
+					printf(",");
+				}
 			}else if ((x == 4 && (y < 5 || y >= a->r-4)) || (y == 4 && (x < 4 || x >= a->c-4))){
-				printf("%14s", "...");
+				printf("%15s", "... ");
 			}
 			if (x == a->c-1 && (y < 5 || y >= a->r-4)){
-				printf("]\n");
+				printf("\n");
 			}
 		}
 	}
@@ -122,21 +135,29 @@ void wekuaMatrixComplexPrint(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
+	uint8_t d = 0;
 	char num[23];
 	for (uint32_t y=0; y<a->r; y++){
 		for (uint32_t x=0; x<a->c; x++){
 			if (x == 0 && (y < 3 || y >= a->r-2)){
-				printf("[");
+				if (d){
+					printf("         ");
+				}else{
+					d ^= 1;
+				}
 			}
 			if ((x < 2 || x >= a->c-2) && (y < 2 || y >= a->r-2)){
 				memset(num, 0, 23);
-				sprintf(num, "%.2e%+.2ei", a->raw_real[y*a->c+x], a->raw_imag[y*a->c+x]);
-				printf("%23s", num);
+				sprintf(num, "%.2e%+.2ei,", a->raw_real[y*a->c+x], a->raw_imag[y*a->c+x]);
+				printf("%23s,", num);
+				if (y+1 != a->r || x+1 != a->c){
+					printf(",");
+				}
 			}else if ((x == 2 && (y < 3 || y >= a->r-2)) || (y == 2 && (x < 2 || x >= a->c-2))){
-				printf("%23s", "...");
+				printf("%24s", "... ");
 			}
 			if (x == a->c-1 && (y < 3 || y >= a->r-2)){
-				printf("]\n");
+				printf("\n");
 			}
 		}
 	}
@@ -145,12 +166,14 @@ void wekuaMatrixComplexPrint(wmatrix *a){
 void wekuaMatrixPrint(wmatrix *a){
 	if (a == NULL){
 		return;
-	}else if(a->com){
+	}
+	printf("wmatrix([");
+	if(a->com){
 		wekuaMatrixComplexPrint(a);
 	}else{
 		wekuaMatrixRealPrint(a);
 	}
-	printf("\n");
+	printf("])\n");
 }
 
 wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c){
@@ -170,7 +193,7 @@ wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c){
 	getLWI(shape, &a->work_items[1], 2, a->ctx->max_work_group_size);
 
 	int ret;
-	a->real = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE, sizeof(double)*a->size, NULL, &ret);
+	a->real = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, sizeof(double)*a->size, NULL, &ret);
 	if (ret != 0){
 		printf("Failed to allocate new memory :-(\n");
 		free(a);
@@ -209,9 +232,11 @@ wmatrix *wekuaFillMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha
 	cl_event e, ie;
 	clEnqueueFillBuffer(a->ctx->command_queue, a->real, &alpha, sizeof(double), 0, a->size*sizeof(double), 0, NULL, &e);
 	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
 	if (a->com){
 		clEnqueueFillBuffer(a->ctx->command_queue, a->imag, &beta, sizeof(double), 0, a->size*sizeof(double), 0, NULL, &ie);
 		clWaitForEvents(1, &ie);
+		clReleaseEvent(ie);
 	}
 	return a;
 }
@@ -232,7 +257,7 @@ wmatrix *wekuaMatrixRandn(wekuaContext *ctx, uint32_t r, uint32_t c, uint8_t com
 	uint64_t *ran_r_m, *ran_i_m;
 	int ret;
 	
-	ran_r = clCreateBuffer(a->ctx->ctx, CL_MEM_READ_WRITE, a->size*8, NULL, &ret);
+	ran_r = clCreateBuffer(a->ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, a->size*8, NULL, &ret);
 	if (ret != 0){
 		clReleaseMemObject(ran_r);
 		return NULL;
@@ -242,7 +267,7 @@ wmatrix *wekuaMatrixRandn(wekuaContext *ctx, uint32_t r, uint32_t c, uint8_t com
 	clEnqueueUnmapMemObject(a->ctx->command_queue, ran_r, ran_r_m, 0, NULL, NULL);
 
 	if (a->com){
-		ran_i = clCreateBuffer(a->ctx->ctx, CL_MEM_READ_WRITE, a->size*8, NULL, &ret);
+		ran_i = clCreateBuffer(a->ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, a->size*8, NULL, &ret);
 		if (ret != 0){
 			clReleaseMemObject(ran_r);
 			clReleaseMemObject(ran_i);
@@ -372,9 +397,8 @@ wmatrix *wekuaMatrixResize(wmatrix *a, uint32_t r, uint32_t c, double alpha, dou
 		return NULL;
 	}
 	wmatrix *b = wekuaFillMatrix(a->ctx, r, c, alpha, beta);
-
-	if (a->com){
-		if (createComplexMatrix(b)){
+	if (a->com || beta != 0.0){
+		if (createComplexMatrix(b) || createComplexMatrix(a)){
 			wekuaFreeMatrix(b);
 			return NULL;
 		}
@@ -387,6 +411,7 @@ wmatrix *wekuaMatrixResize(wmatrix *a, uint32_t r, uint32_t c, double alpha, dou
 	if (shape[0] > a->r){
 		shape[0] = a->r;
 	}
+
 	if (shape[1] > a->c){
 		shape[1] = a->c;
 	}
@@ -399,7 +424,7 @@ wmatrix *wekuaMatrixResize(wmatrix *a, uint32_t r, uint32_t c, double alpha, dou
 	clSetKernelArg(a->ctx->kernels[18], 3, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(a->ctx->kernels[18], 4, 4, &b->c);
 	clSetKernelArg(a->ctx->kernels[18], 5, 4, &a->c);
-	clSetKernelArg(a->ctx->kernels[18], 6, 1, &a->com);
+	clSetKernelArg(a->ctx->kernels[18], 6, 1, &b->com);
 
 	runKernel(a->ctx->command_queue, a->ctx->kernels[18], 2, NULL, shape, wi);
 
@@ -413,28 +438,17 @@ wmatrix *wekuaMatrixProduct(wmatrix *a, wmatrix *b){
 		return NULL;
 	}
 
-	wmatrix *c = wekuaFillMatrix(a->ctx, a->r, b->c, 0.0, 0.0);
+	wmatrix *c = wekuaAllocMatrix(a->ctx, a->r, b->c);
 	if (a->com || b->com){
-		if (createComplexMatrix(c)){
+		if (createComplexMatrix(a) || createComplexMatrix(b) || createComplexMatrix(c)){
 			wekuaFreeMatrix(c);
 			return NULL;
-		}
-		if (a->com == 0){
-			if (createComplexMatrix(a)){
-				wekuaFreeMatrix(c);
-				return NULL;
-			}
-		}else if (b->com == 0){
-			if (createComplexMatrix(b)){
-				wekuaFreeMatrix(c);
-				return NULL;
-			}
 		}
 	}
 
 	uint64_t shape[2];
-	shape[0] = a->r;
-	shape[1] = b->c;
+	shape[0] = c->r;
+	shape[1] = c->c;
 
 	clSetKernelArg(a->ctx->kernels[5], 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(a->ctx->kernels[5], 1, sizeof(cl_mem), &a->imag);
@@ -490,7 +504,7 @@ void wekuaMatrixSub(wmatrix *a, wmatrix *b){
 	Axpy(a, b, -1.0);
 }
 
-void wekuaMatrixDot(wmatrix *a, double alpha, double beta){
+void wekuaMatrixDotScalar(wmatrix *a, double alpha, double beta){
 	if (a == NULL){
 		return;
 	}
@@ -508,6 +522,24 @@ void wekuaMatrixDot(wmatrix *a, double alpha, double beta){
 	clSetKernelArg(a->ctx->kernels[12], 4, sizeof(double), &beta);
 
 	runKernel(a->ctx->command_queue, a->ctx->kernels[12], 1, NULL, &a->size, a->work_items);
+}
+
+void wekuaMatrixDot(wmatrix *a, wmatrix *b){
+	if (a == NULL || b == NULL){
+		return;
+	}else if (a->com || b->com){
+		if (createComplexMatrix(a) || createComplexMatrix(b)){
+			return;
+		}
+	}
+
+	clSetKernelArg(a->ctx->kernels[29], 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(a->ctx->kernels[29], 1, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(a->ctx->kernels[29], 2, sizeof(cl_mem), &b->real);
+	clSetKernelArg(a->ctx->kernels[29], 3, sizeof(cl_mem), &b->imag);
+	clSetKernelArg(a->ctx->kernels[29], 4, 1, &a->com);
+
+	runKernel(a->ctx->command_queue, a->ctx->kernels[29], 1, NULL, &a->size, a->work_items);
 }
 
 void wekuaMatrixAbs(wmatrix *a){
@@ -537,16 +569,67 @@ void wekuaMatrixAbsdiff(wmatrix *a, wmatrix *b){
 	wekuaMatrixAbs(a);
 }
 
-void WekuaMatrixLn(wmatrix *a){
+void wekuaMatrixLn(wmatrix *a){
 	if (a == NULL){
 		return;
 	}
 
-	clSetKernelArg(a->ctx->kernels[32], 0, sizeof(cl_mem), &a->real);
-	clSetKernelArg(a->ctx->kernels[32], 1, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(a->ctx->kernels[32], 2, 1, &a->com);
+	clSetKernelArg(a->ctx->kernels[28], 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(a->ctx->kernels[28], 1, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(a->ctx->kernels[28], 2, 1, &a->com);
 
-	runKernel(a->ctx->command_queue, a->ctx->kernels[32], 1, NULL, &a->size, a->work_items);
+	runKernel(a->ctx->command_queue, a->ctx->kernels[28], 1, NULL, &a->size, a->work_items);
+}
+
+void wekuaMatrixLog(wmatrix *a, double r_base, double i_base){
+	if (a == NULL){
+		return;
+	}
+	wmatrix *b = wekuaFillMatrix(a->ctx, a->r, a->c, r_base, i_base);
+	wekuaMatrixLn(a);
+	wekuaMatrixLn(b);
+	wekuaMatrixDivide(a, b);
+	wekuaFreeMatrix(b);
+}
+
+void wekuaMatrixDivide(wmatrix *a, wmatrix *b){
+	if (a == NULL || b == NULL){
+		return;
+	}else if (a->r != b->r || a->c != b->c){
+		return;
+	}else if (a->com || b->com){
+		if (createComplexMatrix(a) || createComplexMatrix(b)){
+			return;
+		}
+	}
+
+	clSetKernelArg(a->ctx->kernels[30], 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(a->ctx->kernels[30], 1, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(a->ctx->kernels[30], 2, sizeof(cl_mem), &b->real);
+	clSetKernelArg(a->ctx->kernels[30], 3, sizeof(cl_mem), &b->imag);
+	clSetKernelArg(a->ctx->kernels[30], 4, 1, &a->com);
+
+	runKernel(a->ctx->command_queue, a->ctx->kernels[30], 1, NULL, &a->size, a->work_items);
+}
+
+void wekuaMatrixPowr(wmatrix *a, double real, double imag){
+	if (a == NULL){
+		return;
+	}
+
+	if (a->com == 0 && imag != 0.0){
+		if (createComplexMatrix(a)){
+			return;
+		}
+	}
+
+	clSetKernelArg(a->ctx->kernels[31], 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(a->ctx->kernels[31], 1, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(a->ctx->kernels[31], 2, sizeof(double), &real);
+	clSetKernelArg(a->ctx->kernels[31], 3, sizeof(double), &imag);
+	clSetKernelArg(a->ctx->kernels[31], 4, 1, &a->com);
+
+	runKernel(a->ctx->command_queue, a->ctx->kernels[31], 1, NULL, &a->size, a->work_items);
 }
 
 wmatrix *wekuaMatrixDiag(wmatrix *a){
@@ -573,6 +656,23 @@ wmatrix *wekuaMatrixDiag(wmatrix *a){
 
 	runKernel(a->ctx->command_queue, a->ctx->kernels[14], 1, NULL, &b->size, b->work_items);
 	return b;
+}
+
+wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha){
+	wmatrix *a;
+	int64_t col = fabs((y-x)/alpha);
+	while (x+col*alpha > y && col > 0){
+		col--;
+	}
+
+	a = wekuaFillMatrix(ctx, 1, (uint32_t)col, x, 0.0);
+
+	clSetKernelArg(a->ctx->kernels[32], 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(a->ctx->kernels[32], 1, sizeof(double), &alpha);
+
+	runKernel(a->ctx->command_queue, a->ctx->kernels[32], 1, NULL, &a->size, a->work_items);
+
+	return a;
 }
 
 void wekuaMatrixSum(wmatrix *a, double *real, double *imag){
@@ -696,9 +796,8 @@ void wekuaMatrixMul(wmatrix *a, double *real, double *imag){
 
 void wekuaMatrixMean(wmatrix *a, double *real, double *imag){
 	wmatrix *b = wekuaMatrixCopy(a);
-	double n = b->size;
-	n = 1/n;
-	wekuaMatrixDot(b, n, 0.0);
+	double n = 1.0/b->size;
+	wekuaMatrixDotScalar(b, n, 0.0);
 	wekuaMatrixSum(b, real, imag);
 	wekuaFreeMatrix(b);
 }
@@ -731,6 +830,7 @@ void wekuaMatrixNorm(wmatrix *a, double *real, double *imag){
 	}else{
 		real[0] = sqrt(real[0]);
 	}
+	wekuaFreeMatrix(b);
 }
 
 void wekuaMatrixDet(wmatrix *a, double *real, double *imag){
@@ -1066,9 +1166,9 @@ wmatrix *wekuaMatrixPoly(wmatrix *a){
 		i = wekuaMatrixIden(a->ctx, a->r);
 		b[1] = wekuaMatrixProduct(a, b[0]);
 		if (a->com){
-			wekuaMatrixDot(i, c->raw_real[a->r-x+1], c->raw_imag[a->r-x+1]);
+			wekuaMatrixDotScalar(i, c->raw_real[a->r-x+1], c->raw_imag[a->r-x+1]);
 		}else{
-			wekuaMatrixDot(i, c->raw_real[a->r-x+1], 0.0);
+			wekuaMatrixDotScalar(i, c->raw_real[a->r-x+1], 0.0);
 		}
 		wekuaMatrixAdd(b[1], i);
 		wekuaFreeMatrix(i);

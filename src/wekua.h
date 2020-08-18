@@ -90,12 +90,17 @@ wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c); // Identity Matrix
 wmatrix *wekuaMatrixTrans(wmatrix *a); // Matrix Transpose
 wmatrix *wekuaMatrixProduct(wmatrix *a, wmatrix *b); // Matrix Product
 wmatrix *wekuaMatrixDiag(wmatrix *a);
+wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha);
 void wekuaMatrixAdd(wmatrix *a, wmatrix *b); // Matrix addition
 void wekuaMatrixSub(wmatrix *a, wmatrix *b); // Matrix Substration
-void wekuaMatrixDot(wmatrix *a, double alpha, double beta); // Dot all elements in a matrix for a number. Alpha is real number and Beta is imaginary number
+void wekuaMatrixDotScalar(wmatrix *a, double alpha, double beta); // Dot all elements in a matrix for a scalar. Alpha is real number and Beta is imaginary number
+void wekuaMatrixDot(wmatrix *a, wmatrix *b);
 void wekuaMatrixAbs(wmatrix *a);
 void wekuaMatrixAbsdiff(wmatrix *a, wmatrix *b);
-void WekuaMatrixLn(wmatrix *a);
+void wekuaMatrixLn(wmatrix *a);
+void wekuaMatrixLog(wmatrix *a, double r_base, double i_base);
+void wekuaMatrixDivide(wmatrix *a, wmatrix *b);
+void wekuaMatrixPowr(wmatrix *a, double real, double imag);
 
 // Trigonometric functions
 void wekuaMatrixSin(wmatrix *a);
@@ -137,28 +142,41 @@ void wekuaFreeMatrix(wmatrix *a); // To free a matrix
 // Wekua Network Module
 typedef struct {
 	void **data; // Module data
-	void (*acti_func)(wmatrix *a); // Activation function
-	wmatrix *(*func)(void *module, wmatrix *input); // Module function
-	void (*get_data)(void *module); // To get module data
-	void (*free_func)(void *m); // Free function
+	wmatrix **cache; // Cache
+	void (*acti_func)(wmatrix *); // Activation function
+	wmatrix *(*func)(void *, wmatrix *); // Module function
+	// void (*get_data)(void *module); // To get module data
+	void (*set_cache_id)(void *, int64_t, void *, void *, uint32_t *, uint8_t *); // To set position in cache
+	void (*free_func)(void *); // Free function
 	uint8_t com;
+	uint32_t nmod, *pseq;
 	int64_t arch_id; // Position of the output into architecture cache
 } wmodule;
 
 // Wekua Network Architecture
 typedef struct {
 	wmodule **modules; // Modules
-	uint32_t nmodule; // Modules number
-	wmatrix **cache; // Cache
-	wmatrix *(*run)(wmatrix *input, wmodule **modules);
-	void (*free_func)(void *a); // Free function
+	uint32_t nmodule[3]; // Modules number
+	wmatrix **weight;
+	wmatrix **cache, **s; // Cache
+	wmatrix *(*func)(wmodule **, uint32_t, wmatrix *); // Arch function
+	uint32_t pseq;
+	uint8_t com, *acti_func_id;
 } warch;
 
+// Wekua Loss
+typedef struct {
+	void (*func)(wmatrix *, wmatrix *, double*, double*);
+	wmatrix *(*get_dev)(wmatrix *, wmatrix *);
+} wloss;
+
+warch *wekuaArch(wekuaContext *ctx, uint32_t nmodule, wmatrix *(*func)(wmodule **, uint32_t, wmatrix *), uint8_t com);
+void addModuleToArch(warch *arch, wmodule *module);
+void configureWekuaArch(warch *arch);
+wmatrix *runWekuaArch(warch *arch, wmatrix *input);
+void wekuaFreeArch(warch *arch);
+
 // Activations functions
-void wekuaHardlim(wmatrix *a);
-void wekuaHardlims(wmatrix *a);
-void wekuaSatlin(wmatrix *a);
-void wekuaSatlins(wmatrix *a);
 void wekuaSigmoid(wmatrix *a);
 void wekuaTanh(wmatrix *a);
 void wekuaReLU(wmatrix *a);
@@ -166,11 +184,22 @@ void wekuaLeakyReLU(wmatrix *a);
 void wekuaSoftplus(wmatrix *a);
 
 // Modules
-wmodule *wekuaLinear(wekuaContext *ctx, uint32_t input, uint32_t output, uint32_t deep, void (*acti_func)(wmatrix *a), uint8_t com);
+wmodule *wekuaLinear(wekuaContext *ctx, uint32_t input, uint32_t output, uint32_t deep, void (*acti_func)(wmatrix *), uint8_t com);
 wmatrix *runWekuaLinear(void *m, wmatrix *input);
 void freeWekuaLinear(void *m);
 
+wmodule *wekuaSequential(wekuaContext *ctx, uint32_t nmodule, uint8_t com);
+void addModuleToSequential(wmodule *sequential, wmodule *module);
+wmatrix *runWekuaSequential(void *m, wmatrix *input);
+void freeWekuaSequential(void *m);
 
+// Loss functions
+wloss *wekuaMAE();
+wloss *wekuaMSE();
+wloss *wekuaNLLLoss();
+wloss *wekuaCrossEntropyLoss();
 
+// Optimization functions
+void wekuaGradientDescent(double lr, warch *a, wmatrix *output, wmatrix *ow, wloss *l, double *real, double *imag);
 
 #endif

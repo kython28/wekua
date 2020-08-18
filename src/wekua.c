@@ -19,7 +19,7 @@ const char kernels[KERNEL_NUM][25] = {
 	"kernels/sinh.cl",
 	"kernels/cosh.cl",
 	"kernels/tanh.cl",
-	"kernels/dot.cl",
+	"kernels/dotscalar.cl",
 	"kernels/abs.cl",
 	"kernels/diag.cl",
 	"kernels/sum.cl",
@@ -31,15 +31,15 @@ const char kernels[KERNEL_NUM][25] = {
 	"kernels/gauss2.cl",
 	"kernels/randuniform.cl",
 	"kernels/aberth.cl",
-	"kernels/hardlim.cl",
-	"kernels/hardlims.cl",
-	"kernels/satlin.cl",
-	"kernels/satlins.cl",
 	"kernels/logsig.cl",
 	"kernels/relu.cl",
 	"kernels/leakyrelu.cl",
 	"kernels/softplus.cl",
-	"kernels/ln.cl"
+	"kernels/log.cl",
+	"kernels/dot.cl",
+	"kernels/divide.cl",
+	"kernels/power.cl",
+	"kernels/arange.cl"
 };
 
 const char ker_name[KERNEL_NUM][20] = {
@@ -47,8 +47,8 @@ const char ker_name[KERNEL_NUM][20] = {
 	"product", "sen", "cose", "tg", "senh", "coseh", "tgh",
 	"dots", "absolute", "diag", "sum", "mul", "norm",
 	"resize", "det", "gauss", "gauss2", "uniform",
-	"aberth", "hardlim", "hardlims", "satlin", "satlins",
-	"logsig", "relu", "lerelu", "softplus", "lognatu"
+	"aberth", "logsig", "relu", "lerelu", "softplus",
+	"lognatu", "dotm", "divide", "power", "arange"
 };
 
 void getRandomBuffer(void *buf, uint64_t size){
@@ -157,7 +157,7 @@ wekuaContext *createWekuaContext(wDevice *dev){
 		uint64_t size;
 		char *source = getKernelData(kernels[x], (long int*)&size);
 		context->programs[x] = clCreateProgramWithSource(context->ctx, 1, (const char**)&source, &size, NULL);
-		if (clBuildProgram(context->programs[x], 1, &dev->device, "-Werror", NULL, NULL) != 0){
+		if (clBuildProgram(context->programs[x], 1, &dev->device, NULL, NULL, NULL) != 0){
 			clGetProgramBuildInfo(context->programs[x], dev->device, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
 			free(source);
 			source = (char*) malloc(size);

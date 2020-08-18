@@ -1,7 +1,8 @@
 void complex_mul(double *a, double *b, double c, double d){
-	double e, f;
-	e = a[0]*c - b[0]*d;
-	f = a[0]*d + b[0]*c;
+	double e, f, g, h;
+	g = a[0]; h = b[0];
+	e = g*c - h*d;
+	f = g*d + h*c;
 	a[0] = e;
 	b[0] = f;
 }
@@ -9,18 +10,20 @@ void complex_mul(double *a, double *b, double c, double d){
 void calc_poly(double r, double i, double *a, double *b, __global double *rpoly, __global double *ipoly, unsigned int col){
 	a[0] = 0.0;
 	b[0] = 0.0;
-	double c = 1.0, d = 0.0;
+	double c = 1.0, d = 0.0, aa = 0.0, bb = 0.0;
 	for (unsigned int x=0; x<col; x++){
-		a[0] += rpoly[x]*c - ipoly[x]*d;
-		b[0] += rpoly[x]*d + ipoly[x]*c;
+		aa += rpoly[x]*c - ipoly[x]*d;
+		bb += rpoly[x]*d + ipoly[x]*c;
 		complex_mul(&c, &d, r, i);
 	}
+	a[0] = aa; b[0] = bb;
 }
 
 void calc_inv_complex(double *a, double *b){
-	double c, d;
-	c = a[0]/(a[0]*a[0]+b[0]*b[0]);
-	d = -1.0*b[0]/(a[0]*a[0]+b[0]*b[0]);
+	double c, d, aa, bb;
+	aa = a[0]; bb = b[0];
+	c = aa/(aa*aa+bb*bb);
+	d = -1.0*bb/(aa*aa+bb*bb);
 	a[0] = c;
 	b[0] = d;
 }

@@ -13,24 +13,8 @@ void acti(wmatrix *a, uint32_t id){
 	runKernel(a->ctx->command_queue, a->ctx->kernels[id], 1, NULL, &a->size, a->work_items);
 }
 
-void wekuaHardlim(wmatrix *a){
-	acti(a, 24);
-}
-
-void wekuaHardlims(wmatrix *a){
-	acti(a, 25);
-}
-
-void wekuaSatlin(wmatrix *a){
-	acti(a, 26);
-}
-
-void wekuaSatlins(wmatrix *a){
-	acti(a, 27);
-}
-
 void wekuaSigmoid(wmatrix *a){
-	acti(a, 28);
+	acti(a, 24);
 }
 
 void wekuaTanh(wmatrix *a){
@@ -38,13 +22,13 @@ void wekuaTanh(wmatrix *a){
 }
 
 void wekuaReLU(wmatrix *a){
-	acti(a, 29);
+	acti(a, 25);
 }
 
 void wekuaLeakyReLU(wmatrix *a){
-	acti(a, 30);
+	acti(a, 26);
 }
 void wekuaSoftplus(wmatrix *a){
-	acti(a, 31);
-	WekuaMatrixLn(a);
+	acti(a, 27);
+	wekuaMatrixLn(a);
 }
