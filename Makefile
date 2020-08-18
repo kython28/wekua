@@ -1,4 +1,4 @@
-COMPILER=icc
+COMPILER=gcc
 ARGS=-W -Wall -fPIC -O2 -march=native
 
 main:
