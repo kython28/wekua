@@ -1,8 +1,8 @@
 __kernel void uniform(__global double *a, __global double *b,
 	double ra, double ia, double re, double ie,
-	unsigned int col, unsigned char com){
-	unsigned int i = get_global_id(0);
-	unsigned int j = get_global_id(1);
+	unsigned long col, unsigned char com){
+	unsigned long i = get_global_id(0);
+	unsigned long j = get_global_id(1);
 
 	double aa, bb, cc, dd;
 	if (com){

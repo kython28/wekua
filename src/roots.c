@@ -6,16 +6,16 @@ void runKernel(cl_command_queue cmd, cl_kernel kernel, uint32_t ndim, uint64_t *
 wmatrix *getUpperLowerBounds(wmatrix *a){
 	wmatrix *degree, *b;
 	double max;
-	degree = wekuaMatrixResize(a, 1, a->c-1, 0.0, 0.0);
+	degree = wekuaMatrixResize(a, 1, a->shape[1]-1, 0.0, 0.0);
 
 	b = wekuaAllocMatrix(a->ctx, 1, 2);
 	wekuaMatrixAbs(degree);
 	wekuaMatrixMax(degree, &max, NULL);
 
-	b->raw_real[1] = 1.0 + max/fabs(a->raw_real[a->c-1]);
+	b->raw_real[1] = 1.0 + max/fabs(a->raw_real[a->shape[1]-1]);
 	
 	wekuaFreeMatrix(degree);
-	degree = wekuaCutMatrix(a, 1, a->c-1, 0, 1);
+	degree = wekuaCutMatrix(a, 1, a->shape[1]-1, 0, 1);
 	wekuaMatrixAbs(degree);
 	wekuaMatrixMax(degree, &max, NULL);
 
@@ -42,8 +42,8 @@ wmatrix *getRoots(wmatrix *ran, uint32_t degree){
 }
 
 wmatrix *calc_dev(wmatrix *poly){
-	wmatrix *a = wekuaAllocComplexMatrix(poly->ctx, poly->r, poly->c-1);
-	for (uint32_t x=1; x < poly->c; x++){
+	wmatrix *a = wekuaAllocComplexMatrix(poly->ctx, poly->shape[0], poly->shape[1]-1);
+	for (uint64_t x=1; x < poly->shape[1]; x++){
 		a->raw_real[x-1] = x*poly->raw_real[x];
 		a->raw_imag[x-1] = x*poly->raw_imag[x];
 	}
@@ -54,12 +54,12 @@ wmatrix *calc_dev(wmatrix *poly){
 wmatrix *wekuaMatrixRoot(wmatrix *a){
 	if (a == NULL){
 		return NULL;
-	}else if (a->r != 1){
+	}else if (a->shape[0] != 1){
 		return NULL;
 	}
 	wmatrix *ran, *roots, *d;
 	ran = getUpperLowerBounds(a);
-	roots = getRoots(ran, a->c-1);
+	roots = getRoots(ran, a->shape[1]-1);
 
 	if (a->com == 0){
 		if (createComplexMatrix(a)){
@@ -75,7 +75,7 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 	clSetKernelArg(a->ctx->kernels[23], 3, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(a->ctx->kernels[23], 4, sizeof(cl_mem), &d->real);
 	clSetKernelArg(a->ctx->kernels[23], 5, sizeof(cl_mem), &d->imag);
-	clSetKernelArg(a->ctx->kernels[23], 6, 4, &roots->c);
+	clSetKernelArg(a->ctx->kernels[23], 6, 8, &roots->shape[1]);
 
 	runKernel(a->ctx->command_queue, a->ctx->kernels[23], 1, NULL, &roots->size, roots->work_items);
 

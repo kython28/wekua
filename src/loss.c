@@ -74,7 +74,7 @@ void runNLLLoss(wmatrix *x, wmatrix *y, double *real_error, double *imag_error){
 }
 
 wmatrix *devNLLLoss(wmatrix *x, wmatrix *y){
-	wmatrix *er = wekuaFillMatrix(y->ctx, y->r, y->c, -1.0, 0.0);
+	wmatrix *er = wekuaFillMatrix(y->ctx, y->shape[0], y->shape[1], -1.0, 0.0);
 	wekuaMatrixDivide(er, y);
 	return er;
 }

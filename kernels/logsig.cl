@@ -19,7 +19,7 @@ __kernel void logsig(__global double *a, __global double *b,
 	unsigned long i = get_global_id(0);
 
 	double c,d;
-	c = exp(a[i]);
+	c = exp(-1.0*a[i]);
 	if (com){
 		d = c*sin(b[i]);
 		c *= cos(b[i]);
@@ -31,6 +31,6 @@ __kernel void logsig(__global double *a, __global double *b,
 		calc_inv_complex(&c, &d);
 		complex_mul(&a[i], &b[i], c, d);
 	}else{
-		a[i] = c/(c+1.0);
+		a[i] = 1.0/(c+1.0);
 	}
 }

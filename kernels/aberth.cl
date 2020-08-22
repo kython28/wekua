@@ -7,11 +7,11 @@ void complex_mul(double *a, double *b, double c, double d){
 	b[0] = f;
 }
 
-void calc_poly(double r, double i, double *a, double *b, __global double *rpoly, __global double *ipoly, unsigned int col){
+void calc_poly(double r, double i, double *a, double *b, __global double *rpoly, __global double *ipoly, unsigned long col){
 	a[0] = 0.0;
 	b[0] = 0.0;
 	double c = 1.0, d = 0.0, aa = 0.0, bb = 0.0;
-	for (unsigned int x=0; x<col; x++){
+	for (unsigned long x=0; x<col; x++){
 		aa += rpoly[x]*c - ipoly[x]*d;
 		bb += rpoly[x]*d + ipoly[x]*c;
 		complex_mul(&c, &d, r, i);
@@ -28,7 +28,7 @@ void calc_inv_complex(double *a, double *b){
 	b[0] = d;
 }
 
-void calc_ratio(double r, double i, double *fr, double *fi, __global double *rpoly, __global double *ipoly, __global double *rdev, __global double *idev, unsigned int col){
+void calc_ratio(double r, double i, double *fr, double *fi, __global double *rpoly, __global double *ipoly, __global double *rdev, __global double *idev, unsigned long col){
 	double dr, di;
 
 	calc_poly(r, i, fr, fi, rpoly, ipoly, col+1);
@@ -42,8 +42,8 @@ void calc_ratio(double r, double i, double *fr, double *fi, __global double *rpo
 __kernel void aberth(__global double *rroot, __global double *iroot,
 	__global double *rpoly, __global double *ipoly,
 	__global double *rdev, __global double *idev,
-	unsigned int col){
-	unsigned int i = get_global_id(0);
+	unsigned long col){
+	unsigned long i = get_global_id(0);
 
 	double ratior, ratioi, devr, devi;
 	double ro, io, error = DBL_MAX;
@@ -52,7 +52,7 @@ __kernel void aberth(__global double *rroot, __global double *iroot,
 		calc_ratio(rroot[i], iroot[i], &ratior, &ratioi, rpoly, ipoly, rdev, idev, col);
 
 		devr = 0.0; devi = 0.0;
-		for (unsigned int x=0; x < col; x++){
+		for (unsigned long x=0; x < col; x++){
 			if (x != i){
 				ro = rroot[i]; io = iroot[i];
 				ro -= rroot[x]; io -= iroot[x];

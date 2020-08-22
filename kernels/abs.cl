@@ -1,11 +1,11 @@
 __kernel void absolute(__global double *a, __global double *b,
-	unsigned int c, unsigned char com){
-	unsigned int i = get_global_id(0);
-	unsigned int j = get_global_id(1);
+	unsigned char com){
+	unsigned long i = get_global_id(0);
+	double aa, bb;
 	if (com){
-		a[i*c+j] = sqrt(a[i*c+j]*a[i*c+j]+b[i*c+j]*b[i*c+j]);
+		aa = a[i]; bb = b[i];
+		a[i] = sqrt(aa*aa+bb*bb);
 	}else{
-		a[i*c+j] = fabs(a[i*c+j]);
-		
+		a[i] = fabs(a[i]);
 	}
 }

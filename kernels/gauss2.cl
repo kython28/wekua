@@ -1,11 +1,12 @@
 void calc_coeff(double a, double b, __global double *c, __global double *d){
-	double r, ang;
+	double r, ang, cc, dd;
+	cc = c[0]; dd = d[0];
 
 	r = a/(a*a+b*b);
 	ang = -1.0*b/(a*a+b*b);
 
-	a = c[0]*r - d[0]*ang;
-	b = c[0]*ang + d[0]*r;
+	a = cc*r - dd*ang;
+	b = cc*ang + dd*r;
 
 	c[0] = a;
 	d[0] = b;
@@ -13,9 +14,9 @@ void calc_coeff(double a, double b, __global double *c, __global double *d){
 
 __kernel void gauss2(__global double *a, __global double *b,
 	__global double *c, __global double *d,
-	unsigned int col, unsigned char com){
-	unsigned int i = get_global_id(0);
-	unsigned int j = get_global_id(1);
+	unsigned long col, unsigned char com){
+	unsigned long i = get_global_id(0);
+	unsigned long j = get_global_id(1);
 
 	double cc, dd;
 	if (com){

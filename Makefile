@@ -17,6 +17,10 @@ install:
 	$(COMPILER) $(ARGS) -lOpenCL -shared wekua.o matrix.o trig.o roots.o activation.o linear.o sequential.o arch.o loss.o optim.o -o libwekua.so -lm
 	cp libwekua.so /usr/lib/
 	cp src/wekua.h /usr/include/wekua.h
+	rm -rf /usr/lib/wekua_kernels/
+	cp -r kernels/ /usr/lib/wekua_kernels/
+	chmod 755 /usr/lib/wekua_kernels
+	chmod 644 /usr/lib/wekua_kernels/*
 
 clean:
 	rm -rf *.o

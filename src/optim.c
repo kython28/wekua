@@ -2,17 +2,17 @@
 #include <unistd.h>
 
 wmatrix *flinear(wmatrix *a){
-	return wekuaFillMatrix(a->ctx, a->r, a->c, 1.0, 0.0);
+	return wekuaFillMatrix(a->ctx, a->shape[0], a->shape[1], 1.0, 0.0);
 }
 wmatrix *fsigmoid(wmatrix *a){
-	wmatrix *b = wekuaFillMatrix(a->ctx, a->r, a->c, 1.0, 0.0);
+	wmatrix *b = wekuaFillMatrix(a->ctx, a->shape[0], a->shape[1], 1.0, 0.0);
 	wekuaMatrixSub(b, a);
 	wekuaMatrixDot(b, a);
 	return b;
 }
 wmatrix *ftanh(wmatrix *a){
 	wmatrix *b, *c;
-	b = wekuaFillMatrix(a->ctx, a->r, a->c, 1.0, 0.0);
+	b = wekuaFillMatrix(a->ctx, a->shape[0], a->shape[1], 1.0, 0.0);
 	c = wekuaMatrixCopy(a);
 	wekuaMatrixDot(c, a);
 	wekuaMatrixSub(b, c);
@@ -45,7 +45,7 @@ void wekuaGradientDescent(double lr, warch *a, wmatrix *output, wmatrix *ow, wlo
 	if (pseq > 2){
 		for (uint32_t x=3; 0 < pseq-x+1; x++){
 			s[pseq-x] = acti_func[a->acti_func_id[pseq-x]](cache[pseq-x+1]);
-			p = wekuaMatrixResize(wei[pseq-x+1], wei[pseq-x+1]->r-1, wei[pseq-x+1]->c, 0.0, 0.0);
+			p = wekuaMatrixResize(wei[pseq-x+1], wei[pseq-x+1]->shape[0]-1, wei[pseq-x+1]->shape[1], 0.0, 0.0);
 			f = wekuaMatrixTrans(p);
 			t = wekuaMatrixProduct(s[pseq-x+1], f);
 			wekuaFreeMatrix(f);
@@ -56,7 +56,7 @@ void wekuaGradientDescent(double lr, warch *a, wmatrix *output, wmatrix *ow, wlo
 	}
 
 	for (uint32_t x=0; x<pseq-1; x++){
-		p = wekuaMatrixResize(cache[x], cache[x]->r, cache[x]->c+1, 1.0, 0.0);
+		p = wekuaMatrixResize(cache[x], cache[x]->shape[0], cache[x]->shape[1]+1, 1.0, 0.0);
 		t = wekuaMatrixTrans(p);
 		wekuaFreeMatrix(p);
 

@@ -1,7 +1,12 @@
 #ifndef WEKUA_H
 #define WEKUA_H
 
+#if defined(__APPLE__) || defined(__MACOSX)
+#include <OpenCL/cl.h>
+#else
 #include <CL/cl.h>
+#endif
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +55,7 @@ wekuaContext *createWekuaContext(wDevice *dev);
 wekuaContext *createSomeWekuaContext(wekua_device_type type);
 void freeWekuaContext(wekuaContext *context);
 
+// To get random buffer from /dev/urandom
 void getRandomBuffer(void *buf, uint64_t size);
 
 // Wekua Matrix
@@ -62,31 +68,31 @@ typedef struct {
 
 	wekuaContext *ctx;
 
-	uint32_t r,c; // Dimensions
+	uint64_t shape[2], size; // Dimensions
 
 	// Does the matrix use complex elements?
 	uint8_t com;
 
 	// Info for OpenCL
-	uint64_t size, work_items[3];
+	uint64_t work_items[5];
 } wmatrix;
 
-void wekuaMatrixPrint(wmatrix *a);
+void wekuaMatrixPrint(wmatrix *a); // To print wmatrix
 uint8_t createComplexMatrix(wmatrix *a); // To enable complex numbers.
 void removeComplexMatrix(wmatrix *a); // To disable complex numbers.
 
-wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To alloc an empty matrix
-wmatrix *wekuaAllocComplexMatrix(wekuaContext *ctx, uint32_t r, uint32_t c); // To Alloc an empty matrix with complex elements
-wmatrix *wekuaFillMatrix(wekuaContext *ctx, uint32_t r, uint32_t c, double alpha, double beta); // To get matrix filled with same elements. Alpha is real number and Beta is imaginary number
-wmatrix *wekuaMatrixRandn(wekuaContext *ctx, uint32_t r, uint32_t c, uint8_t com); // To get matrix with random elements
-wmatrix *wekuaMatrixRandUniform(wekuaContext *ctx, uint32_t r, uint32_t c, double ra, double ia, double re, double ie, uint8_t com); // To get matrix with random numbers in the range [a, b) or [a, b] depending on rounding.
-wmatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint32_t r, uint32_t c, void *rbuf, void *ibuf); // To create Matrix from buffer
+wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint64_t r, uint64_t c); // To alloc an empty matrix
+wmatrix *wekuaAllocComplexMatrix(wekuaContext *ctx, uint64_t r, uint64_t c); // To Alloc an empty matrix with complex elements
+wmatrix *wekuaFillMatrix(wekuaContext *ctx, uint64_t r, uint64_t c, double alpha, double beta); // To get matrix filled with same elements. Alpha is real number and Beta is imaginary number
+wmatrix *wekuaMatrixRandn(wekuaContext *ctx, uint64_t r, uint64_t c, uint8_t com); // To get matrix with random elements
+wmatrix *wekuaMatrixRandUniform(wekuaContext *ctx, uint64_t r, uint64_t c, double ra, double ia, double re, double ie, uint8_t com); // To get matrix with random numbers in the range [a, b) or [a, b] depending on rounding.
+wmatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint64_t r, uint64_t c, void *rbuf, void *ibuf); // To create Matrix from buffer
 wmatrix *wekuaMatrixCopy(wmatrix *a); // To copy a matrix
-wmatrix *wekuaCutMatrix(wmatrix *a, uint32_t x, uint32_t w, uint32_t y, uint32_t h); // To get a submatrix
-wmatrix *wekuaMatrixResize(wmatrix *a, uint32_t r, uint32_t c, double alpha, double beta); // To resize a matrix
+wmatrix *wekuaCutMatrix(wmatrix *a, uint64_t x, uint64_t w, uint64_t y, uint64_t h); // To get a submatrix
+wmatrix *wekuaMatrixResize(wmatrix *a, uint64_t r, uint64_t c, double alpha, double beta); // To resize a matrix
 
 // Basic functions
-wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint32_t c); // Identity Matrix
+wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint64_t c); // Identity Matrix
 wmatrix *wekuaMatrixTrans(wmatrix *a); // Matrix Transpose
 wmatrix *wekuaMatrixProduct(wmatrix *a, wmatrix *b); // Matrix Product
 wmatrix *wekuaMatrixDiag(wmatrix *a);
@@ -184,7 +190,7 @@ void wekuaLeakyReLU(wmatrix *a);
 void wekuaSoftplus(wmatrix *a);
 
 // Modules
-wmodule *wekuaLinear(wekuaContext *ctx, uint32_t input, uint32_t output, uint32_t deep, void (*acti_func)(wmatrix *), uint8_t com);
+wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, void (*acti_func)(wmatrix *), uint8_t com);
 wmatrix *runWekuaLinear(void *m, wmatrix *input);
 void freeWekuaLinear(void *m);
 

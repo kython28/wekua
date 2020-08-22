@@ -24,7 +24,7 @@ void linear_set_cache_id(void *m, int64_t id, void *cache, void *w, uint32_t *ps
 	}
 }
 
-wmodule *wekuaLinear(wekuaContext *ctx, uint32_t input, uint32_t output, uint32_t deep, void (*acti_func)(wmatrix *a), uint8_t com){
+wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, void (*acti_func)(wmatrix *a), uint8_t com){
 	if (input*output*deep == 0){
 		return NULL;
 	}
@@ -51,7 +51,7 @@ wmodule *wekuaLinear(wekuaContext *ctx, uint32_t input, uint32_t output, uint32_
 }
 
 wmatrix *runLinearNeuron(wmatrix *a, wmatrix *w, void (*acti_func)(wmatrix *a)){
-	wmatrix *in = wekuaMatrixResize(a, a->r, a->c+1, 1.0, 0.0);
+	wmatrix *in = wekuaMatrixResize(a, a->shape[0], a->shape[1]+1, 1.0, 0.0);
 	wmatrix *output = wekuaMatrixProduct(in, w);
 	acti_func(output);
 	wekuaFreeMatrix(in);
@@ -62,7 +62,7 @@ wmatrix *runWekuaLinear(void *m, wmatrix *input){
 	wmodule *module = m;
 	if (m == NULL || input == NULL){
 		return NULL;
-	}else if (input->c+1 != ((wmatrix*)module->data[1])->r){
+	}else if (input->shape[1]+1 != ((wmatrix*)module->data[1])->shape[0]){
 		return NULL;
 	}
 	wmatrix *output, **tmp;
