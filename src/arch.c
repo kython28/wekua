@@ -36,12 +36,13 @@ void configureWekuaArch(warch *arch){
 	}
 	arch->cache = calloc(arch->nmodule[2]+1, sizeof(wmatrix*));
 	arch->weight = calloc(arch->nmodule[2], sizeof(wmatrix*));
+	arch->w_id = calloc(arch->nmodule[2], 8);
 	arch->s = calloc(arch->nmodule[2], sizeof(wmatrix*));
-	arch->acti_func_id = calloc(arch->nmodule[2], 1);
+	arch->acti_funcs = calloc(arch->nmodule[2], sizeof(wacti*));
 	arch->pseq = 0;
-	uint64_t j = 1;
+	uint64_t j = 0;
 	for (uint32_t x=0; x<arch->nmodule[1]; x++){
-		arch->modules[x]->set_cache_id(arch->modules[x], j, arch->cache, &arch->weight[j-1], &arch->pseq, &arch->acti_func_id[j-1]);
+		arch->modules[x]->set_cache_id(arch->modules[x], j, arch->cache, &arch->weight[j], &arch->pseq, arch->w_id, arch->acti_funcs);
 		j += (int64_t)arch->modules[x]->nmod;
 	}
 }
@@ -59,11 +60,17 @@ void wekuaFreeArch(warch *arch){
 	for (uint32_t x=0; x<arch->nmodule[0]; x++){
 		arch->modules[x]->free_func(arch->modules[x]);
 	}
-	for (uint32_t x=0; x<=arch->nmodule[2]; x++){
-		wekuaFreeMatrix(arch->cache[x]);
+	if (arch->pseq > 0){
+		for (uint32_t x=0; x<arch->pseq-1; x++){
+			wekuaFreeMatrix(arch->s[x]);
+			wekuaFreeMatrix(arch->cache[x]);
+		}
+		wekuaFreeMatrix(arch->cache[arch->pseq-1]);
 	}
 	free(arch->cache);
 	free(arch->weight);
 	free(arch->modules);
-	free(arch->acti_func_id);
+	free(arch->w_id);
+	free(arch->s);
+	free(arch->acti_funcs);
 }

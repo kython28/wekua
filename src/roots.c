@@ -57,6 +57,9 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 	}else if (a->shape[0] != 1){
 		return NULL;
 	}
+	wekuaContext *ctx = a->ctx;
+	cl_kernel kernel = ctx->kernels[21];
+
 	wmatrix *ran, *roots, *d;
 	ran = getUpperLowerBounds(a);
 	roots = getRoots(ran, a->shape[1]-1);
@@ -69,15 +72,15 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 	}
 	d = calc_dev(a);
 
-	clSetKernelArg(a->ctx->kernels[23], 0, sizeof(cl_mem), &roots->real);
-	clSetKernelArg(a->ctx->kernels[23], 1, sizeof(cl_mem), &roots->imag);
-	clSetKernelArg(a->ctx->kernels[23], 2, sizeof(cl_mem), &a->real);
-	clSetKernelArg(a->ctx->kernels[23], 3, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(a->ctx->kernels[23], 4, sizeof(cl_mem), &d->real);
-	clSetKernelArg(a->ctx->kernels[23], 5, sizeof(cl_mem), &d->imag);
-	clSetKernelArg(a->ctx->kernels[23], 6, 8, &roots->shape[1]);
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), &roots->real);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), &roots->imag);
+	clSetKernelArg(kernel, 2, sizeof(cl_mem), &a->real);
+	clSetKernelArg(kernel, 3, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(kernel, 4, sizeof(cl_mem), &d->real);
+	clSetKernelArg(kernel, 5, sizeof(cl_mem), &d->imag);
+	clSetKernelArg(kernel, 6, 8, &roots->shape[1]);
 
-	runKernel(a->ctx->command_queue, a->ctx->kernels[23], 1, NULL, &roots->size, roots->work_items);
+	runKernel(ctx->command_queue, kernel, 1, NULL, &roots->size, roots->work_items);
 
 	wekuaFreeMatrix(d);
 	wekuaFreeMatrix(ran);

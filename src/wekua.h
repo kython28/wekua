@@ -33,7 +33,7 @@ typedef struct {
 	uint8_t *name; // Device name
 	// Device Info
 	uint32_t compute_units, clock_frequency, max_work_item_dimensions;
-	uint64_t max_work_group_size, *max_work_item_sizes, nlen, max_size;
+	uint64_t max_work_group_size, *max_work_item_sizes, nlen, max_global_size, max_local_size;
 } wDevice;
 
 uint32_t getPlatforms(wPlatform **platform);
@@ -47,8 +47,8 @@ typedef struct {
 	cl_program *programs; // OpenCL programs
 	cl_kernel *kernels; // OpenCL kernels
 	// Info
-	uint64_t max_work_item_dimensions;
-	uint64_t max_work_group_size, *max_work_item_sizes;
+	uint32_t compute_units;
+	uint64_t max_work_group_size;
 } wekuaContext;
 
 wekuaContext *createWekuaContext(wDevice *dev);
@@ -60,6 +60,8 @@ void getRandomBuffer(void *buf, uint64_t size);
 
 // Wekua Matrix
 typedef struct {
+	void *parent;
+
 	cl_mem real; // Real numbers
 	cl_mem imag; // Imaginary numbers
 
@@ -68,7 +70,7 @@ typedef struct {
 
 	wekuaContext *ctx;
 
-	uint64_t shape[2], size; // Dimensions
+	uint64_t shape[2], offset[2], size; // Dimensions
 
 	// Does the matrix use complex elements?
 	uint8_t com;
@@ -90,6 +92,10 @@ wmatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint64_t r, uint64_t c, void *
 wmatrix *wekuaMatrixCopy(wmatrix *a); // To copy a matrix
 wmatrix *wekuaCutMatrix(wmatrix *a, uint64_t x, uint64_t w, uint64_t y, uint64_t h); // To get a submatrix
 wmatrix *wekuaMatrixResize(wmatrix *a, uint64_t r, uint64_t c, double alpha, double beta); // To resize a matrix
+
+void wekuaReshapeMatrix(wmatrix *a, uint64_t r, uint64_t c);
+void wekuaGetValueFromMatrix(wmatrix *a, uint64_t x, uint64_t y, double *real, double *imag);
+void wekuaPutValueToMatrix(wmatrix *a, uint64_t x, uint64_t y, double real, double imag);
 
 // Basic functions
 wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint64_t c); // Identity Matrix
@@ -145,19 +151,52 @@ uint32_t wekuaMatrixRang(wmatrix *a); // Matrix Rang
 
 void wekuaFreeMatrix(wmatrix *a); // To free a matrix
 
+// Wekua Loss
+typedef struct {
+	void (*func)(wmatrix *, wmatrix *, double*, double*);
+	wmatrix *(*get_dev)(wmatrix *, wmatrix *);
+} wloss;
+
+
+wloss *wekuaMAE();
+wloss *wekuaMSE();
+// wloss *wekuaCrossEntropyLoss();
+
+void wekuaFreeLoss(wloss *l);
+
+
+// Activations functions
+typedef struct {
+	void *data;
+	void (*acti)(void *, wmatrix *);
+	wmatrix *(*acti_dev)(void *, wmatrix *);
+} wacti;
+
+wacti *wekuaFLinear();
+wacti *wekuaSigmoid();
+wacti *wekuaTanh();
+wacti *wekuaReLU();
+wacti *wekuaLeakyReLU(double alpha);
+
+void runWekuaActi(wacti *a, wmatrix *b);
+wmatrix *getDevWekuaActi(wacti *a, wmatrix *b);
+
+void wekuaFreeActi(wacti *a);
+
 // Wekua Network Module
 typedef struct {
 	void **data; // Module data
 	wmatrix **cache; // Cache
-	void (*acti_func)(wmatrix *); // Activation function
+	wacti *acti_func; // Activation function
 	wmatrix *(*func)(void *, wmatrix *); // Module function
 	// void (*get_data)(void *module); // To get module data
-	void (*set_cache_id)(void *, int64_t, void *, void *, uint32_t *, uint8_t *); // To set position in cache
+	void (*set_cache_id)(void *, int64_t, void *, void *, uint32_t *, int64_t *, wacti **); // To set position in cache
 	void (*free_func)(void *); // Free function
 	uint8_t com;
 	uint32_t nmod, *pseq;
-	int64_t arch_id; // Position of the output into architecture cache
+	int64_t arch_id, *w_id; // Position of the output into architecture cache
 } wmodule;
+
 
 // Wekua Network Architecture
 typedef struct {
@@ -165,16 +204,12 @@ typedef struct {
 	uint32_t nmodule[3]; // Modules number
 	wmatrix **weight;
 	wmatrix **cache, **s; // Cache
+	wacti **acti_funcs;
 	wmatrix *(*func)(wmodule **, uint32_t, wmatrix *); // Arch function
 	uint32_t pseq;
-	uint8_t com, *acti_func_id;
+	int64_t *w_id;
+	uint8_t com;
 } warch;
-
-// Wekua Loss
-typedef struct {
-	void (*func)(wmatrix *, wmatrix *, double*, double*);
-	wmatrix *(*get_dev)(wmatrix *, wmatrix *);
-} wloss;
 
 warch *wekuaArch(wekuaContext *ctx, uint32_t nmodule, wmatrix *(*func)(wmodule **, uint32_t, wmatrix *), uint8_t com);
 void addModuleToArch(warch *arch, wmodule *module);
@@ -182,15 +217,8 @@ void configureWekuaArch(warch *arch);
 wmatrix *runWekuaArch(warch *arch, wmatrix *input);
 void wekuaFreeArch(warch *arch);
 
-// Activations functions
-void wekuaSigmoid(wmatrix *a);
-void wekuaTanh(wmatrix *a);
-void wekuaReLU(wmatrix *a);
-void wekuaLeakyReLU(wmatrix *a);
-void wekuaSoftplus(wmatrix *a);
-
 // Modules
-wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, void (*acti_func)(wmatrix *), uint8_t com);
+wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, wacti *acti, uint8_t com);
 wmatrix *runWekuaLinear(void *m, wmatrix *input);
 void freeWekuaLinear(void *m);
 
@@ -199,13 +227,7 @@ void addModuleToSequential(wmodule *sequential, wmodule *module);
 wmatrix *runWekuaSequential(void *m, wmatrix *input);
 void freeWekuaSequential(void *m);
 
-// Loss functions
-wloss *wekuaMAE();
-wloss *wekuaMSE();
-wloss *wekuaNLLLoss();
-wloss *wekuaCrossEntropyLoss();
-
 // Optimization functions
-void wekuaGradientDescent(double lr, warch *a, wmatrix *output, wmatrix *ow, wloss *l, double *real, double *imag);
+void wekuaGradientDescent(double lr, double lri, warch *a, wmatrix *output, wmatrix *ow, wloss *l, double *real, double *imag);
 
 #endif

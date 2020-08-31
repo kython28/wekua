@@ -15,8 +15,8 @@ void calc_inv_complex(double *a, double *b){
 }
 
 __kernel void logsig(__global double *a, __global double *b,
-	unsigned char com){
-	unsigned long i = get_global_id(0);
+	unsigned long col, unsigned char com){
+	unsigned long i = get_global_id(0)*col+get_global_id(1);
 
 	double c,d;
 	c = exp(-1.0*a[i]);

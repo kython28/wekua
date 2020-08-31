@@ -1,6 +1,6 @@
 __kernel void norm(__global double *a, __global double *b,
-	unsigned char com){
-	unsigned long i = get_global_id(0);
+	unsigned char com, unsigned long col){
+	unsigned long i = get_global_id(0)*col+get_global_id(1);
 	double aa;
 	if (com){
 		aa = a[i];

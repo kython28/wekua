@@ -1,10 +1,10 @@
 #include "wekua.h"
 
-void seq_set_cache_id(void *m, int64_t id, void *cache, void *w, uint32_t *pseq, uint8_t *fa){
+void seq_set_cache_id(void *m, int64_t id, void *cache, void *w, uint32_t *pseq, int64_t *w_id, wacti **acti){
 	wmodule *module = m;
 	module->arch_id = id;
 	for (uint32_t y=1; y <= ((uint32_t*)module->data[0])[1]; y++){
-		((wmodule*)module->data[y])->set_cache_id(((wmodule*)module->data[y]), id, cache, w, pseq, fa);
+		((wmodule*)module->data[y])->set_cache_id(((wmodule*)module->data[y]), id, cache, w, pseq, w_id, acti);
 		id += (int64_t)((wmodule*)module->data[y])->nmod;
 	}
 }

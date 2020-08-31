@@ -1,11 +1,12 @@
 __kernel void lerelu(__global double *a, __global double *b,
-	unsigned char com){
-	unsigned long i = get_global_id(0);
+	unsigned long col, double alpha, unsigned char com){
+	unsigned long i = get_global_id(0)*col+get_global_id(1);
 
-	if (a[i] < 0.1*a[i]){
-		a[i] = 0.1*a[i];
+	double aa = a[i];
+	if (aa < alpha*aa){
+		a[i] = alpha*aa;
 		if (com){
-			b[i] = 0.1*b[i];
+			b[i] = alpha*b[i];
 		}
 	}
 }

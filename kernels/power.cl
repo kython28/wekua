@@ -27,9 +27,14 @@ void step_two(double *a, double *b, double h, double r, double x){
 __kernel void power(__global double *a, __global double *b,
 	double alpha, double beta, unsigned char com){
 	unsigned long i = get_global_id(0);
+	unsigned long j = get_global_id(1);
+	unsigned long col = get_global_size(1);
 	double aa, bb, r, h, so, soi;
+
+	unsigned long current = i*col+j;
+
 	if (com){
-		aa = a[i]; bb = b[i];
+		aa = a[current]; bb = b[current];
 		r = 0.5*log(aa*aa + bb*bb);
 		h = atan2(bb,aa);
 
@@ -38,9 +43,9 @@ __kernel void power(__global double *a, __global double *b,
 
 		complex_mul(&aa, &bb, so, soi);
 
-		a[i] = aa;
-		b[i] = bb;
+		a[current] = aa;
+		b[current] = bb;
 	}else{
-		a[i] = pow(a[i], alpha);
+		a[current] = pow(a[current], alpha);
 	}
 }

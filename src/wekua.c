@@ -4,13 +4,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define KERNEL_NUM 33
+#define KERNEL_NUM 31
 
 const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/rand.cl",
 	"/usr/lib/wekua_kernels/iden.cl",
 	"/usr/lib/wekua_kernels/trans.cl",
-	"/usr/lib/wekua_kernels/cut.cl",
 	"/usr/lib/wekua_kernels/axpy.cl",
 	"/usr/lib/wekua_kernels/product.cl",
 	"/usr/lib/wekua_kernels/sin.cl",
@@ -22,7 +21,6 @@ const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/dotscalar.cl",
 	"/usr/lib/wekua_kernels/abs.cl",
 	"/usr/lib/wekua_kernels/diag.cl",
-	"/usr/lib/wekua_kernels/sum.cl",
 	"/usr/lib/wekua_kernels/mul.cl",
 	"/usr/lib/wekua_kernels/norm.cl",
 	"/usr/lib/wekua_kernels/resize.cl",
@@ -32,23 +30,24 @@ const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/randuniform.cl",
 	"/usr/lib/wekua_kernels/aberth.cl",
 	"/usr/lib/wekua_kernels/logsig.cl",
-	"/usr/lib/wekua_kernels/relu.cl",
 	"/usr/lib/wekua_kernels/leakyrelu.cl",
-	"/usr/lib/wekua_kernels/softplus.cl",
 	"/usr/lib/wekua_kernels/log.cl",
 	"/usr/lib/wekua_kernels/dot.cl",
 	"/usr/lib/wekua_kernels/divide.cl",
 	"/usr/lib/wekua_kernels/power.cl",
-	"/usr/lib/wekua_kernels/arange.cl"
+	"/usr/lib/wekua_kernels/arange.cl",
+	"/usr/lib/wekua_kernels/relu.cl",
+	"/usr/lib/wekua_kernels/satlin.cl"
 };
 
 const char ker_name[KERNEL_NUM][20] = {
-	"rand", "iden", "trans", "cut", "axpy",
+	"rand", "iden", "trans", "axpy",
 	"product", "sen", "cose", "tg", "senh", "coseh", "tgh",
-	"dots", "absolute", "diag", "sum", "mul", "norm",
+	"dots", "absolute", "diag", "mul", "norm",
 	"resize", "det", "gauss", "gauss2", "uniform",
-	"aberth", "logsig", "relu", "lerelu", "softplus",
-	"lognatu", "dotm", "divide", "power", "arange"
+	"aberth", "logsig", "lerelu", "lognatu", "dotm", "divide",
+	"power", "arange", "relu", "satlin"
+
 };
 
 void getRandomBuffer(void *buf, uint64_t size){
@@ -96,19 +95,29 @@ uint32_t getDevices(wPlatform platform , wDevice **device, wekua_device_type typ
 			uint64_t s;
 			clGetDeviceInfo(dev[x], CL_DEVICE_TYPE, 0, NULL, &s);
 			clGetDeviceInfo(dev[x], CL_DEVICE_TYPE, s, &(*device)[x].type, NULL);
+
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_COMPUTE_UNITS, 0, NULL, &s);
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_COMPUTE_UNITS, s, &(*device)[x].compute_units, NULL);
+
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_CLOCK_FREQUENCY, 0, NULL, &s);
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_CLOCK_FREQUENCY, s, &(*device)[x].clock_frequency, NULL);
+
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, 0, NULL, &s);
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, s, &(*device)[x].max_work_item_dimensions, NULL);
+
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &s);
 			(*device)[x].max_work_item_sizes = (uint64_t*) malloc(s);
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_ITEM_SIZES, s, (*device)[x].max_work_item_sizes, NULL);
+
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_GROUP_SIZE, 0, NULL, &s);
 			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_WORK_GROUP_SIZE, s, &(*device)[x].max_work_group_size, NULL);
-			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_MEM_ALLOC_SIZE, 0, NULL, &s);
-			clGetDeviceInfo(dev[x], CL_DEVICE_MAX_MEM_ALLOC_SIZE, s, &(*device)[x].max_size, NULL);
+
+			clGetDeviceInfo(dev[x], CL_DEVICE_GLOBAL_MEM_SIZE, 0, NULL, &s);
+			clGetDeviceInfo(dev[x], CL_DEVICE_GLOBAL_MEM_SIZE, s, &(*device)[x].max_global_size, NULL);
+
+			clGetDeviceInfo(dev[x], CL_DEVICE_LOCAL_MEM_SIZE, 0, NULL, &s);
+			clGetDeviceInfo(dev[x], CL_DEVICE_LOCAL_MEM_SIZE, s, &(*device)[x].max_local_size, NULL);
+
 			clGetDeviceInfo(dev[x], CL_DEVICE_NAME, 0, NULL, &(*device)[x].nlen);
 			(*device)[x].name = (uint8_t*) malloc((*device)[x].nlen);
 			clGetDeviceInfo(dev[x], CL_DEVICE_NAME, (*device)[x].nlen, (*device)[x].name, NULL);
@@ -163,6 +172,7 @@ wekuaContext *createWekuaContext(wDevice *dev){
 			source = (char*) malloc(size);
 			clGetProgramBuildInfo(context->programs[x], dev->device, CL_PROGRAM_BUILD_LOG, size, source, NULL);
 			printf("%s\n", source);
+			printf("%s\n", kernels[x]);
 			free(source);
 			freeWekuaContext(context);
 			return NULL;
@@ -171,10 +181,8 @@ wekuaContext *createWekuaContext(wDevice *dev){
 
 		free(source);
 	}
+	context->compute_units = dev->compute_units;
 	context->max_work_group_size = dev->max_work_group_size;
-	context->max_work_item_dimensions = dev->max_work_item_dimensions;
-	context->max_work_item_sizes = calloc(context->max_work_item_dimensions, 8);
-	memcpy(context->max_work_item_sizes, dev->max_work_item_sizes, 8*dev->max_work_item_dimensions);
 	return context;
 }
 
@@ -192,7 +200,7 @@ wekuaContext *createSomeWekuaContext(wekua_device_type type){
 			if (devs[p][d].compute_units*devs[p][d].clock_frequency*devs[p][d].max_work_group_size > devs[ps][ds].compute_units*devs[ps][ds].clock_frequency*devs[ps][ds].max_work_group_size){
 				ps = p; ds = d;
 			}else if (devs[p][d].compute_units*devs[p][d].clock_frequency*devs[p][d].max_work_group_size == devs[ps][ds].compute_units*devs[ps][ds].clock_frequency*devs[ps][ds].max_work_group_size){
-				if (devs[p][d].max_size > devs[ps][ds].max_size){
+				if (devs[p][d].max_global_size > devs[ps][ds].max_global_size && devs[p][d].max_local_size > devs[ps][ds].max_local_size){
 					ps = p; ds = d;
 				}
 			}
@@ -217,6 +225,5 @@ void freeWekuaContext(wekuaContext *context){
 	clReleaseCommandQueue(context->command_queue);
 	free(context->kernels);
 	free(context->programs);
-	free(context->max_work_item_sizes);
 	free(context);
 }

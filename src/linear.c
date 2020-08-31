@@ -1,30 +1,20 @@
 #include "wekua.h"
 
-void acti_func_none(wmatrix *a){
-	return;
-}
-
-void linear_set_cache_id(void *m, int64_t id, void *cache, void *w, uint32_t *pseq, uint8_t *fa){
-	((wmodule*)m)->arch_id = id;
-	((wmodule*)m)->cache = cache;
-	((wmodule*)m)->pseq = pseq;
-	for (uint32_t x=0; x<((wmodule*)m)->nmod; x++){
-		((wmatrix**)w)[x] = (wmatrix*) ((wmodule*)m)->data[x+1];
-		if (((wmodule*)m)->acti_func == &wekuaSigmoid){
-			fa[x] = 1;
-		}else if (((wmodule*)m)->acti_func == &wekuaTanh){
-			fa[x] = 2;
-		}else if (((wmodule*)m)->acti_func == &wekuaReLU){
-			fa[x] = 3;
-		}else if (((wmodule*)m)->acti_func == &wekuaLeakyReLU){
-			fa[x] = 4;
-		}else if (((wmodule*)m)->acti_func == &wekuaSoftplus){
-			fa[x] = 5;
-		}
+void linear_set_cache_id(void *m, int64_t id, void *cache, void *w, uint32_t *pseq, int64_t *w_id, wacti **acti){
+	wmodule *module = m;
+	wmatrix **weig = w;
+	
+	module->arch_id = id;
+	module->cache = cache;
+	module->pseq = pseq;
+	module->w_id = w_id;
+	for (uint32_t x=0; x<module->nmod; x++){
+		weig[x] = module->data[x+1];
+		acti[id+x] = module->acti_func;
 	}
 }
 
-wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, void (*acti_func)(wmatrix *a), uint8_t com){
+wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, wacti *acti, uint8_t com){
 	if (input*output*deep == 0){
 		return NULL;
 	}
@@ -39,10 +29,10 @@ wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_
 	linear_module->func = &runWekuaLinear;
 	linear_module->free_func = &freeWekuaLinear;
 	linear_module->set_cache_id = &linear_set_cache_id;
-	if (acti_func != NULL){
-		linear_module->acti_func = acti_func;
+	if (acti != NULL){
+		linear_module->acti_func = acti;
 	}else{
-		linear_module->acti_func = &acti_func_none;
+		linear_module->acti_func = wekuaFLinear();
 	}
 	linear_module->arch_id = -1;
 	linear_module->com = com;
@@ -50,10 +40,10 @@ wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_
 	return linear_module;
 }
 
-wmatrix *runLinearNeuron(wmatrix *a, wmatrix *w, void (*acti_func)(wmatrix *a)){
+wmatrix *runLinearNeuron(wmatrix *a, wmatrix *w, wacti *acti){
 	wmatrix *in = wekuaMatrixResize(a, a->shape[0], a->shape[1]+1, 1.0, 0.0);
 	wmatrix *output = wekuaMatrixProduct(in, w);
-	acti_func(output);
+	runWekuaActi(acti, output);
 	wekuaFreeMatrix(in);
 	return output;
 }
@@ -77,7 +67,8 @@ wmatrix *runWekuaLinear(void *m, wmatrix *input){
 		tmp[d] = runLinearNeuron(tmp[d^1], (wmatrix*)module->data[x], module->acti_func);
 		d ^= 1;
 		if (module->arch_id > 0){
-			((wmatrix**)module->cache)[module->pseq[0]] = tmp[d];
+			module->cache[module->pseq[0]] = tmp[d];
+			module->w_id[module->pseq[0]-1] = module->arch_id+x-2;
 			module->pseq[0]++;
 		}else{
 			wekuaFreeMatrix(tmp[d]);
@@ -85,8 +76,9 @@ wmatrix *runWekuaLinear(void *m, wmatrix *input){
 	}
 	output = tmp[d^1];
 	free(tmp);
-	if (module->arch_id > 0){
-		((wmatrix**)module->cache)[module->pseq[0]] = output;
+	if (module->arch_id >= 0){
+		module->cache[module->pseq[0]] = output;
+		module->w_id[module->pseq[0]-1] = module->arch_id+((uint32_t*)module->data[0])[0]-1;
 		module->pseq[0]++;
 	}
 	return output;
