@@ -1,27 +1,29 @@
 #include "wekua.h"
 #include <math.h>
 
-void runKernel(cl_command_queue cmd, cl_kernel kernel, uint32_t ndim, uint64_t *offsi, uint64_t *glosi, uint64_t *losi);
-
 wmatrix *getUpperLowerBounds(wmatrix *a){
-	wmatrix *degree, *b;
+	wmatrix *degree, *b, *c;
 	double max;
-	degree = wekuaMatrixResize(a, 1, a->shape[1]-1, 0.0, 0.0);
+	cl_event e;
+	b = wekuaMatrixResize(a, 1, a->shape[1]-1, 0.0, 0.0, 0, NULL, &e);
+	degree = wekuaMatrixAbs(b, 1, &e);
+	wekuaFreeMatrix(b, 0, NULL);
 
 	b = wekuaAllocMatrix(a->ctx, 1, 2);
-	wekuaMatrixAbs(degree);
-	wekuaMatrixMax(degree, &max, NULL);
+	wekuaMatrixMax(degree, &max, NULL, 0, NULL);
 
 	b->raw_real[1] = 1.0 + max/fabs(a->raw_real[a->shape[1]-1]);
 	
-	wekuaFreeMatrix(degree);
-	degree = wekuaCutMatrix(a, 1, a->shape[1]-1, 0, 1);
-	wekuaMatrixAbs(degree);
-	wekuaMatrixMax(degree, &max, NULL);
+	wekuaFreeMatrix(degree, 0, NULL);
+	c = wekuaCutMatrix(a, 1, a->shape[1]-1, 0, 1);
+	degree = wekuaMatrixAbs(c, 0, NULL);
+	wekuaFreeMatrix(c, 0, NULL);
+
+	wekuaMatrixMax(degree, &max, NULL, 0, NULL);
 
 	b->raw_real[0] = fabs(a->raw_real[0])/(fabs(a->raw_real[0])+max);
 
-	wekuaFreeMatrix(degree);
+	wekuaFreeMatrix(degree, 0, NULL);
 
 	return b;
 }
@@ -36,8 +38,8 @@ wmatrix *getRoots(wmatrix *ran, uint32_t degree){
 		roots->raw_real[x] = radius->raw_real[x]*cos(angle->raw_real[x]);
 		roots->raw_imag[x] = radius->raw_real[x]*sin(angle->raw_real[x]);
 	}
-	wekuaFreeMatrix(radius);
-	wekuaFreeMatrix(angle);
+	wekuaFreeMatrix(radius, 0, NULL);
+	wekuaFreeMatrix(angle, 0, NULL);
 	return roots;
 }
 
@@ -56,7 +58,10 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 		return NULL;
 	}else if (a->shape[0] != 1){
 		return NULL;
+	}else if (a->sm){
+		return NULL;
 	}
+	cl_event e;
 	wekuaContext *ctx = a->ctx;
 	cl_kernel kernel = ctx->kernels[21];
 
@@ -66,7 +71,7 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 
 	if (a->com == 0){
 		if (createComplexMatrix(a)){
-			wekuaFreeMatrix(roots);
+			wekuaFreeMatrix(roots, 0, NULL);
 			return NULL;
 		}
 	}
@@ -80,9 +85,11 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 	clSetKernelArg(kernel, 5, sizeof(cl_mem), &d->imag);
 	clSetKernelArg(kernel, 6, 8, &roots->shape[1]);
 
-	runKernel(ctx->command_queue, kernel, 1, NULL, &roots->size, roots->work_items);
+	clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &roots->size, roots->work_items, 0, NULL, &e);
 
-	wekuaFreeMatrix(d);
-	wekuaFreeMatrix(ran);
+	wekuaFreeMatrix(d, 1, &e);
+	wekuaFreeMatrix(ran, 0, NULL);
+
+	clReleaseEvent(e);
 	return roots;
 }

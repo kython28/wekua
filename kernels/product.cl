@@ -12,32 +12,83 @@
 	not feasible. However, if you know how to implement a better method, i'm all ears: kike28.py@protonmail.ch
 */
 
-
-__kernel void product(__global double *a, __global double *b,
-	__global double *c, __global double *d,
-	__global double *e, __global double *f,
-	unsigned char com, unsigned long col,
-	unsigned long col2, unsigned long offsetar, unsigned long offsetac,
-	unsigned long offsetbr, unsigned long offsetbc){
+__kernel void gemm(
+	__global double *ar, __global double *ai,
+	__global double *br, __global double *bi,
+	__global double *cr, __global double *ci,
+	unsigned char a_trans, unsigned char b_trans,
+	double ralpha, double ialpha,
+	double rbeta, double ibeta,
+	unsigned long col, unsigned long rcol,
+	unsigned long col2, unsigned long row,
+	unsigned long offsetar, unsigned long offsetac,
+	unsigned long offsetbr, unsigned long offsetbc,
+	unsigned long offsetcr, unsigned long offsetcc,
+	unsigned char com, unsigned long col3
+){
 	unsigned long i = get_global_id(0);
 	unsigned long k = get_global_id(1);
-	
-	unsigned long col3 = get_global_size(1);
+	unsigned ccurr = ( i + offsetcr )*col3 + k + offsetcc;
 
-	double ra = 0.0, rb, aa, bb, cc, dd;
+	double ra = 0.0, rb = 0.0;
+	double aa, bb, cc, dd;
+
 	if (com){
-		rb = 0.0;
-		for (unsigned long j=0; j<col; j++){
-			aa = a[ (i+offsetar)*col + j + offsetac ]; bb = b[ (i+offsetar)*col + j + offsetac ];
-			cc = c[ (j+offsetbr)*col2 + k + offsetbc ]; dd = d[ (j+offsetbr)*col2 + k + offsetbc ];
-			ra += aa*cc-bb*dd;
-			rb += aa*dd+bb*cc;
+		if (a_trans && b_trans){
+			for (unsigned long j=0; j<row; j++){
+				aa = ar[ (j+offsetar)*col + i + offsetac ]; bb = ai[ (j+offsetar)*col + i + offsetac ];
+				cc = br[ (k+offsetbr)*col2 + j + offsetbc ]; dd = bi[ (k+offsetbr)*col2 + j + offsetbc ];
+
+				ra += aa*cc - bb*dd;
+				rb += aa*dd + bb*cc;
+			}
+		}else if (a_trans && b_trans == 0){
+			for (unsigned long j=0; j<row; j++){
+				aa = ar[ (j+offsetar)*col + i + offsetac ]; bb = ai[ (j+offsetar)*col + i + offsetac ];
+				cc = br[ (j+offsetbr)*col2 + k + offsetbc ]; dd = bi[ (j+offsetbr)*col2 + k + offsetbc ];
+
+				ra += aa*cc - bb*dd;
+				rb += aa*dd + bb*cc;
+			}
+		}else if (a_trans == 0 && b_trans){
+			for (unsigned long j=0; j<col; j++){
+				aa = ar[ (i+offsetar)*col + j + offsetac ]; bb = ai[ (i+offsetar)*col + j + offsetac ];
+				cc = br[ (k+offsetbr)*col2 + j + offsetbc ]; dd = bi[ (k+offsetbr)*col2 + j + offsetbc ];
+
+				ra += aa*cc - bb*dd;
+				rb += aa*dd + bb*cc;
+			}
+		}else if (a_trans == 0 && b_trans == 0){
+			for (unsigned long j=0; j<col; j++){
+				aa = ar[ (i+offsetar)*col + j + offsetac ]; bb = ai[ (i+offsetar)*col + j + offsetac ];
+				cc = br[ (j+offsetbr)*col2 + k + offsetbc ]; dd = bi[ (j+offsetbr)*col2 + k + offsetbc ];
+
+				ra += aa*cc - bb*dd;
+				rb += aa*dd + bb*cc;
+			}
 		}
-		f[i*col2+k] = rb;
+		aa = cr[ccurr]; bb = ci[ccurr];
+
+		cr[ccurr] = ra*ralpha - rb*ialpha + aa*rbeta - bb*ibeta;
+		ci[ccurr] = ra*ialpha + rb*ralpha + aa*ibeta + bb*rbeta;
 	}else{
-		for (unsigned long j=0; j<col; j++){
-			ra += a[ (i+offsetar)*col + j + offsetac ]*c[ (j+offsetbr)*col2 + k + offsetbc ];
+		if (a_trans && b_trans){
+			for (unsigned long j=0; j<row; j++){
+				ra += ar[ (j+offsetar)*rcol + i + offsetac ]*br[ (k+offsetbr)*col2 + j + offsetbc ];
+			}
+		}else if (a_trans && b_trans == 0){
+			for (unsigned long j=0; j<row; j++){
+				ra += ar[ (j+offsetar)*rcol + i + offsetac ]*br[ (j+offsetbr)*col2 + k + offsetbc ];
+			}
+		}else if (a_trans == 0 && b_trans){
+			for (unsigned long j=0; j<col; j++){
+				ra += ar[ (i+offsetar)*rcol + j + offsetac ]*br[ (k+offsetbr)*col2 + j + offsetbc ];
+			}
+		}else{
+			for (unsigned long j=0; j<col; j++){
+				ra += ar[ (i+offsetar)*rcol + j + offsetac ]*br[ (j+offsetbr)*col2 + k + offsetbc ];
+			}
 		}
+		cr[ccurr] = ra*ralpha + rbeta*cr[ccurr];
 	}
-	e[i*col3+k] = ra;
 }

@@ -42,7 +42,7 @@ const char kernels[KERNEL_NUM][40] = {
 
 const char ker_name[KERNEL_NUM][20] = {
 	"rand", "iden", "trans", "axpy",
-	"product", "sen", "cose", "tg", "senh", "coseh", "tgh",
+	"gemm", "sen", "cose", "tg", "senh", "coseh", "tgh",
 	"dots", "absolute", "diag", "mul", "norm",
 	"resize", "det", "gauss", "gauss2", "uniform",
 	"aberth", "logsig", "lerelu", "lognatu", "dotm", "divide",
@@ -83,7 +83,7 @@ void freeWekuaPlatform(wPlatform *plat, uint32_t nplat){
 	free(plat);
 }
 
-uint32_t getDevices(wPlatform platform , wDevice **device, wekua_device_type type){
+uint32_t getDevices(wPlatform platform , wDevice **device, cl_device_type type){
 	uint32_t ndev;
 	clGetDeviceIDs(platform.platform, type, 0, NULL, &ndev);
 	if (ndev > 0){
@@ -186,7 +186,7 @@ wekuaContext *createWekuaContext(wDevice *dev){
 	return context;
 }
 
-wekuaContext *createSomeWekuaContext(wekua_device_type type){
+wekuaContext *createSomeWekuaContext(cl_device_type type){
 	wDevice **devs;
 	wPlatform *plat;
 	wekuaContext *ctx;

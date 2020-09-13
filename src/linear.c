@@ -41,53 +41,95 @@ wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_
 }
 
 wmatrix *runLinearNeuron(wmatrix *a, wmatrix *w, wacti *acti){
-	wmatrix *in = wekuaMatrixResize(a, a->shape[0], a->shape[1]+1, 1.0, 0.0);
-	wmatrix *output = wekuaMatrixProduct(in, w);
-	runWekuaActi(acti, output);
-	wekuaFreeMatrix(in);
+	// wmatrix *in = wekuaMatrixResize(a, a->shape[0], a->shape[1]+1, 1.0, 0.0);
+	//wmatrix *output = wekuaMatrixProduct(a, w);
+	//runWekuaActi(acti, output);
+	//wekuaFreeMatrix(in);
+	//return output;
+	cl_event e;
+	wmatrix *in, *output;
+	uint64_t row = a->shape[0], col = w->shape[1];
+	output = wekuaFillMatrix(a->ctx, row, col+1, 1.0, 0.0);
+	in = wekuaCutMatrix(output, 0, col, 0, row);
+	wekuaBlasGemm(1.0, 0.0, 0, a, 0, w, 0.0, 0.0, in, 0, NULL, &e);
+	runWekuaActi(acti, in, 1, &e);
+	wekuaFreeMatrix(in, 0, NULL);
+	clReleaseEvent(e);
 	return output;
 }
 
-wmatrix *runWekuaLinear(void *m, wmatrix *input){
+wmatrix *runWekuaLinear(void *m, wmatrix *input, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
 	wmodule *module = m;
 	if (m == NULL || input == NULL){
 		return NULL;
 	}else if (input->shape[1]+1 != ((wmatrix*)module->data[1])->shape[0]){
 		return NULL;
 	}
-	wmatrix *output, **tmp;
+	wmatrix *output, *in, **tmp, **cache, **wei;
 	uint8_t d = 1;
+	uint32_t *pseq = module->pseq, n_wei = ((uint32_t*)module->data[0])[0];
+	int64_t arch_id, *w_id;
+	w_id = module->w_id;
+	arch_id = module->arch_id;
+	cache = module->cache;
+	wei = (wmatrix**) &module->data[1];
+	cl_event e;
+
 	tmp = (wmatrix**) calloc(2, sizeof(wmatrix*));
-	if (module->pseq[0] == 0){
-		((wmatrix**)module->cache)[0] = wekuaMatrixCopy(input);
-		module->pseq[0]++;
+	if (pseq[0] == 0 && module->arch_id >= 0){
+		//((wmatrix**)module->cache)[0] = wekuaMatrixCopy(input);
+		in = wekuaMatrixResize(input, input->shape[0], input->shape[1]+1, 1.0, 0.0, 0, NULL, &e);
+		cache[0] = in;
+		pseq[0]++;
+		clWaitForEvents(1, &e);
+		clReleaseEvent(e);
+	}else if (input->parent != NULL && module->arch_id >= 0){
+		in = cache[pseq[0]-1];
+		if (input->parent != in){
+			in = wekuaMatrixResize(input, input->shape[0], input->shape[1]+1, 1.0, 0.0, 0, NULL, &e);
+			wekuaMatrixPrint(in, 0, NULL);
+			clWaitForEvents(1, &e);
+			clReleaseEvent(e);
+		}
+	}else{
+		in = wekuaMatrixResize(input, input->shape[0], input->shape[1]+1, 1.0, 0.0, 0, NULL, &e);
+		clWaitForEvents(1, &e);
+		clReleaseEvent(e);
 	}
-	tmp[0] = runLinearNeuron(input, (wmatrix*)module->data[1], module->acti_func);
-	for (uint32_t x=2; x <= ((uint32_t*)module->data[0])[0]; x++){
-		tmp[d] = runLinearNeuron(tmp[d^1], (wmatrix*)module->data[x], module->acti_func);
+
+	tmp[0] = runLinearNeuron(in, wei[0], module->acti_func);
+	for (uint32_t x=1; x < n_wei; x++){
+		tmp[d] = runLinearNeuron(tmp[d^1], wei[x], module->acti_func);
 		d ^= 1;
-		if (module->arch_id > 0){
-			module->cache[module->pseq[0]] = tmp[d];
-			module->w_id[module->pseq[0]-1] = module->arch_id+x-2;
-			module->pseq[0]++;
+		if (module->arch_id >= 0){
+			cache[pseq[0]] = tmp[d^1];
+			w_id[pseq[0]-1] = arch_id+x-2;
+			pseq[0]++;
 		}else{
-			wekuaFreeMatrix(tmp[d]);
+			wekuaFreeMatrix(tmp[d], 0, NULL);
 		}
 	}
-	output = tmp[d^1];
-	free(tmp);
-	if (module->arch_id >= 0){
-		module->cache[module->pseq[0]] = output;
-		module->w_id[module->pseq[0]-1] = module->arch_id+((uint32_t*)module->data[0])[0]-1;
-		module->pseq[0]++;
+	// output = tmp[d^1];
+	if (arch_id >= 0){
+		output = wekuaCutMatrix(tmp[d^1], 0, tmp[d^1]->shape[1]-1, 0, tmp[d^1]->shape[0]);
+		cache[pseq[0]] = tmp[d^1];
+		w_id[pseq[0]-1] = arch_id+n_wei-1;
+		pseq[0]++;
+	}else{
+		output = wekuaMatrixResize(tmp[d^1], tmp[d^1]->shape[0], tmp[d^1]->shape[1]-1, 0.0, 0.0, 0, NULL, &e);
+		wekuaFreeMatrix(tmp[d^1], 1, &e);
+		clReleaseEvent(e);
 	}
+	free(tmp);
 	return output;
 }
 
-void freeWekuaLinear(void *m){
+void freeWekuaLinear(void *m, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
 	wmodule *module = m;
 	for (uint32_t x=1; x <= ((uint32_t*)module->data[0])[0]; x++){
-		wekuaFreeMatrix(module->data[x]);
+		wekuaFreeMatrix(module->data[x], 0, NULL);
 	}
 	free(((uint32_t*)module->data[0]));
 	free(module->data);

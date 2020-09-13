@@ -37,7 +37,9 @@ void addModuleToSequential(wmodule *sequential, wmodule *module){
 	sequential->nmod += module->nmod;
 }
 
-wmatrix *runWekuaSequential(void *m, wmatrix *input){
+wmatrix *runWekuaSequential(void *m, wmatrix *input, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
+
 	if (m == NULL || input == NULL){
 		return NULL;
 	}
@@ -45,12 +47,12 @@ wmatrix *runWekuaSequential(void *m, wmatrix *input){
 	wmatrix *output, **tmp;
 	tmp = (wmatrix**) calloc(2, sizeof(wmatrix*));
 	uint8_t d = 1;
-	tmp[0] = ((wmodule*)module->data[1])->func(((wmodule*)module->data[1]), input);
+	tmp[0] = ((wmodule*)module->data[1])->func(((wmodule*)module->data[1]), input, 0, NULL);
 	for (uint32_t x=2; x <= ((uint32_t*)module->data[0])[1]; x++){
-		tmp[d] = ((wmodule*)module->data[x])->func(((wmodule*)module->data[x]), tmp[d^1]);
+		tmp[d] = ((wmodule*)module->data[x])->func(((wmodule*)module->data[x]), tmp[d^1], 0, NULL);
 		d ^= 1;
 		if (module->arch_id < 0){
-			wekuaFreeMatrix(tmp[d]);
+			wekuaFreeMatrix(tmp[d], 0, NULL);
 		}
 	}
 	output = tmp[d^1];
@@ -58,10 +60,11 @@ wmatrix *runWekuaSequential(void *m, wmatrix *input){
 	return output;
 }
 
-void freeWekuaSequential(void *m){
+void freeWekuaSequential(void *m, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
 	wmodule *seq = m;
 	for (uint32_t x=1; x <= ((uint32_t*)seq->data[0])[1]; x++){
-		((wmodule*)seq->data[x])->free_func(seq->data[x]);
+		((wmodule*)seq->data[x])->free_func(seq->data[x], 0, NULL);
 	}
 	free(seq->data[0]);
 	free(seq->data);

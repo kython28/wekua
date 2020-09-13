@@ -1,34 +1,30 @@
 #include "wekua.h"
 
-void runKernel(cl_command_queue cmd, cl_kernel kernel, uint32_t ndim, uint64_t *offsi, uint64_t *glosi, uint64_t *losi);
-uint64_t getCol(wmatrix *a);
-
-void acti(wmatrix *a, uint32_t id){
+void acti(wmatrix *a, uint32_t id, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return;
 	}
 	wekuaContext *ctx = a->ctx;
 	cl_kernel kernel = ctx->kernels[id];
-	uint64_t col = getCol(a);
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(kernel, 2, 8, &col);
+	clSetKernelArg(kernel, 2, 8, &a->real_size[1]);
 	clSetKernelArg(kernel, 3, 1, &a->com);
 
-	runKernel(ctx->command_queue, kernel, 2, a->offset, a->shape, &a->work_items[1]);
+	clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, a->offset, a->shape, &a->work_items[1], nw, be, e);
 }
-
-
 
 
 // Linear activation function
 
-void flinear(void *data, wmatrix *a){
+void flinear(void *data, wmatrix *a, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
 	return;
 }
 
-wmatrix *fdlinear(void *data, wmatrix *a){
+wmatrix *fdlinear(void *data, wmatrix *a, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
 	return wekuaFillMatrix(a->ctx, a->shape[0], a->shape[1], 1.0, 0.0);
 }
 
@@ -44,14 +40,23 @@ wacti *wekuaFLinear(){
 
 // Sigmoid activation function
 
-void fsigmoid(void *data, wmatrix *a){
-	acti(a, 22);
+void fsigmoid(void *data, wmatrix *a, uint32_t nw, cl_event *be){
+	cl_event e;
+	acti(a, 22, nw, be, &e);
+	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
 }
 
-wmatrix *fdsigmoid(void *data, wmatrix *a){
+wmatrix *fdsigmoid(void *data, wmatrix *a, uint32_t nw, cl_event *be){
 	wmatrix *b = wekuaFillMatrix(a->ctx, a->shape[0], a->shape[1], 1.0, 0.0);
-	wekuaMatrixSub(b, a);
-	wekuaMatrixDot(b, a);
+	cl_event e[2];
+	wekuaMatrixSub(b, a, nw, be, e);
+	wekuaMatrixDot(b, a, 1, e, &e[1]);
+	clWaitForEvents(1, &e[1]);
+
+	clReleaseEvent(e[0]);
+	clReleaseEvent(e[1]);
+
 	return b;
 }
 
@@ -67,17 +72,26 @@ wacti *wekuaSigmoid(){
 
 // Tanh activation function
 
-void ftanh(void *data, wmatrix *a){
-	wekuaMatrixTanh(a);
+void ftanh(void *data, wmatrix *a, uint32_t nw, cl_event *be){
+	cl_event e;
+	wekuaMatrixTanh(a, nw, be, &e);
+	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
 }
 
-wmatrix *fdtanh(void *data, wmatrix *a){
+wmatrix *fdtanh(void *data, wmatrix *a, uint32_t nw, cl_event *be){
 	wmatrix *b, *c;
+
+	cl_event e[3];
+
 	b = wekuaFillMatrix(a->ctx, a->shape[0], a->shape[1], 1.0, 0.0);
-	c = wekuaMatrixCopy(a);
-	wekuaMatrixDot(c, a);
-	wekuaMatrixSub(b, c);
-	wekuaFreeMatrix(c);
+	c = wekuaMatrixCopy(a, nw, be, e);
+	wekuaMatrixDot(c, a, 1, e, &e[1]);
+	wekuaMatrixSub(b, c, 1, &e[1], &e[2]);
+	wekuaFreeMatrix(c, 1, &e[2]);
+
+	for (uint32_t j=0; j<3; j++) clReleaseEvent(e[j]);
+
 	return b;
 }
 
@@ -92,13 +106,22 @@ wacti *wekuaTanh(){
 
 // ReLU activation function
 
-void frelu(void *data, wmatrix *a){
-	acti(a, 29);
+void frelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
+	cl_event e;
+	acti(a, 29, nw, be, &e);
+	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
 }
 
-wmatrix *fdrelu(void *data, wmatrix *a){
-	wmatrix *b = wekuaMatrixCopy(a);
-	acti(b, 30);
+wmatrix *fdrelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
+	cl_event e[2];
+
+	wmatrix *b = wekuaMatrixCopy(a, nw, be, e);
+	acti(b, 30, 1, e, &e[1]);
+
+	clWaitForEvents(1, &e[1]);
+	clReleaseEvent(e[0]);
+	clReleaseEvent(e[1]);
 	return b;
 }
 
@@ -114,27 +137,35 @@ wacti *wekuaReLU(){
 
 // LeakyReLU activation function
 
-void flrelu(void *data, wmatrix *a){
+void flrelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
 	if (a == NULL){
 		return;
 	}
 	wekuaContext *ctx = a->ctx;
 	cl_kernel kernel = ctx->kernels[23];
-	uint64_t col = getCol(a);
+	cl_event e;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(kernel, 2, 8, &col);
+	clSetKernelArg(kernel, 2, 8, &a->real_size[1]);
 	clSetKernelArg(kernel, 3, sizeof(double), data);
 	clSetKernelArg(kernel, 4, 1, &a->com);
 
-	runKernel(ctx->command_queue, kernel, 2, a->offset, a->shape, &a->work_items[1]);
+	clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, a->offset, a->shape, &a->work_items[1], nw, be, &e);
+	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
 }
 
-wmatrix *fdlrelu(void *data, wmatrix *a){
-	wmatrix *b = wekuaMatrixCopy(a);
-	wekuaMatrixDivide(b, a);
-	frelu(data, b);
+wmatrix *fdlrelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
+	cl_event e[2];
+
+	wmatrix *b = wekuaMatrixCopy(a, nw, be, e);
+	wekuaMatrixDivide(b, a, 1, e, &e[1]);
+	frelu(data, b, 1, &e[1]);
+
+	clReleaseEvent(e[0]);
+	clReleaseEvent(e[1]);
+
 	return b;
 }
 
@@ -152,21 +183,22 @@ wacti *wekuaLeakyReLU(double alpha){
 
 
 
-void runWekuaActi(wacti *a, wmatrix *b){
+void runWekuaActi(wacti *a, wmatrix *b, uint32_t nw, cl_event *be){
 	if (a == NULL || b == NULL){
 		return;
 	}
-	a->acti(a->data, b);
+	a->acti(a->data, b, nw, be);
 }
 
-wmatrix *getDevWekuaActi(wacti *a, wmatrix *b){
+wmatrix *getDevWekuaActi(wacti *a, wmatrix *b, uint32_t nw, cl_event *be){
 	if (a == NULL || b == NULL){
 		return NULL;
 	}
-	return a->acti_dev(a->data, b);
+	return a->acti_dev(a->data, b, nw, be);
 }
 
-void wekuaFreeActi(wacti *a){
+void wekuaFreeActi(wacti *a, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, NULL);
 	if (a == NULL){
 		return;
 	}else if (a->data != NULL){

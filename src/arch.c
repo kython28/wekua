@@ -30,7 +30,7 @@ void addModuleToArch(warch *arch, wmodule *module){
 void configureWekuaArch(warch *arch){
 	if (arch->cache != NULL){
 		for (uint32_t x=0; x<=arch->pseq; x++){
-			wekuaFreeMatrix(arch->cache[x]);
+			wekuaFreeMatrix(arch->cache[x], 0, NULL);
 		}
 		free(arch->cache);
 	}
@@ -47,25 +47,28 @@ void configureWekuaArch(warch *arch){
 	}
 }
 
-wmatrix *runWekuaArch(warch *arch, wmatrix *input){
+wmatrix *runWekuaArch(warch *arch, wmatrix *input, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
+
 	for (uint32_t x=0; x<arch->pseq; x++){
-		wekuaFreeMatrix(arch->cache[x]);
+		wekuaFreeMatrix(arch->cache[x], 0, NULL);
 		arch->cache[x] = NULL;
 	}
 	arch->pseq = 0;
 	return arch->func(arch->modules, arch->nmodule[1], input);
 }
 
-void wekuaFreeArch(warch *arch){
+void wekuaFreeArch(warch *arch, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
 	for (uint32_t x=0; x<arch->nmodule[0]; x++){
-		arch->modules[x]->free_func(arch->modules[x]);
+		arch->modules[x]->free_func(arch->modules[x], 0, NULL);
 	}
 	if (arch->pseq > 0){
 		for (uint32_t x=0; x<arch->pseq-1; x++){
-			wekuaFreeMatrix(arch->s[x]);
-			wekuaFreeMatrix(arch->cache[x]);
+			wekuaFreeMatrix(arch->s[x], 0, NULL);
+			wekuaFreeMatrix(arch->cache[x], 0, NULL);
 		}
-		wekuaFreeMatrix(arch->cache[arch->pseq-1]);
+		wekuaFreeMatrix(arch->cache[arch->pseq-1], 0, NULL);
 	}
 	free(arch->cache);
 	free(arch->weight);

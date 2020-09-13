@@ -1,57 +1,56 @@
 #include "wekua.h"
 
-void runKernel(cl_command_queue cmd, cl_kernel kernel, uint32_t ndim, uint64_t *offsi, uint64_t *glosi, uint64_t *losi);
-
-void wTrig(wmatrix *a, uint32_t kn){
+void wTrig(wmatrix *a, uint32_t kn, uint32_t nw, cl_event *be, cl_event *e){
 
 	wekuaContext *ctx = a->ctx;
 	cl_kernel kernel = ctx->kernels[kn];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(kernel, 2, 1, &a->com);
+	clSetKernelArg(kernel, 2, 8, &a->real_size[1]);
+	clSetKernelArg(kernel, 3, 1, &a->com);
 
-	runKernel(ctx->command_queue, kernel, 1, NULL, &a->size, a->work_items);
+	clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, a->offset, a->shape, &a->work_items[1], nw, be, e);
 }
 
-void wekuaMatrixSin(wmatrix *a){
+void wekuaMatrixSin(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return;
 	}
-	wTrig(a, 5);
+	wTrig(a, 5, nw, be, e);
 }
 
-void wekuaMatrixCos(wmatrix *a){
+void wekuaMatrixCos(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return;
 	}
-	wTrig(a, 6);
+	wTrig(a, 6, nw, be, e);
 }
 
-void wekuaMatrixTan(wmatrix *a){
+void wekuaMatrixTan(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return;
 	}
-	wTrig(a, 7);
+	wTrig(a, 7, nw, be, e);
 }
 
-void wekuaMatrixSinh(wmatrix *a){
+void wekuaMatrixSinh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return;
 	}
-	wTrig(a, 8);
+	wTrig(a, 8, nw, be, e);
 }
 
-void wekuaMatrixCosh(wmatrix *a){
+void wekuaMatrixCosh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return;
 	}
-	wTrig(a, 9);
+	wTrig(a, 9, nw, be, e);
 }
 
-void wekuaMatrixTanh(wmatrix *a){
+void wekuaMatrixTanh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return;
 	}
-	wTrig(a, 10);
+	wTrig(a, 10, nw, be, e);
 }

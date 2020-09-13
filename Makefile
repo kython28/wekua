@@ -1,5 +1,5 @@
 COMPILER=gcc
-ARGS=-W -Wall -fPIC -O2 -march=native
+ARGS=-W -Wall -g -fPIC -O2 -march=native
 
 main:
 	$(COMPILER) $(ARGS) -c src/wekua.c -o wekua.o
