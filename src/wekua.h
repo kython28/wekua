@@ -243,6 +243,12 @@ void wekuaFreeOptimGD(woptim *opti, uint32_t nw, cl_event *be);
 woptim *wekuaGradientDescentMomentum(double lr, double lri, double momentum, double imomentum, warch *a);
 void wekuaFreeOptimGDM(woptim *opti, uint32_t nw, cl_event *be);
 
+woptim *wekuaAdaGrad(double lr, double lri, warch *a);
+void wekuaFreeOptimAdaGrad(woptim *optim, uint32_t nw, cl_event *be);
+
+woptim *wekuaRMSprop(double lr, double lri, double beta, double ibeta, warch *a);
+void wekuaFreeOptimRMSprop(woptim *optim, uint32_t nw, cl_event *be);
+
 void runWekuaOptim(woptim *optim, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be);
 
 
