@@ -63,7 +63,7 @@ wmatrix *wekuaMatrixRoot(wmatrix *a){
 	}
 	cl_event e;
 	wekuaContext *ctx = a->ctx;
-	cl_kernel kernel = ctx->kernels[21];
+	cl_kernel kernel = ctx->kernels[20];
 
 	wmatrix *ran, *roots, *d;
 	ran = getUpperLowerBounds(a);

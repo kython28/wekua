@@ -400,3 +400,147 @@ void wekuaFreeOptimRMSprop(woptim *opti, uint32_t nw, cl_event *be){
 	free(opti->data[1]);
 	free(opti);
 }
+
+void wAdaDelta(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be){
+	if (a == NULL || output == NULL || l == NULL){
+		return;
+	}else if (a->pseq == 0){
+		return;
+	}
+	double lr, lri, beta, ibeta;
+	lr = ((double*)data[0])[0];
+	lri = ((double*)data[0])[1];
+	cl_event e[9];
+
+	wmatrix *f, *t, *p, **s;
+	wmatrix **wei, **cache, **grad, **epli, **delta, **wei_b;
+	wacti **actis = a->acti_funcs;
+	wekuaContext *ctx = output->ctx;
+
+	uint32_t pseq; int64_t *w_id;
+	s = a->s;
+	wei = a->weight;
+	cache = a->cache;
+	w_id = a->w_id;
+	pseq = a->pseq;
+	epli = (wmatrix**)data[1];
+	grad = (wmatrix**)data[2];
+	delta = (wmatrix**)data[3];
+	wei_b = (wmatrix**)data[4];
+
+	Backward(l, output, ow, s, wei, cache, actis, w_id, pseq, nw, be);
+
+	pseq--;
+
+	for (uint32_t x=0; x < pseq; x++){
+		t = cache[x]; p = s[x];
+		f = wekuaFillMatrix(ctx, t->shape[1], p->shape[1], 0.0, 0.0);
+		wekuaBlasGemm(1.0, 0.0, 1, t, 0, p, 0.0, 0.0, f, 0, NULL, e);
+
+		t = wekuaMatrixCopy(f, 1, e, &e[1]);
+		wekuaMatrixDot(t, t, 1, &e[1], &e[2]);
+
+		wekuaMatrixDotScalar(grad[w_id[x]], lr, lri, 1, &e[2], &e[3]);
+		wekuaBlasAxpy(1.0-lr, -1.0*lri, t, grad[w_id[x]], 1, &e[3], &e[4]);
+		wekuaFreeMatrix(t, 1, &e[4]);
+		for (uint32_t j=0; j<5; j++){
+			clReleaseEvent(e[j]);
+		}
+
+		t = wekuaMatrixCopy(grad[w_id[x]], 0, NULL, e);
+		p = wekuaMatrixCopy(delta[w_id[x]], 1, e, &e[1]);
+
+		wekuaMatrixAdd(t, epli[w_id[x]], 1, &e[1], &e[2]);
+		wekuaMatrixAdd(p, epli[w_id[x]], 1, &e[2], &e[3]);
+
+		wekuaMatrixPowr(t, 0.5, 0.0, 1, &e[3], &e[4]);
+		wekuaMatrixPowr(p, 0.5, 0.0, 1, &e[4], &e[5]);
+
+		wekuaMatrixDivide(p, t, 1, &e[5], &e[6]);
+		wekuaMatrixDot(f, p, 1, &e[6], &e[7]);
+
+		wekuaMatrixSub(wei[w_id[x]], f, 1, &e[7], &e[8]);
+
+		wekuaFreeMatrix(f, 1, &e[8]);
+		wekuaFreeMatrix(t, 0, NULL);
+		wekuaFreeMatrix(p, 0, NULL);
+		for (uint32_t j=0; j<9; j++){
+			clReleaseEvent(e[j]);
+		}
+
+		f = wekuaMatrixCopy(wei[w_id[x]], 0, NULL, e);
+		wekuaMatrixSub(f, wei_b[w_id[x]], 1, e, &e[1]);
+		wekuaMatrixDot(f, f, 1, &e[1], &e[2]);
+
+		wekuaMatrixDotScalar(delta[w_id[x]], lr, lri, 1, &e[2], &e[3]);
+		wekuaBlasAxpy(1.0-lr, -1.0*lri, f, delta[w_id[x]], 1, &e[3], &e[4]);
+
+		wekuaFreeMatrix(f, 1, &e[4]);
+		for (uint32_t j=0; j<5; j++){
+			clReleaseEvent(e[j]);
+		}
+	}
+	for (uint32_t x=0; x < pseq; x++){
+		wekuaFreeMatrix(s[x], 0, NULL);
+		s[x] = NULL;
+	}
+}
+
+woptim *wekuaAdaDelta(double lr, double lri, warch *a){
+	cl_event *e;
+	cl_event *befo = NULL;
+	woptim *optim = calloc(1, sizeof(woptim));
+	optim->step = &wAdaDelta;
+	optim->arch = a;
+
+	optim->data = calloc(5, sizeof(void*));
+
+	optim->data[0] = calloc(2, sizeof(double));
+	((double*)optim->data[0])[0] = lr;
+	((double*)optim->data[0])[1] = lri;
+
+	optim->data[1] = (wmatrix**) calloc(a->nmodule[2], sizeof(wmatrix*));
+	optim->data[2] = (wmatrix**) calloc(a->nmodule[2], sizeof(wmatrix*));
+	optim->data[3] = (wmatrix**) calloc(a->nmodule[2], sizeof(wmatrix*));
+	optim->data[4] = (wmatrix**) calloc(a->nmodule[2], sizeof(wmatrix*));
+	uint64_t we = 0;
+
+	e = calloc(a->nmodule[2], sizeof(wmatrix*));
+	wmatrix *w;
+	for (uint32_t x=0; x<a->nmodule[2]; x++){
+		w = a->weight[x];
+		((wmatrix**)optim->data[1])[x] = wekuaFillMatrix(w->ctx, w->shape[0], w->shape[1], CL_DBL_EPSILON, 0.0);
+		((wmatrix**)optim->data[2])[x] = wekuaFillMatrix(w->ctx, w->shape[0], w->shape[1], 0.0, 0.0);
+		((wmatrix**)optim->data[3])[x] = wekuaFillMatrix(w->ctx, w->shape[0], w->shape[1], 0.0, 0.0);
+		((wmatrix**)optim->data[4])[x] = wekuaMatrixCopy(w, we, befo, &e[x]);
+		if (we == 0){
+			we++;
+		}
+		befo = &e[x];
+	}
+	clWaitForEvents(1, &e[a->nmodule[2]-1]);
+	for (uint32_t x=0; x<a->nmodule[2]; x++){
+		clReleaseEvent(e[x]);
+	}
+	free(e);
+	return optim;
+}
+
+void wekuaFreeOptimAdaDelta(woptim *optim, uint32_t nw, cl_event *be){
+	clWaitForEvents(nw, be);
+	if (optim == NULL){
+		return;
+	}
+	free(optim->data[0]);
+	for (uint32_t x=0; x<optim->arch->nmodule[2]; x++){
+		wekuaFreeMatrix(((wmatrix**)optim->data[1])[x], 0, NULL);
+		wekuaFreeMatrix(((wmatrix**)optim->data[2])[x], 0, NULL);
+		wekuaFreeMatrix(((wmatrix**)optim->data[3])[x], 0, NULL);
+		wekuaFreeMatrix(((wmatrix**)optim->data[4])[x], 0, NULL);
+	}
+	for (uint32_t x=1; x<5; x++){
+		free(optim->data[x]);
+	}
+	free(optim->data);
+	free(optim);
+}

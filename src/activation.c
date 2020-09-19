@@ -42,7 +42,7 @@ wacti *wekuaFLinear(){
 
 void fsigmoid(void *data, wmatrix *a, uint32_t nw, cl_event *be){
 	cl_event e;
-	acti(a, 22, nw, be, &e);
+	acti(a, 21, nw, be, &e);
 	clWaitForEvents(1, &e);
 	clReleaseEvent(e);
 }
@@ -108,7 +108,7 @@ wacti *wekuaTanh(){
 
 void frelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
 	cl_event e;
-	acti(a, 29, nw, be, &e);
+	acti(a, 28, nw, be, &e);
 	clWaitForEvents(1, &e);
 	clReleaseEvent(e);
 }
@@ -117,7 +117,7 @@ wmatrix *fdrelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
 	cl_event e[2];
 
 	wmatrix *b = wekuaMatrixCopy(a, nw, be, e);
-	acti(b, 30, 1, e, &e[1]);
+	acti(b, 29, 1, e, &e[1]);
 
 	clWaitForEvents(1, &e[1]);
 	clReleaseEvent(e[0]);
@@ -157,14 +157,18 @@ void flrelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
 }
 
 wmatrix *fdlrelu(void *data, wmatrix *a, uint32_t nw, cl_event *be){
-	cl_event e[2];
-
-	wmatrix *b = wekuaMatrixCopy(a, nw, be, e);
-	wekuaMatrixDivide(b, a, 1, e, &e[1]);
-	frelu(data, b, 1, &e[1]);
+	cl_event e[3];
+	wmatrix *b, *c;
+	b = wekuaMatrixCopy(a, nw, be, e);
+	c = wekuaFillMatrix(a->ctx, a->shape[0], a->shape[1], CL_DBL_EPSILON, 0.0);
+	wekuaMatrixAdd(b, c, 1, e, &e[1]);
+	wekuaMatrixDivide(b, b, 1, &e[1], &e[2]);
+	frelu(data, b, 1, &e[2]);
 
 	clReleaseEvent(e[0]);
 	clReleaseEvent(e[1]);
+	clReleaseEvent(e[2]);
+	wekuaFreeMatrix(c, 0, NULL);
 
 	return b;
 }

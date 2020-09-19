@@ -94,7 +94,8 @@ void wekuaPutValueToMatrix(wmatrix *a, uint64_t y, uint64_t x, double real, doub
 
 // Some BLAS functions
 void wekuaBlasAxpy(double alpha, double beta, wmatrix *x, wmatrix *y, uint32_t nw, cl_event *be, cl_event *e); // y = (alpha+beta*j)*x + y
-
+void wekuaBlasAsum(wmatrix *x, double *real, double *imag, uint32_t nw, cl_event *be);
+void wekuaBlasNorm(wmatrix *x, double *real, double *imag, uint32_t nw, cl_event *be);
 
 void wekuaBlasGemm(double ralpha, double ialpha, uint8_t a_trans, wmatrix *a, uint8_t b_trans, wmatrix *b,
 	double rbeta, double ibeta, wmatrix *c, uint32_t nw, cl_event *be, cl_event *e
@@ -129,7 +130,6 @@ void wekuaMatrixTanh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
 void wekuaMatrixSum(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Sum of all the elements
 void wekuaMatrixMul(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Mul of all the elements
 void wekuaMatrixMean(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Mean of all the elements
-void wekuaMatrixNorm(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Matrix Norm
 void wekuaMatrixTrace(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Matrix Trace
 void wekuaMatrixToComplex(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Matrix to Complex number
 void wekuaMatrixMax(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // To get max value.
@@ -248,6 +248,9 @@ void wekuaFreeOptimAdaGrad(woptim *optim, uint32_t nw, cl_event *be);
 
 woptim *wekuaRMSprop(double lr, double lri, double beta, double ibeta, warch *a);
 void wekuaFreeOptimRMSprop(woptim *optim, uint32_t nw, cl_event *be);
+
+woptim *wekuaAdaDelta(double lr, double lri, warch *a);
+void wekuaFreeOptimAdaDelta(woptim *optim, uint32_t nw, cl_event *be);
 
 void runWekuaOptim(woptim *optim, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be);
 

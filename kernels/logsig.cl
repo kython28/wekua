@@ -20,6 +20,7 @@ __kernel void logsig(__global double *a, __global double *b,
 
 	double c,d;
 	c = exp(-1.0*a[i]);
+	
 	if (com){
 		d = c*sin(b[i]);
 		c *= cos(b[i]);

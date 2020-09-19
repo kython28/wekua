@@ -4,7 +4,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define KERNEL_NUM 31
+#define KERNEL_NUM 30
 
 const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/rand.cl",
@@ -22,7 +22,6 @@ const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/abs.cl",
 	"/usr/lib/wekua_kernels/diag.cl",
 	"/usr/lib/wekua_kernels/mul.cl",
-	"/usr/lib/wekua_kernels/norm.cl",
 	"/usr/lib/wekua_kernels/resize.cl",
 	"/usr/lib/wekua_kernels/det.cl",
 	"/usr/lib/wekua_kernels/gauss.cl",
@@ -43,7 +42,7 @@ const char kernels[KERNEL_NUM][40] = {
 const char ker_name[KERNEL_NUM][20] = {
 	"rand", "iden", "trans", "axpy",
 	"gemm", "sen", "cose", "tg", "senh", "coseh", "tgh",
-	"dots", "absolute", "diag", "mul", "norm",
+	"dots", "absolute", "diag", "mul",
 	"resize", "det", "gauss", "gauss2", "uniform",
 	"aberth", "logsig", "lerelu", "lognatu", "dotm", "divide",
 	"power", "arange", "relu", "satlin"
