@@ -225,6 +225,9 @@ void configureWekuaArch(warch *arch);
 wmatrix *runWekuaArch(warch *arch, wmatrix *input, uint32_t nw, cl_event *be);
 void wekuaFreeArch(warch *arch, uint32_t nw, cl_event *be);
 
+int saveWekuaArch(const char *name, warch *arch);
+int openWekuaArch(const char *name, warch *arch);
+
 // Modules
 wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, wacti *acti, uint8_t com);
 wmatrix *runWekuaLinear(void *m, wmatrix *input, uint32_t nw, cl_event *be);

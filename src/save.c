@@ -42,66 +42,47 @@ int openWekuaFile(const char *name, uint8_t type){
 	return fd;
 }
 
-int saveWekuaMatrix(const char *name, wmatrix *a){
-	if (a == NULL || name == NULL){
-		return 1;
-	}
-
-	int fd = openWekuaFile(name, 0), ret = 1;
-	if (fd < 0){
-		return 1;
-	}
+int writeWekuaFile(int fd, wmatrix *a){
 	uint64_t size = a->size;
 	if (a->sm){
 		size = a->shape[0]*a->shape[1];
 	}
 
 	if (write(fd, a->shape, 16) != 16){
-		goto save_wekua_matrix_fail;
+		return 1;
 	}
 	if (write(fd, &size, 8) != 8){
-		goto save_wekua_matrix_fail;
+		return 1;
 	}
 	if (write(fd, &a->com, 1) != 1){
-		goto save_wekua_matrix_fail;
+		return 1;
 	}
 	if (write(fd, a->raw_real, sizeof(double)*size) != sizeof(double)*size){
-		goto save_wekua_matrix_fail;
+		return 1;
 	}
 	if (a->com){
 		if (write(fd, a->raw_imag, sizeof(double)*size) != sizeof(double)*size){
-			goto save_wekua_matrix_fail;
+			return 1;
 		}	
 	}
-	ret = 0;
-	save_wekua_matrix_fail:
-	close(fd);
-	return ret;
+
+	return 0;
 }
 
-wmatrix *openWekuaMatrix(wekuaContext *ctx, const char *name){
-	if (name == NULL){
-		return NULL;
-	}
+wmatrix *readWekuaFile(wekuaContext *ctx, int fd){
 	wmatrix *a;
 	uint64_t shape[2], size;
 	uint8_t com;
-
-	int fd = openWekuaFile(name, 0);
-	if (fd < 0){
-		goto open_matrix_fail;
-	}
-
 	if (read(fd, shape, 16) != 16){
-		goto open_matrix_fail;
+		return NULL;
 	}
 	if (read(fd, &size, 8) != 8){
-		goto open_matrix_fail;
+		return NULL;
 	}
 	size *= sizeof(double);
 
 	if (read(fd, &com, 1) != 1){
-		goto open_matrix_fail;
+		return NULL;
 	}
 
 	if (com){
@@ -111,24 +92,93 @@ wmatrix *openWekuaMatrix(wekuaContext *ctx, const char *name){
 	}
 
 	if (a == NULL){
-		goto open_matrix_success;
+		return NULL;
 	}
 
 	if (read(fd, a->raw_real, size) != size){
 		wekuaFreeMatrix(a, 0, NULL);
-		goto open_matrix_fail;
+		return NULL;
 	}
 	if (com){
 		if (read(fd, a->raw_imag, size) != size){
 			wekuaFreeMatrix(a, 0, NULL);
-			goto open_matrix_fail;
+			return NULL;
+		}
+	}
+	return a;
+}
+
+int saveWekuaMatrix(const char *name, wmatrix *a){
+	if (a == NULL || name == NULL){
+		return 1;
+	}
+
+	int fd = openWekuaFile(name, 0), ret = 0;
+	if (fd < 0){
+		return 1;
+	}
+	if (writeWekuaFile(fd, a)){
+		ret = 1;
+	}
+	close(fd);
+	return ret;
+}
+
+wmatrix *openWekuaMatrix(wekuaContext *ctx, const char *name){
+	if (name == NULL){
+		return NULL;
+	}
+	wmatrix *a;
+	int fd = openWekuaFile(name, 0);
+	if (fd < 0){
+		return NULL;
+	}
+	a = readWekuaFile(ctx, fd);
+	close(fd);
+	return a;
+}
+
+int saveWekuaArch(const char *name, warch *arch){
+	if (name == NULL){
+		return 1;
+	}
+	int fd = openWekuaFile(name, 1), ret = 0;
+	if (fd < 0){
+		return 1;
+	}
+	for (uint32_t x=0; x < arch->nmodule[2]; x++){
+		if (writeWekuaFile(fd, arch->weight[x])){
+			ret = 1;
+			break;
 		}
 	}
 	close(fd);
+	return 0;
+}
 
-	goto open_matrix_success;
-	open_matrix_fail:
-	a = NULL;
-	open_matrix_success:
-	return a;
+int openWekuaArch(const char *name, warch *arch){
+	if (name == NULL){
+		return 1;
+	}
+	wmatrix *tmp;
+	wekuaContext *ctx = arch->weight[0]->ctx;
+	int fd = openWekuaFile(name, 1), ret = 0;
+	if (fd < 0){
+		printf("%d\n", fd);
+		return 1;
+	}
+	wmatrix **wei = arch->weight;
+	for (uint32_t x=0; x < arch->nmodule[2]; x++){
+		tmp = readWekuaFile(ctx, fd);
+		if (tmp == NULL){
+			printf("lola\n");
+		}
+		memcpy(wei[x]->raw_real, tmp->raw_real, tmp->size*sizeof(double));
+		if (tmp->com){
+			memcpy(wei[x]->raw_imag, tmp->raw_imag, tmp->size*sizeof(double));
+		}
+		wekuaFreeMatrix(tmp, 0, NULL);
+	}
+	close(fd);
+	return 0;
 }
