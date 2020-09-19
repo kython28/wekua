@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <math.h>
 
 typedef struct {
 	cl_platform_id platform; // Platform ID
@@ -152,6 +154,9 @@ uint32_t wekuaMatrixRang(wmatrix *a, uint32_t nw, cl_event *be); // Matrix Rang
 // wmatrix *wekuaMatrixEigenvectors(wmatrix *a); // Eigenvectors
 // wmatrix **wekuaMatrixEig(wmatrix *a); // Eigenvalues and EigenVectors
 
+
+int saveWekuaMatrix(const char *name, wmatrix *a);
+wmatrix *openWekuaMatrix(wekuaContext *ctx, const char *name);
 void wekuaFreeMatrix(wmatrix *a, uint32_t nw, cl_event *be); // To free a matrix
 
 // Wekua Loss

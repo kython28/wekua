@@ -1,5 +1,4 @@
 #include "wekua.h"
-#include <math.h>
 
 void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max, uint32_t cu){
 	uint64_t c = (uint64_t)(pow(1.0*max, 1.0/si)/cu);
