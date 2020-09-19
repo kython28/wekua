@@ -44,11 +44,11 @@ void UnmapBufferMatrix(wmatrix *a){
 
 uint8_t createComplexMatrix(wmatrix *b){
 	if (b == NULL){
-		return CL_INVALID_MEM_OBJECT;
+		return 1;
 	}else if (b->com){
-		return CL_SUCCESS;
+		return 0;
 	}else if (b->sm){
-		return CL_INVALID_MEM_OBJECT;
+		return 1;
 	}
 	wekuaContext *ctx = b->ctx;
 	uint64_t size = b->size;
@@ -56,7 +56,7 @@ uint8_t createComplexMatrix(wmatrix *b){
 
 	b->imag = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, sizeof(double)*size, NULL, &ret);
 	if (ret != CL_SUCCESS){
-		return ret;
+		return 1;
 	}
 	MapBufferMatrix(b);
 	cl_event ie;
@@ -67,7 +67,7 @@ uint8_t createComplexMatrix(wmatrix *b){
 	if (ret == CL_SUCCESS){
 		b->com = 1;
 	}
-	return ret;
+	return 0;
 }
 
 void removeComplexMatrix(wmatrix *b, uint32_t nw, cl_event *be){
