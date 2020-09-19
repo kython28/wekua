@@ -12,9 +12,10 @@ main:
 	$(COMPILER) $(ARGS) -c src/arch.c -o arch.o
 	$(COMPILER) $(ARGS) -c src/loss.c -o loss.o
 	$(COMPILER) $(ARGS) -c src/optim.c -o optim.o
+	$(COMPILER) $(ARGS) -c src/blas.c -o blas.o
 
 install:
-	$(COMPILER) $(ARGS) -lOpenCL -shared wekua.o matrix.o trig.o roots.o activation.o linear.o sequential.o arch.o loss.o optim.o -o libwekua.so -lm
+	$(COMPILER) $(ARGS) -lOpenCL -shared wekua.o matrix.o trig.o roots.o activation.o linear.o sequential.o arch.o loss.o optim.o blas.o -o libwekua.so -lm
 	cp libwekua.so /usr/lib/
 	cp src/wekua.h /usr/include/wekua.h
 	rm -rf /usr/lib/wekua_kernels/
