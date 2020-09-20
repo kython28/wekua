@@ -107,7 +107,7 @@ void wekuaBlasGemm(double ralpha, double ialpha, uint8_t a_trans, wmatrix *a, ui
 wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint64_t c); // Identity Matrix
 wmatrix *wekuaMatrixTrans(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e); // Matrix Transpose
 wmatrix *wekuaMatrixProduct(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Product
-wmatrix *wekuaMatrixDiag(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
+wmatrix *wekuaMatrixDiag(wmatrix *a, uint32_t nw, cl_event *be);
 wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha);
 wmatrix *wekuaMatrixAbs(wmatrix *a, uint32_t nw, cl_event *be);
 void wekuaMatrixAdd(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix addition
