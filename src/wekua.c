@@ -181,6 +181,7 @@ wekuaContext *createWekuaContext(wDevice *dev){
 	}
 	context->compute_units = dev->compute_units;
 	context->max_work_group_size = dev->max_work_group_size;
+	context->max_local_size = dev->max_local_size/(sizeof(double)*4*dev->compute_units);
 	return context;
 }
 

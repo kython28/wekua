@@ -41,7 +41,7 @@ typedef struct {
 	cl_kernel *kernels; // OpenCL kernels
 	// Info
 	uint32_t compute_units;
-	uint64_t max_work_group_size;
+	uint64_t max_work_group_size, max_local_size;
 } wekuaContext;
 
 wekuaContext *createWekuaContext(wDevice *dev);
@@ -108,7 +108,7 @@ wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint64_t c); // Identity Matrix
 wmatrix *wekuaMatrixTrans(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e); // Matrix Transpose
 wmatrix *wekuaMatrixProduct(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Product
 wmatrix *wekuaMatrixDiag(wmatrix *a, uint32_t nw, cl_event *be);
-wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha);
+wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha, uint8_t trans);
 wmatrix *wekuaMatrixAbs(wmatrix *a, uint32_t nw, cl_event *be);
 void wekuaMatrixAdd(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix addition
 void wekuaMatrixSub(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Substration
@@ -170,6 +170,7 @@ wloss *wekuaMAE();
 wloss *wekuaMSE();
 // wloss *wekuaCrossEntropyLoss();
 
+void runWekuaLoss(wmatrix *output, wmatrix *ow, double *real, double *imag, wloss *l, uint32_t nw, cl_event *be);
 void wekuaFreeLoss(wloss *l, uint32_t nw, cl_event *be);
 
 
@@ -243,24 +244,17 @@ typedef struct {
 	void **data; // Optim info
 	warch *arch;
 	void (*step)(void **, warch *, wmatrix *, wmatrix *, wloss *, uint32_t, cl_event *);
+	void (*free_func)(void *, uint32_t, cl_event*);
 } woptim;
 
 woptim *wekuaGradientDescent(double lr, double lri, warch *a);
-void wekuaFreeOptimGD(woptim *opti, uint32_t nw, cl_event *be);
-
 woptim *wekuaGradientDescentMomentum(double lr, double lri, double momentum, double imomentum, warch *a);
-void wekuaFreeOptimGDM(woptim *opti, uint32_t nw, cl_event *be);
-
 woptim *wekuaAdaGrad(double lr, double lri, warch *a);
-void wekuaFreeOptimAdaGrad(woptim *optim, uint32_t nw, cl_event *be);
-
 woptim *wekuaRMSprop(double lr, double lri, double beta, double ibeta, warch *a);
-void wekuaFreeOptimRMSprop(woptim *optim, uint32_t nw, cl_event *be);
-
 woptim *wekuaAdaDelta(double lr, double lri, warch *a);
-void wekuaFreeOptimAdaDelta(woptim *optim, uint32_t nw, cl_event *be);
 
 void runWekuaOptim(woptim *optim, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be);
+void wekuaFreeOptim(woptim *optim, uint32_t nw, cl_event *be);
 
 
 #endif

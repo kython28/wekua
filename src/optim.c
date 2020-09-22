@@ -44,6 +44,8 @@ void runWekuaOptim(woptim *optim, wmatrix *output, wmatrix *ow, wloss *l, uint32
 	optim->step(optim->data, optim->arch, output, ow, l, nw, be);
 }
 
+// GradientDescent
+
 void wGD(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be){
 	if (a == NULL || output == NULL || l == NULL){
 		return;
@@ -93,18 +95,8 @@ void wGD(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_t
 	}
 }
 
-woptim *wekuaGradientDescent(double lr, double lri, warch *a){
-	woptim *optim = calloc(1, sizeof(woptim));
-	optim->step = &wGD;
-	optim->arch = a;
-	optim->data = calloc(1, sizeof(void**));
-	optim->data[0] = calloc(2, sizeof(double*));
-	((double*)optim->data[0])[0] = -1.0*lr;
-	((double*)optim->data[0])[1] = -1.0*lri;
-	return optim;
-}
-
-void wekuaFreeOptimGD(woptim *opti, uint32_t nw, cl_event *be){
+void wekuaFreeOptimGD(void *opt, uint32_t nw, cl_event *be){
+	woptim *opti = opt;
 	clWaitForEvents(nw, be);
 	if (opti == NULL){
 		return;
@@ -113,6 +105,23 @@ void wekuaFreeOptimGD(woptim *opti, uint32_t nw, cl_event *be){
 	free(opti->data);
 	free(opti);
 }
+
+woptim *wekuaGradientDescent(double lr, double lri, warch *a){
+	woptim *optim = calloc(1, sizeof(woptim));
+	optim->step = &wGD;
+	optim->arch = a;
+	optim->free_func = &wekuaFreeOptimGD;
+
+	optim->data = calloc(1, sizeof(void**));
+	optim->data[0] = calloc(2, sizeof(double*));
+	((double*)optim->data[0])[0] = -1.0*lr;
+	((double*)optim->data[0])[1] = -1.0*lri;
+	return optim;
+}
+
+
+
+// GradientDescentMometum
 
 void wGDM(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be){
 	if (a == NULL || output == NULL || l == NULL){
@@ -158,10 +167,26 @@ void wGDM(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_
 	}
 }
 
+void wekuaFreeOptimGDM(void *opt, uint32_t nw, cl_event *be){
+	woptim *opti = opt;
+	clWaitForEvents(nw, be);
+	if (opti == NULL){
+		return;
+	}
+	free(opti->data[0]);
+	wmatrix **mo = (wmatrix**)opti->data[1];
+	for (uint32_t x=0; x<opti->arch->nmodule[2]; x++){
+		wekuaFreeMatrix(mo[x], 0, NULL);
+	}
+	free(opti->data[1]);
+	free(opti);
+}
+
 woptim *wekuaGradientDescentMomentum(double lr, double lri, double momentum, double imomentum, warch *a){
 	woptim *optim = calloc(1, sizeof(woptim));
 	optim->step = &wGDM;
 	optim->arch = a;
+	optim->free_func = &wekuaFreeOptimGDM;
 	optim->data = calloc(2, sizeof(void*));
 
 	optim->data[0] = calloc(4, sizeof(double));
@@ -180,19 +205,8 @@ woptim *wekuaGradientDescentMomentum(double lr, double lri, double momentum, dou
 	return optim;
 }
 
-void wekuaFreeOptimGDM(woptim *opti, uint32_t nw, cl_event *be){
-	clWaitForEvents(nw, be);
-	if (opti == NULL){
-		return;
-	}
-	free(opti->data[0]);
-	wmatrix **mo = (wmatrix**)opti->data[1];
-	for (uint32_t x=0; x<opti->arch->nmodule[2]; x++){
-		wekuaFreeMatrix(mo[x], 0, NULL);
-	}
-	free(opti->data[1]);
-	free(opti);
-}
+
+// AdaGrad
 
 void wAdaGrad(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be){
 	if (a == NULL || output == NULL || l == NULL){
@@ -257,11 +271,29 @@ void wAdaGrad(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uin
 	}
 }
 
+void wekuaFreeOptimAdaGrad(void *opt, uint32_t nw, cl_event *be){
+	woptim *opti = opt;
+	clWaitForEvents(nw, be);
+	if (opti == NULL){
+		return;
+	}
+	free(opti->data[0]);
+	wmatrix **gr = (wmatrix**)opti->data[1];
+	wmatrix **ep = (wmatrix**)opti->data[2];
+	for (uint32_t x=0; x<opti->arch->nmodule[2]; x++){
+		wekuaFreeMatrix(gr[x], 0, NULL);
+		wekuaFreeMatrix(ep[x], 0, NULL);
+	}
+	free(opti->data[1]);
+	free(opti);
+}
+
 woptim *wekuaAdaGrad(double lr, double lri, warch *a){
 	woptim *optim = calloc(1, sizeof(woptim));
 	optim->step = &wAdaGrad;
 	optim->arch = a;
 	optim->data = calloc(3, sizeof(void*));
+	optim->free_func = &wekuaFreeOptimAdaGrad;
 
 	optim->data[0] = calloc(2, sizeof(double));
 	((double*)optim->data[0])[0] = -1.0*lr;
@@ -279,21 +311,9 @@ woptim *wekuaAdaGrad(double lr, double lri, warch *a){
 	return optim;
 }
 
-void wekuaFreeOptimAdaGrad(woptim *opti, uint32_t nw, cl_event *be){
-	clWaitForEvents(nw, be);
-	if (opti == NULL){
-		return;
-	}
-	free(opti->data[0]);
-	wmatrix **gr = (wmatrix**)opti->data[1];
-	wmatrix **ep = (wmatrix**)opti->data[2];
-	for (uint32_t x=0; x<opti->arch->nmodule[2]; x++){
-		wekuaFreeMatrix(gr[x], 0, NULL);
-		wekuaFreeMatrix(ep[x], 0, NULL);
-	}
-	free(opti->data[1]);
-	free(opti);
-}
+
+
+// RMSprop
 
 void wRMS(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be){
 	if (a == NULL || output == NULL || l == NULL){
@@ -361,11 +381,29 @@ void wRMS(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_
 	}
 }
 
+void wekuaFreeOptimRMSprop(void *opt, uint32_t nw, cl_event *be){
+	woptim *opti = opt;
+	clWaitForEvents(nw, be);
+	if (opti == NULL){
+		return;
+	}
+	free(opti->data[0]);
+	wmatrix **gr = (wmatrix**)opti->data[1];
+	wmatrix **ep = (wmatrix**)opti->data[2];
+	for (uint32_t x=0; x<opti->arch->nmodule[2]; x++){
+		wekuaFreeMatrix(gr[x], 0, NULL);
+		wekuaFreeMatrix(ep[x], 0, NULL);
+	}
+	free(opti->data[1]);
+	free(opti);
+}
+
 woptim *wekuaRMSprop(double lr, double lri, double beta, double ibeta, warch *a){
 	woptim *optim = calloc(1, sizeof(woptim));
 	optim->step = &wRMS;
 	optim->arch = a;
 	optim->data = calloc(3, sizeof(void*));
+	optim->free_func = &wekuaFreeOptimRMSprop;
 
 	optim->data[0] = calloc(4, sizeof(double));
 	((double*)optim->data[0])[0] = -1.0*lr;
@@ -385,21 +423,9 @@ woptim *wekuaRMSprop(double lr, double lri, double beta, double ibeta, warch *a)
 	return optim;
 }
 
-void wekuaFreeOptimRMSprop(woptim *opti, uint32_t nw, cl_event *be){
-	clWaitForEvents(nw, be);
-	if (opti == NULL){
-		return;
-	}
-	free(opti->data[0]);
-	wmatrix **gr = (wmatrix**)opti->data[1];
-	wmatrix **ep = (wmatrix**)opti->data[2];
-	for (uint32_t x=0; x<opti->arch->nmodule[2]; x++){
-		wekuaFreeMatrix(gr[x], 0, NULL);
-		wekuaFreeMatrix(ep[x], 0, NULL);
-	}
-	free(opti->data[1]);
-	free(opti);
-}
+
+
+// AdaDelta
 
 void wAdaDelta(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be){
 	if (a == NULL || output == NULL || l == NULL){
@@ -486,12 +512,33 @@ void wAdaDelta(void **data, warch *a, wmatrix *output, wmatrix *ow, wloss *l, ui
 	}
 }
 
+void wekuaFreeOptimAdaDelta(void *opt, uint32_t nw, cl_event *be){
+	woptim *optim = opt;
+	clWaitForEvents(nw, be);
+	if (optim == NULL){
+		return;
+	}
+	free(optim->data[0]);
+	for (uint32_t x=0; x<optim->arch->nmodule[2]; x++){
+		wekuaFreeMatrix(((wmatrix**)optim->data[1])[x], 0, NULL);
+		wekuaFreeMatrix(((wmatrix**)optim->data[2])[x], 0, NULL);
+		wekuaFreeMatrix(((wmatrix**)optim->data[3])[x], 0, NULL);
+		wekuaFreeMatrix(((wmatrix**)optim->data[4])[x], 0, NULL);
+	}
+	for (uint32_t x=1; x<5; x++){
+		free(optim->data[x]);
+	}
+	free(optim->data);
+	free(optim);
+}
+
 woptim *wekuaAdaDelta(double lr, double lri, warch *a){
 	cl_event *e;
 	cl_event *befo = NULL;
 	woptim *optim = calloc(1, sizeof(woptim));
 	optim->step = &wAdaDelta;
 	optim->arch = a;
+	optim->free_func = &wekuaFreeOptimAdaDelta;
 
 	optim->data = calloc(5, sizeof(void*));
 
@@ -526,21 +573,7 @@ woptim *wekuaAdaDelta(double lr, double lri, warch *a){
 	return optim;
 }
 
-void wekuaFreeOptimAdaDelta(woptim *optim, uint32_t nw, cl_event *be){
-	clWaitForEvents(nw, be);
-	if (optim == NULL){
-		return;
-	}
-	free(optim->data[0]);
-	for (uint32_t x=0; x<optim->arch->nmodule[2]; x++){
-		wekuaFreeMatrix(((wmatrix**)optim->data[1])[x], 0, NULL);
-		wekuaFreeMatrix(((wmatrix**)optim->data[2])[x], 0, NULL);
-		wekuaFreeMatrix(((wmatrix**)optim->data[3])[x], 0, NULL);
-		wekuaFreeMatrix(((wmatrix**)optim->data[4])[x], 0, NULL);
-	}
-	for (uint32_t x=1; x<5; x++){
-		free(optim->data[x]);
-	}
-	free(optim->data);
-	free(optim);
+
+void wekuaFreeOptim(woptim *optim, uint32_t nw, cl_event *be){
+	optim->free_func(optim, nw, be);
 }

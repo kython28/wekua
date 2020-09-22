@@ -46,9 +46,6 @@ wloss *wekuaMAE(){
 // Mean Square Error
 
 void runMSE(wmatrix *x, wmatrix *y, double *real_error, double *imag_error, uint32_t nw, cl_event *be){
-	if (x == NULL || y == NULL){
-		return;
-	}
 	cl_event e[3];
 
 	wmatrix *z = wekuaMatrixCopy(x, nw, be, e);
@@ -80,6 +77,14 @@ wloss *wekuaMSE(){
 	return l;
 }
 
+void runWekuaLoss(wmatrix *output, wmatrix *ow, double *real, double *imag, wloss *l, uint32_t nw, cl_event *be){
+	if (output == NULL || ow == NULL || l == NULL){
+		return;
+	}else if (real == imag){
+		return;
+	}
+	l->func(ow, output, real, imag, nw, be);
+}
 
 void wekuaFreeLoss(wloss *l, uint32_t nw, cl_event *be){
 	clWaitForEvents(nw, be);

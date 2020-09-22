@@ -473,7 +473,7 @@ wmatrix *wekuaCutMatrix(wmatrix *a, uint64_t x, uint64_t w, uint64_t y, uint64_t
 wmatrix *wekuaMatrixResize(wmatrix *a, uint64_t r, uint64_t c, double alpha, double beta, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
 		return NULL;
-	}else if (a->sm){
+	}else if (r == 0 || c == 0){
 		return NULL;
 	}
 	wekuaContext *ctx = a->ctx;
@@ -492,12 +492,15 @@ wmatrix *wekuaMatrixResize(wmatrix *a, uint64_t r, uint64_t c, double alpha, dou
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(kernel, 4, 8, &b->real_size[1]);
-	clSetKernelArg(kernel, 5, 8, &a->real_size[1]);
-	clSetKernelArg(kernel, 6, 8, b->real_size);
-	clSetKernelArg(kernel, 7, 8, a->real_size);
-	clSetKernelArg(kernel, 8, sizeof(double), &alpha);
-	clSetKernelArg(kernel, 9, sizeof(double), &beta);
-	clSetKernelArg(kernel, 10, 1, &b->com);
+	clSetKernelArg(kernel, 5, 8, b->real_size);
+	clSetKernelArg(kernel, 6, 8, &a->shape[1]);
+	clSetKernelArg(kernel, 7, 8, a->shape);
+	clSetKernelArg(kernel, 8, 8, &a->real_size[1]);
+	clSetKernelArg(kernel, 9, 8, a->offset);
+	clSetKernelArg(kernel, 10, 8, &a->offset[1]);
+	clSetKernelArg(kernel, 11, sizeof(double), &alpha);
+	clSetKernelArg(kernel, 12, sizeof(double), &beta);
+	clSetKernelArg(kernel, 13, 1, &b->com);
 
 	clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, b->shape, &b->work_items[1], nw, be, e);
 	return b;
@@ -673,7 +676,7 @@ wmatrix *wekuaMatrixDiag(wmatrix *a, uint32_t nw, cl_event *be){
 	return b;
 }
 
-wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha){
+wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha, uint8_t trans){
 	wmatrix *a;
 	int64_t col = fabs((y-x)/alpha);
 	while (x+col*alpha > y && col > 0){
@@ -682,7 +685,11 @@ wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha){
 
 	cl_event e;
 	cl_kernel kernel = ctx->kernels[27];
-	a = wekuaFillMatrix(ctx, 1, (uint32_t)col, x, 0.0);
+	if (trans){
+		a = wekuaFillMatrix(ctx, (uint64_t)col, 1, x, 0.0);
+	}else{
+		a = wekuaFillMatrix(ctx, 1, (uint64_t)col, x, 0.0);
+	}
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(double), &alpha);
