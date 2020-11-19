@@ -1,17 +1,20 @@
-__kernel void diag(__global double *a, __global double *b,
-	__global double *c, __global double *d,
-	unsigned char typ, unsigned char com){
+#include "/usr/lib/wekua_kernels/dtype.cl"
+
+__kernel void diag(__global wks *a, __global wks *b,
+	__global wks *c, __global wks *d,
+	unsigned long col, unsigned char mode, unsigned char com){
 	unsigned long i = get_global_id(0);
-	unsigned long col = get_global_size(0);
-	if (typ){
-		a[i*col+i] = c[i];
+
+	if (mode){ // To get diag from square Matrix
+		c[i] = a[i*col+i];
 		if (com){
-			b[i*col+i] = d[i];
+			d[i] = b[i*col+i];
 		}
-	}else{
-		a[i] = c[i*col+i];
+	}else{ // Diag to Square Matrix
+		c[i*col+i] = a[i];
 		if (com){
-			b[i] = d[i*col+i];
+			d[i*col+i] = b[i];
 		}
 	}
+
 }

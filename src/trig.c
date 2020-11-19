@@ -1,56 +1,63 @@
 #include "wekua.h"
 
-void wTrig(wmatrix *a, uint32_t kn, uint32_t nw, cl_event *be, cl_event *e){
+int wTrig(wmatrix a, uint8_t kn, uint32_t nw, cl_event *be, cl_event *e){
+	if (a->dtype < WEKUA_DTYPE_FLOAT){
+		return CL_INVALID_MEM_OBJECT;
+	}
 
-	wekuaContext *ctx = a->ctx;
-	cl_kernel kernel = ctx->kernels[kn];
+	wekuaContext ctx = a->ctx;
+	if (compileKernel(ctx, kn, a->dtype)){
+		return CL_COMPILE_PROGRAM_FAILURE;
+	}
+
+	cl_kernel kernel = ctx->kernels[kn*10+a->dtype];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(kernel, 2, 8, &a->real_size[1]);
+	clSetKernelArg(kernel, 2, 8, &a->vl_shape[1]);
 	clSetKernelArg(kernel, 3, 1, &a->com);
 
-	clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, a->offset, a->shape, &a->work_items[1], nw, be, e);
+	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->vl_shape, a->work_items, nw, be, e);
 }
 
-void wekuaMatrixSin(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
+int wekuaMatrixSin(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
-		return;
+		return CL_INVALID_MEM_OBJECT;
 	}
-	wTrig(a, 5, nw, be, e);
+	return wTrig(a, WEKUA_KERNEL_SIN, nw, be, e);
 }
 
-void wekuaMatrixCos(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
+int wekuaMatrixCos(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
-		return;
+		return CL_INVALID_MEM_OBJECT;
 	}
-	wTrig(a, 6, nw, be, e);
+	return wTrig(a, WEKUA_KERNEL_COS, nw, be, e);
 }
 
-void wekuaMatrixTan(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
+int wekuaMatrixTan(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
-		return;
+		return CL_INVALID_MEM_OBJECT;
 	}
-	wTrig(a, 7, nw, be, e);
+	return wTrig(a, WEKUA_KERNEL_TAN, nw, be, e);
 }
 
-void wekuaMatrixSinh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
+int wekuaMatrixSinh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
-		return;
+		return CL_INVALID_MEM_OBJECT;
 	}
-	wTrig(a, 8, nw, be, e);
+	return wTrig(a, WEKUA_KERNEL_SINH, nw, be, e);
 }
 
-void wekuaMatrixCosh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
+int wekuaMatrixCosh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
-		return;
+		return CL_INVALID_MEM_OBJECT;
 	}
-	wTrig(a, 9, nw, be, e);
+	return wTrig(a, WEKUA_KERNEL_COSH, nw, be, e);
 }
 
-void wekuaMatrixTanh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e){
+int wekuaMatrixTanh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (a == NULL){
-		return;
+		return CL_INVALID_MEM_OBJECT;
 	}
-	wTrig(a, 10, nw, be, e);
+	return wTrig(a, WEKUA_KERNEL_TANH, nw, be, e);
 }

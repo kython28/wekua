@@ -1,11 +1,15 @@
-__kernel void relu(__global double *a, __global double *b,
-	unsigned long col, unsigned char com){
-	unsigned long i = get_global_id(0)*col+get_global_id(1);
+#include "/usr/lib/wekua_kernels/dtype.cl"
 
-	if (a[i] < 0.0){
-		a[i] = 0.0;
+__kernel void relu(
+	__global wk *ar, __global wk *ai,
+	unsined char com
+){
+	unsigned long i = get_global_id(0);
+
+	if (ar[i] < 0.0){
+		ar[i] = 0.0;
 		if (com){
-			b[i] = 0.0;
+			ai[i] = 0.0;
 		}
 	}
 }

@@ -1,22 +1,17 @@
-void complex_mul(__global double *a, __global double *b, double c, double d){
-	double e, f, g, h;
-	g = a[0]; h = b[0];
-	e = g*c - h*d;
-	f = g*d + h*c;
-	a[0] = e;
-	b[0] = f;
-}
+#include "/usr/lib/wekua_kernels/dtype.cl"
 
-__kernel void dotm(__global double *a, __global double *b,
-	__global double *c, __global double *d,
-	unsigned char com, unsigned long col,
-	unsigned long col2, unsigned long offsetar, unsigned long offsetac,
-	unsigned long offsetbr, unsigned long offsetbc){
-	unsigned long i = get_global_id(0);
-	unsigned long j = get_global_id(1);
+__kernel void doth(__global wk *a, __global wk *b,
+	__global wk *c, __global wk *d, unsigned long col, unsigned char com){
+	unsigned long i = get_global_id(0)*col+get_global_id(1);
+
+	wk aa, bb, cc, dd;
 	if (com){
-		complex_mul(&a[(i+offsetar)*col+j+offsetac], &b[(i+offsetar)*col+j+offsetac], c[(i+offsetbr)*col2+j+offsetbc], d[(i+offsetbr)*col2+j+offsetbc]);
+		aa = a[i]; bb = b[i];
+		cc = c[i]; dd = d[i];
+
+		a[i] = aa*cc - bb*dd;
+		b[i] = aa*dd + bb*cc;
 	}else{
-		a[(i+offsetar)*col+j+offsetac] *= c[(i+offsetbr)*col2+j+offsetbc];
+		a[i] *= c[i];
 	}
 }

@@ -1,5 +1,7 @@
-void complex_mul(double *a, double *b, double c, double d){
-	double e, f, g, h;
+#include "/usr/lib/wekua_kernels/dtype.cl"
+
+void complex_mul(wks *a, wks *b, wks c, wks d){
+	wks e, f, g, h;
 	g = a[0]; h = b[0];
 	e = g*c - h*d;
 	f = g*d + h*c;
@@ -7,14 +9,14 @@ void complex_mul(double *a, double *b, double c, double d){
 	b[0] = f;
 }
 
-void step_one(double *a, double *b, double r, double h, double y){
-	double c = cosh(h) - sinh(h);
+void step_one(wks *a, wks *b, wks r, wks h, wks y){
+	wks c = cosh(h) - sinh(h);
 	a[0] = cos(y*r)*c;
 	b[0] = sin(y*r)*c;
 }
 
-void step_two(double *a, double *b, double h, double r, double x){
-	double er, co, si, mwo, awo;
+void step_two(wks *a, wks *b, wks h, wks r, wks x){
+	wks er, co, si, mwo, awo;
 	er = exp(r);
 	co = cos(h)*er; si = sin(h)*er;
 
@@ -24,12 +26,13 @@ void step_two(double *a, double *b, double h, double r, double x){
 	b[0] = mwo*sin(awo*x);
 }
 
-__kernel void power(__global double *a, __global double *b,
-	double alpha, double beta, unsigned char com){
+__kernel void power(__global wks *a, __global wks *b,
+	__global wks *c, __global wks *d,
+	wks alpha, wks beta,
+	unsigned long col, unsigned char om, unsigned char com){
 	unsigned long i = get_global_id(0);
 	unsigned long j = get_global_id(1);
-	unsigned long col = get_global_size(1);
-	double aa, bb, r, h, so, soi;
+	wks aa, bb, r, h, so, soi;
 
 	unsigned long current = i*col+j;
 
@@ -38,14 +41,23 @@ __kernel void power(__global double *a, __global double *b,
 		r = 0.5*log(aa*aa + bb*bb);
 		h = atan2(bb,aa);
 
-		step_one(&so, &soi, r, h, beta);
-		step_two(&aa, &bb, r, h, alpha);
+		if (om){
+			step_one(&so, &soi, r, h, d[current]);
+			step_two(&aa, &bb, r, h, c[current]);
+		}else{
+			step_one(&so, &soi, r, h, beta);
+			step_two(&aa, &bb, r, h, alpha);
+		}
 
 		complex_mul(&aa, &bb, so, soi);
 
 		a[current] = aa;
 		b[current] = bb;
 	}else{
-		a[current] = pow(a[current], alpha);
+		if (om){
+			a[current] = pow(a[current], c[current]);
+		}else{
+			a[current] = pow(a[current], alpha);
+		}
 	}
 }

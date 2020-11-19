@@ -1,17 +1,19 @@
-__kernel void uniform(__global double *a, __global double *b,
-	double ra, double ia, double re, double ie,
-	unsigned long col, unsigned char com){
-	unsigned long i = get_global_id(0);
-	unsigned long j = get_global_id(1);
+#include "/usr/lib/wekua_kernels/dtype.cl"
 
-	double aa, bb, cc, dd;
+__kernel void uniform(__global wk *a, __global wk *b,
+	wks ra, wks ia, wks re, wks ie,	unsigned char com){
+	unsigned long i = get_global_id(0);
+
 	if (com){
-		aa = a[i*col+j]; bb = b[i*col+j];
-		cc = re-ra;
-		dd = ie-ia;
-		a[i*col+j] = ra + aa*cc - bb*dd;
-		b[i*col+j] = re + aa*dd + bb*cc;
-	}else{
-		a[i*col+j] = ra + (re-ra)*a[i*col+j];
+#if width == 1
+		b[i] = ia + (ie-ia)*b[i];
+#else
+		b[i] = (wk)(ia) + (ie-ia)*b[i];
+#endif
 	}
+#if width == 1
+	a[i] = ra + (re-ra)*a[i];
+#else
+	a[i] = (wk)(ra) + (re-ra)*a[i];
+#endif
 }

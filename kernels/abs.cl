@@ -1,11 +1,22 @@
-__kernel void absolute(__global double *a, __global double *b,
-	unsigned char com, unsigned long col){
-	unsigned long current = get_global_id(0)*col+get_global_id(1);
-	double aa, bb;
+#include "/usr/lib/wekua_kernels/dtype.cl"
+
+__kernel void absolute(__global wk *a, __global wk *b,
+	unsigned long col, unsigned char com){
+	unsigned long i = get_global_id(0)*col+get_global_id(1);
+
+	#if dtype >= 8
+	wk aa, bb;
+	#endif
 	if (com){
-		aa = a[current]; bb = b[current];
-		a[current] = sqrt(aa*aa+bb*bb);
+		#if dtype >= 8
+		aa = a[i]; bb = b[i];
+		a[i] = sqrt(aa*aa + bb*bb);
+		#endif
 	}else{
-		a[current] = fabs(a[current]);
+	#if dtype >= 8
+		a[i] = fabs(a[i]);
+	#else
+		a[i] = abs(a[i]);
+	#endif
 	}
 }

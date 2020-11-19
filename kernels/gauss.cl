@@ -1,74 +1,95 @@
-void gauss_real(__global double *a, __global double *b, unsigned long k, unsigned long i, unsigned long col, unsigned char otherm){
-	if (isnotequal(a[i*col+i], 0.0) && !isnan(a[i*col+i])){
-		if (isnotequal(a[i*col+k], 0.0)){
-			double aa=a[k*col+k]/a[i*col+k], bb;
-			for (unsigned long j=0; j<col; j++){
-				bb = a[i*col+j];
-				bb *= aa;
-				bb -= a[k*col+j];
-				a[i*col+j] = bb;
-				if (otherm){
-					bb = b[i*col+j];
-					bb *= aa;
-					bb -= b[k*col+j];
-					b[i*col+j] = bb;
-				}
-			}
+#include "/usr/lib/wekua_kernels/dtype.cl"
+
+void calc_inv_complex(wks *a, wks *b){
+	wks c, d, aa, bb;
+	aa = a[0]; bb = b[0];
+
+	c = aa;
+	d = -1.0*bb;
+
+	aa = (aa*aa + bb*bb);
+
+	c /= aa;
+	d /= aa;
+	
+	a[0] = c;
+	b[0] = d;
+}
+
+void gauss_real(__global wks *a, __global wks *b, __global wks *c, __global wks *d, unsigned long k, unsigned char otherm, unsigned long col){
+	wks a_c, b_c;
+	a_c = b[k]/a[k];
+
+	for (unsigned long x=0; x<col; x++){
+		a[x] = a[x]*a_c - b[x];
+		if (otherm){
+			c[x] = c[x]*a_c - d[x];
+		}
+	}
+	
+
+}
+
+void gauss_complex(__global wks *ar, __global wks *ai, __global wks *br, __global wks *bi, __global wks *cr,
+	__global wks *ci, __global wks *dr, __global wks *di, unsigned long k, unsigned char otherm, unsigned long col){
+	wks aa, bb, cc, dd, ee, ff;
+
+	ee = br[k]; ff = bi[k];
+	cc = ar[k]; dd = ai[k];
+	calc_inv_complex(&cc, &dd);
+
+	aa = ee*cc - ff*dd;
+	bb = ee*dd + ff*cc;
+
+	for (unsigned long x=0; x<col; x++){
+		ee = ar[x]; ff = ai[x];
+
+		ar[x] = ee*aa - ff*bb - br[x];
+		ai[x] = ee*bb + ff*aa - bi[x];
+
+		if (otherm){
+			ee = cr[x]; ff = ci[x];
+
+			cr[x] = ee*aa - ff*bb - dr[x];
+			ci[x] = ee*bb + ff*aa - di[x];
 		}
 	}
 }
 
-void calc_coeff(double a, double b, double *c, double *d){
-	double r, ang;
 
-	r = a/(a*a+b*b);
-	ang = -1.0*b/(a*a+b*b);
-
-	a = c[0]*r - d[0]*ang;
-	b = c[0]*ang + d[0]*r;
-
-	c[0] = a;
-	d[0] = b;
-}
-
-void gauss_com(__global double *a, __global double *b, __global double *c, __global double *d, unsigned long k, unsigned long i, unsigned long col, unsigned char otherm){
-	double aa, bb, cc, dd;
-	aa = a[i*col+i]; bb = b[i*col+i];
-	if ((isnotequal(aa, 0.0) && !isnan(aa)) || (isnotequal(bb, 0.0) && !isnan(bb))){
-		if (isnotequal(a[i*col+k], 0.0) || isnotequal(b[i*col+k], 0.0)){
-			aa=a[k*col+k]; bb=b[k*col+k];
-			calc_coeff(a[i*col+k], b[i*col+k], &aa, &bb);
-			for (unsigned long j=0; j<col; j++){
-				cc=a[i*col+j]; dd=b[i*col+j];
-				a[i*col+j] = (cc*aa - dd*bb) - a[k*col+j];
-				b[i*col+j] = (cc*bb + dd*aa) - b[k*col+j];
-				if (otherm){
-					cc=c[i*col+j]; dd=d[i*col+j];
-					c[i*col+j] = (cc*aa - dd*bb) - c[k*col+j];
-					d[i*col+j] = (cc*bb + dd*aa) - d[k*col+j];
-				}
-			}
-		}
-	}
-}
-
-__kernel void gauss(__global double *a, __global double *b,
-	__global double *c, __global double *d,
+__kernel void gauss(
+	__global wks *ar, __global wks *ai,
+	__global wks *br, __global wks *bi,
 	unsigned long k, unsigned long col,
-	unsigned char com, unsigned char otherm,
-	unsigned char t){
+	unsigned long rcol, unsigned char otherm,
+	unsigned char up, unsigned char com
+){
 	unsigned long i = get_global_id(0);
 
-	if (t){
-		i = col-i-1;
-		k = col-k-1;
-	}
-
-	if ((i > k && t == 0) || (i < k && t)){
-		if (com){
-			gauss_com(a, b, c, d, k, i, col, otherm);
-		}else{
-			gauss_real(a, c, k, i, col, otherm);
+	if (i != k){
+		if ((up && i < k) || i > k){
+			if (com){
+				if (otherm){
+					gauss_complex(
+						&ar[i*rcol], &ai[i*rcol], &ar[k*rcol], &ai[k*rcol],
+						&br[i*rcol], &bi[i*rcol], &br[k*rcol], &bi[k*rcol],
+						k, otherm, col
+					);
+				}else{
+					gauss_complex(
+						&ar[i*rcol], &ai[i*rcol], &ar[k*rcol], &ai[k*rcol],
+						0, 0, 0, 0,
+						k, otherm, col
+					);
+				}
+				
+			}else{
+				if (otherm){
+					gauss_real(&ar[i*rcol], &ar[k*rcol], &br[i*rcol], &br[k*rcol], k, otherm, col);
+				}else{
+					gauss_real(&ar[i*rcol], &ar[k*rcol], 0, 0, k, otherm, col);
+				}
+			}
 		}
 	}
 }

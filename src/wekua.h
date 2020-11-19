@@ -1,6 +1,7 @@
 #ifndef WEKUA_H
 #define WEKUA_H
 
+#include <bits/stdint-uintn.h>
 #if defined(__APPLE__) || defined(__MACOSX)
 #include <OpenCL/cl.h>
 #else
@@ -14,6 +15,10 @@
 #include <unistd.h>
 #include <math.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
 	cl_platform_id platform; // Platform ID
 	uint8_t *name; // Platform name
@@ -25,236 +30,292 @@ typedef struct {
 	cl_device_type type; // Device type
 	uint8_t *name; // Device name
 	// Device Info
-	uint32_t compute_units, clock_frequency, max_work_item_dimensions;
-	uint64_t max_work_group_size, *max_work_item_sizes, nlen, max_global_size, max_local_size;
+	cl_device_partition_property propie[3];
+	uint32_t compute_units, clock_frequency, max_work_item_dimensions, vector_width[10];
+	uint64_t max_work_group_size, nlen, max_global_size;
 } wDevice;
 
 uint32_t getPlatforms(wPlatform **platform);
 uint32_t getDevices(wPlatform platform , wDevice **device, cl_device_type type);
+
+void wekuaPlatformFromclPlatform(cl_platform_id platform, wPlatform *plat);
+void wekuaDeviceFromclDevice(cl_device_id dev, wDevice *wdev);
+
 void freeWekuaPlatform(wPlatform *plat, uint32_t nplat);
 void freeWekuaDevice(wDevice *dev, uint32_t ndev);
 
-typedef struct {
+typedef struct _wk_ctx {
 	cl_context ctx; // OpenCL Context
 	cl_command_queue command_queue; // OpenCL Command Queue
 	cl_program *programs; // OpenCL programs
 	cl_kernel *kernels; // OpenCL kernels
+	
+	cl_device_id dev; // OpenCL device
 	// Info
-	uint32_t compute_units;
-	uint64_t max_work_group_size, max_local_size;
-} wekuaContext;
+	const uint32_t *dtype_length;
+	uint32_t vector_width[10], compute_units;
+	uint64_t max_work_group_size;
 
-wekuaContext *createWekuaContext(wDevice *dev);
-wekuaContext *createSomeWekuaContext(cl_device_type type);
-void freeWekuaContext(wekuaContext *context);
+	// OpencL gemm_fast devices, commands_queue, kernels and programs
+	uint32_t num_sub_dev;
+	cl_device_id *subdevice;
+	cl_command_queue *gemm_cmd;
+	cl_kernel **gemm_kernels;
+	cl_program **gemm_programs;
+} *wekuaContext;
+
+wekuaContext createWekuaContext(wDevice *dev);
+wekuaContext createSomeWekuaContext(cl_device_type type);
+
+// Kernels
+
+#define WEKUA_KERNEL_RANDN 0
+#define WEKUA_KERNEL_RANDUNIFORM 1
+#define WEKUA_KERNEL_IDEN 2
+#define WEKUA_KERNEL_TRANS 3
+#define WEKUA_KERNEL_AXPY 4
+#define WEKUA_KERNEL_SCAL 5
+#define WEKUA_KERNEL_DOT 6
+#define WEKUA_KERNEL_GEMM 7
+#define WEKUA_KERNEL_CONVERT 8
+#define WEKUA_KERNEL_ABS 9
+#define WEKUA_KERNEL_DIAG 10
+#define WEKUA_KERNEL_ARANGE 11
+#define WEKUA_KERNEL_POWER 12
+#define WEKUA_KERNEL_DIVIDE 13
+#define WEKUA_KERNEL_LOG 14
+#define WEKUA_KERNEL_SIN 15
+#define WEKUA_KERNEL_SINH 16
+#define WEKUA_KERNEL_COS 17
+#define WEKUA_KERNEL_COSH 18
+#define WEKUA_KERNEL_TAN 19
+#define WEKUA_KERNEL_TANH 20
+#define WEKUA_KERNEL_MUL 21
+#define WEKUA_KERNEL_FILL 22
+#define WEKUA_KERNEL_EULER_IDEN 23
+#define WEKUA_KERNEL_ROOT_DEV 24
+#define WEKUA_KERNEL_ROOT 25
+#define WEKUA_KERNEL_DET 26
+#define WEKUA_KERNEL_GAUSS 27
+#define WEKUA_KERNEL_GAUSS_2 28
+#define WEKUA_KERNEL_BIAS 29
+#define WEKUA_KERNEL_SIGMOID 30
+
+uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
+uint8_t compileGemmKernels(wekuaContext ctx, uint8_t dtype);
+
+void freeWekuaContext(wekuaContext context);
 
 // To get random buffer from /dev/urandom
 void getRandomBuffer(void *buf, uint64_t size);
 
-// Wekua Matrix
-typedef struct {
-	void *parent;
+// Data types
 
+#define WEKUA_DTYPE_INT8 0
+#define WEKUA_DTYPE_UINT8 1
+
+#define WEKUA_DTYPE_INT16 2
+#define WEKUA_DTYPE_UINT16 3
+
+#define WEKUA_DTYPE_INT32 4
+#define WEKUA_DTYPE_UINT32 5
+
+#define WEKUA_DTYPE_INT64 6
+#define WEKUA_DTYPE_UINT64 7
+
+#define WEKUA_DTYPE_FLOAT 8
+#define WEKUA_DTYPE_DOUBLE 9
+
+typedef struct _wk_matrix {
 	cl_mem real; // Real numbers
 	cl_mem imag; // Imaginary numbers
 
-	double *raw_real; // Real numbers array mapped
-	double *raw_imag; // Imaginary numbers array mapped
+	void *raw_real; // Real numbers array mapped
+	void *raw_imag; // Imaginary numbers array mapped
 
-	wekuaContext *ctx;
+	wekuaContext ctx;
 
-	uint64_t shape[2], offset[2]; // Dimensions
-	uint64_t real_size[2], size; // Real dimension
+	// Matrix shape
+	uint64_t shape[2];
+	uint64_t vl_shape[3];
+	uint64_t length, col, row, size;
+
+	uint64_t col_g, row_g; // Gemm Fast Info
+
+	// Data type
+	uint8_t dtype;
 
 	// Does the matrix use complex elements?
 	uint8_t com;
 
-	// is it a sub-matrix?
-	uint8_t sm;
-
 	// Info for OpenCL
-	uint64_t work_items[5];
-} wmatrix;
+	uint64_t work_items[10];
+} *wmatrix;
 
-void wekuaMatrixPrint(wmatrix *a, uint32_t nw, cl_event *be); // To print wmatrix
-uint8_t createComplexMatrix(wmatrix *a); // To enable complex numbers.
-void removeComplexMatrix(wmatrix *b, uint32_t nw, cl_event *be); // To disable complex numbers.
+void wekuaMatrixPrint(wmatrix a, uint32_t nw, cl_event *be); // To print wmatrix
+uint8_t createComplexMatrix(wmatrix a); // To enable complex numbers.
+int removeComplexMatrix(wmatrix b, uint32_t nw, cl_event *be); // To disable complex numbers.
 
-wmatrix *wekuaAllocMatrix(wekuaContext *ctx, uint64_t r, uint64_t c); // To alloc an empty matrix
-wmatrix *wekuaAllocComplexMatrix(wekuaContext *ctx, uint64_t r, uint64_t c); // To Alloc an empty matrix with complex elements
-wmatrix *wekuaFillMatrix(wekuaContext *ctx, uint64_t r, uint64_t c, double alpha, double beta); // To get matrix filled with same elements. Alpha is real number and Beta is imaginary number
-wmatrix *wekuaMatrixRandn(wekuaContext *ctx, uint64_t r, uint64_t c, uint8_t com); // To get matrix with random elements
-wmatrix *wekuaMatrixRandUniform(wekuaContext *ctx, uint64_t r, uint64_t c, double ra, double ia, double re, double ie, uint8_t com); // To get matrix with random numbers in the range [a, b) or [a, b] depending on rounding.
-wmatrix *wekuaMatrixFromBuffer(wekuaContext *ctx, uint64_t r, uint64_t c, void *rbuf, void *ibuf); // To create Matrix from buffer
-wmatrix *wekuaMatrixCopy(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e); // To copy a matrix
-wmatrix *wekuaCutMatrix(wmatrix *a, uint64_t x, uint64_t w, uint64_t y, uint64_t h); // To get a submatrix
-wmatrix *wekuaMatrixResize(wmatrix *a, uint64_t r, uint64_t c, double alpha, double beta, uint32_t nw, cl_event *be, cl_event *e); // To resize a matrix
+wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype); // To alloc an empty matrix
+wmatrix wekuaAllocMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype); // To alloc a null matrix
+wmatrix wekuaAllocComplexMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype); // To Alloc an empty matrix with complex elements
+wmatrix wekuaFillMatrix(wekuaContext ctx, uint64_t r, uint64_t c, void *alpha, void *beta, uint8_t dtype); // To get matrix filled with same elements. Alpha is real number and Beta is imaginary number
+wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com); // To get matrix with random elements
+wmatrix wekuaMatrixRandUniform(wekuaContext ctx, uint64_t r, uint64_t c, void *ra, void *ia, void *re, void *ie, uint8_t dtype); // To get matrix with random numbers in the range [a, b) or [a, b] depending on rounding.
+wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+wmatrix wekuaMatrixResize(wmatrix a, uint64_t r, uint64_t c, void *alpha, void *beta); // To resize a matrix
+wmatrix wekuaMatrixConvert(wmatrix a, uint8_t dtype, uint32_t nw, cl_event *be, cl_event *e);
+wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rbuf, void *ibuf, uint8_t dtype);
 
-void wekuaReshapeMatrix(wmatrix *a, uint64_t r, uint64_t c, uint32_t nw, cl_event *be);
-void wekuaGetValueFromMatrix(wmatrix *a, uint64_t y, uint64_t x, double *real, double *imag, uint32_t nw, cl_event *be);
-void wekuaPutValueToMatrix(wmatrix *a, uint64_t y, uint64_t x, double real, double imag, uint32_t nw, cl_event *be);
+void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
+void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
 
-// Some BLAS functions
-void wekuaBlasAxpy(double alpha, double beta, wmatrix *x, wmatrix *y, uint32_t nw, cl_event *be, cl_event *e); // y = (alpha+beta*j)*x + y
-void wekuaBlasAsum(wmatrix *x, double *real, double *imag, uint32_t nw, cl_event *be);
-void wekuaBlasNorm(wmatrix *x, double *real, double *imag, uint32_t nw, cl_event *be);
-
-void wekuaBlasGemm(double ralpha, double ialpha, uint8_t a_trans, wmatrix *a, uint8_t b_trans, wmatrix *b,
-	double rbeta, double ibeta, wmatrix *c, uint32_t nw, cl_event *be, cl_event *e
+int wekuaMatrixCopyRect(
+	wmatrix src, wmatrix dst,
+	uint64_t *src_origin, uint64_t *dst_origin,
+	uint64_t *region, uint32_t nw, cl_event *be
 );
 
+// Some BLAS functions
+int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // y = (alpha+beta*j)*x + y
+int wekuaBlasScalar(wmatrix x, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // Dot all elements in a matrix for a scalar. Alpha is real number and Beta is imaginary number
+
+int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_t b_trans, wmatrix b,
+	void *rbeta, void *ibeta, wmatrix c, uint32_t nw, cl_event *be
+);
+ 
 // Basic functions
-wmatrix *wekuaMatrixIden(wekuaContext *ctx, uint64_t c); // Identity Matrix
-wmatrix *wekuaMatrixTrans(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e); // Matrix Transpose
-wmatrix *wekuaMatrixProduct(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Product
-wmatrix *wekuaMatrixDiag(wmatrix *a, uint32_t nw, cl_event *be);
-wmatrix *wekuaArange(wekuaContext *ctx, double x, double y, double alpha, uint8_t trans);
-wmatrix *wekuaMatrixAbs(wmatrix *a, uint32_t nw, cl_event *be);
-void wekuaMatrixAdd(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix addition
-void wekuaMatrixSub(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Substration
-void wekuaMatrixDotScalar(wmatrix *a, double alpha, double beta, uint32_t nw, cl_event *be, cl_event *e); // Dot all elements in a matrix for a scalar. Alpha is real number and Beta is imaginary number
-void wekuaMatrixDot(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e); // Hadamard product
-void wekuaMatrixAbsdiff(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be);
-void wekuaMatrixLn(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
-void wekuaMatrixLog(wmatrix *a, double r_base, double i_base, uint32_t nw, cl_event *be);
-void wekuaMatrixDivide(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be, cl_event *e);
-void wekuaMatrixPowr(wmatrix *a, double real, double imag, uint32_t nw, cl_event *be, cl_event *e);
+wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype);
+wmatrix wekuaMatrixTrans(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+wmatrix wekuaMatrixDiag(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+wmatrix wekuaMatrixAbs(wmatrix a, uint32_t nw, cl_event *be);
+wmatrix wekuaMatrixAbsdiff(wmatrix a, wmatrix b, uint32_t nw, cl_event *be);
+wmatrix wekuaMatrixArange(wekuaContext ctx,
+	double start_r, double start_i, double end_r, double end_i,
+	double delta, uint8_t trans
+);
+wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be); // Matrix inverse
+wmatrix wekuaMatrixSolve(wmatrix a, wmatrix b, uint32_t nw, cl_event *be);
+wmatrix wekuaMatrixPinv(wmatrix a, uint32_t nw, cl_event *be); // Matrix Pseudo-inverse
+
+uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be); // Matrix range
+
+int wekuaMatrixAdd(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix addition
+int wekuaMatrixSub(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Substration
+int wekuaMatrixDot(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Hadamard product
+int wekuaMatrixDivide(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // a_{i} /= b_{i}
+int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = a_{i}^{exp_r+exp_i*i} or a_{i} = a_{i}^{b_{i}}
+int wekuaMatrixLn(wmatrix a, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = ln(a_{i})
+int wekuaMatrixLog(wmatrix a, wmatrix b, void *base_r, void *base_i);
+int wekuaMatrixTrace(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Matrix Trace
+int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Matrix determinant
 
 // Trigonometric functions
-void wekuaMatrixSin(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
-void wekuaMatrixCos(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
-void wekuaMatrixTan(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
-void wekuaMatrixSinh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
-void wekuaMatrixCosh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
-void wekuaMatrixTanh(wmatrix *a, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaMatrixSin(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaMatrixCos(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaMatrixTan(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaMatrixSinh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaMatrixCosh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaMatrixTanh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
 
 // Extra functions
-void wekuaMatrixSum(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Sum of all the elements
-void wekuaMatrixMul(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Mul of all the elements
-void wekuaMatrixMean(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Mean of all the elements
-void wekuaMatrixTrace(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Matrix Trace
-void wekuaMatrixToComplex(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Matrix to Complex number
-void wekuaMatrixMax(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // To get max value.
-void wekuaMatrixMin(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // To get min value.
-wmatrix *wekuaComplexToMatrix(wekuaContext *ctx, double r, double i); // Complex number to Matrix
-wmatrix *wekuaComplexRandomToMatrix(wekuaContext *ctx); // Random Complex number to Matrix
-wmatrix *wekuaMatrixPoly(wmatrix *a); // Matrix Poly (Leverrier)
-wmatrix *wekuaMatrixRoot(wmatrix *a); // Polynomial roots
-wmatrix *wekuaMatrixPower(wmatrix *a, int64_t n); // Matrix power
+int wekuaMatrixSum(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Sum of all the elements
+int wekuaMatrixMul(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Mul of all the elements
+int wekuaMatrixMean(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Mean of all the elements
+void wekuaMatrixMax(wmatrix a, uint64_t *y, uint64_t *x, uint32_t nw, cl_event *be); // To get max value.
+void wekuaMatrixMin(wmatrix a, uint64_t *y, uint64_t *x, uint32_t nw, cl_event *be); // To get min value.
+wmatrix wekuaMatrixPoly(wmatrix a, uint32_t nw, cl_event *be); // Matrix Poly (Leverrier)
+wmatrix wekuaMatrixEulerIden(wmatrix angle, uint32_t nw, cl_event *be);
+wmatrix wekuaMatrixRoot(wmatrix a, uint32_t nw, cl_event *be); // Polynomial roots
 
-// Linalg functions
-void wekuaMatrixDet(wmatrix *a, double *real, double *imag, uint32_t nw, cl_event *be); // Matrix Determinant
-wmatrix *wekuaMatrixInv(wmatrix *a, uint32_t nw, cl_event *be); // Matrix Inverse
-wmatrix *wekuaMatrixSolve(wmatrix *a, wmatrix *b, uint32_t nw, cl_event *be);
-wmatrix *wekuaMatrixPinv(wmatrix *a, uint32_t nw, cl_event *be); // Matrix Pseudoinverse
-uint32_t wekuaMatrixRang(wmatrix *a, uint32_t nw, cl_event *be); // Matrix Rang
-
-// I've not look at this, if you want to help me, let me know :-)
-// wmatrix *wekuaMatrixEigenvalues(wmatrix *a); // Eigenvalues
-// wmatrix *wekuaMatrixEigenvectors(wmatrix *a); // Eigenvectors
-// wmatrix **wekuaMatrixEig(wmatrix *a); // Eigenvalues and EigenVectors
+int wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be); // To free a matrix
 
 
-int saveWekuaMatrix(const char *name, wmatrix *a);
-wmatrix *openWekuaMatrix(wekuaContext *ctx, const char *name);
-void wekuaFreeMatrix(wmatrix *a, uint32_t nw, cl_event *be); // To free a matrix
+// Deep Learning section
 
-// Wekua Loss
-typedef struct {
-	void (*func)(wmatrix *, wmatrix *, double*, double*, uint32_t, cl_event *);
-	wmatrix *(*get_dev)(wmatrix *, wmatrix *, uint32_t, cl_event *);
-} wloss;
+typedef struct _w_cache {
+	uint64_t ndata;
+	wmatrix *data;
+} *wcache;
 
+void wekuaCacheFree(wcache cache, uint32_t nw, cl_event *be);
 
-wloss *wekuaMAE();
-wloss *wekuaMSE();
-// wloss *wekuaCrossEntropyLoss();
+typedef struct _w_error {
+	wmatrix err; // Error derivate
+	wcache *o_err; // Other errors :v
+	uint64_t no_err;
+} *werror;
 
-void runWekuaLoss(wmatrix *output, wmatrix *ow, double *real, double *imag, wloss *l, uint32_t nw, cl_event *be);
-void wekuaFreeLoss(wloss *l, uint32_t nw, cl_event *be);
+void wekuaErrorFree(werror error, uint32_t nw, cl_event *be);
 
+typedef struct _w_acti {
+	void *data; // Activation function data
+	int (*run_acti)(void *, wmatrix, uint32_t, cl_event *); // To run the activation function
+	wmatrix (*get_dev)(void *, wmatrix); // To get derivate
+	void (*free_func)(void *, uint32_t, cl_event *); // To free the wacti object
+} *wacti;
 
-// Activations functions
-typedef struct {
-	void *data;
-	void (*acti)(void *, wmatrix *, uint32_t, cl_event *);
-	wmatrix *(*acti_dev)(void *, wmatrix *, uint32_t, cl_event *);
-} wacti;
+wacti wekuaActiLinear(); // -> x
+wacti wekuaActiTanh(); // -> wekuaMatrixTanh(x)
+wacti wekuaActiSigmoid(); // -> 1/(1 + e^(-x))
+// wacti wekuaActiReLU(); // -> max(0, x)
+// wacti wekuaActiLeakyReLU(); // -> max(alpha*x, x)
+// wacti wekuaActiELU(); // -> alpha*(e^x - 1)
 
-wacti *wekuaFLinear();
-wacti *wekuaSigmoid();
-wacti *wekuaTanh();
-wacti *wekuaReLU();
-wacti *wekuaLeakyReLU(double alpha);
+int runWekuaActi(wacti acti, wmatrix input, uint32_t nw, cl_event *be);
+void wekuaFreeActi(wacti acti, uint32_t nw, cl_event *be);
 
-void runWekuaActi(wacti *a, wmatrix *b, uint32_t nw, cl_event *be);
-wmatrix *getDevWekuaActi(wacti *a, wmatrix *b, uint32_t nw, cl_event *be);
+typedef struct _w_neuron {
+	wmatrix *weight; // Neuron weight
+	wmatrix *bias; // Neuron bias
+	uint64_t layer; // Layer num
+	uint8_t dtype; // Weight data type
+	wacti acti; // Activation function for the neuron
 
-void wekuaFreeActi(wacti *a, uint32_t nw, cl_event *be);
+	// To run the neuron
+	wmatrix (*run)(void *, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
 
-// Wekua Network Module
-typedef struct {
-	void **data; // Module data
-	wmatrix **cache; // Cache
-	wacti *acti_func; // Activation function
-	wmatrix *(*func)(void *, wmatrix *, uint32_t, cl_event *); // Module function
-	// void (*get_data)(void *module); // To get module data
-	void (*set_cache_id)(void *, int64_t, void *, void *, uint32_t *, int64_t *, wacti **); // To set position in cache
-	void (*free_func)(void *, uint32_t, cl_event *); // Free function
-	uint8_t com;
-	uint32_t nmod, *pseq;
-	int64_t arch_id, *w_id; // Position of the output into architecture cache
-} wmodule;
+	void (*backward)(void *, werror error, wcache cache, werror *err);
+} *wneuron;
+
+wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype);
 
 
-// Wekua Network Architecture
-typedef struct {
-	wmodule **modules; // Modules
-	uint32_t nmodule[3]; // Modules number
-	wmatrix **weight;
-	wmatrix **cache, **s; // Cache
-	wacti **acti_funcs;
-	wmatrix *(*func)(wmodule **, uint32_t, wmatrix *); // Arch function
-	uint32_t pseq;
-	int64_t *w_id;
-	uint8_t com;
-} warch;
+void wekuaNeuronFree(wneuron neur);
 
-warch *wekuaArch(wekuaContext *ctx, uint32_t nmodule, wmatrix *(*func)(wmodule **, uint32_t, wmatrix *), uint8_t com);
-void addModuleToArch(warch *arch, wmodule *module);
-void configureWekuaArch(warch *arch);
-wmatrix *runWekuaArch(warch *arch, wmatrix *input, uint32_t nw, cl_event *be);
-void wekuaFreeArch(warch *arch, uint32_t nw, cl_event *be);
 
-int saveWekuaArch(const char *name, warch *arch);
-int openWekuaArch(const char *name, warch *arch);
+typedef struct _w_net {
+	wneuron *neurons;
+	uint64_t nneur;
+	uint8_t dtype;
 
-// Modules
-wmodule *wekuaLinear(wekuaContext *ctx, uint64_t input, uint64_t output, uint32_t deep, wacti *acti, uint8_t com);
-wmatrix *runWekuaLinear(void *m, wmatrix *input, uint32_t nw, cl_event *be);
-void freeWekuaLinear(void *m, uint32_t nw, cl_event *be);
+	// To run the Network
+	wmatrix (*run)(wmatrix input, wcache **cache);
 
-wmodule *wekuaSequential(wekuaContext *ctx, uint32_t nmodule, uint8_t com);
-void addModuleToSequential(wmodule *sequential, wmodule *module);
-wmatrix *runWekuaSequential(void *m, wmatrix *input, uint32_t nw, cl_event *be);
-void freeWekuaSequential(void *m, uint32_t nw, cl_event *be);
+	void (*backward)(werror error, wcache *cache, werror *err);
 
-// Optimization functions
-typedef struct {
-	void **data; // Optim info
-	warch *arch;
-	void (*step)(void **, warch *, wmatrix *, wmatrix *, wloss *, uint32_t, cl_event *);
-	void (*free_func)(void *, uint32_t, cl_event*);
-} woptim;
+	void (*free_func)(void *); // To free the network
+} *wnetwork;
 
-woptim *wekuaGradientDescent(double lr, double lri, warch *a);
-woptim *wekuaGradientDescentMomentum(double lr, double lri, double momentum, double imomentum, warch *a);
-woptim *wekuaAdaGrad(double lr, double lri, warch *a);
-woptim *wekuaRMSprop(double lr, double lri, double beta, double ibeta, warch *a);
-woptim *wekuaAdaDelta(double lr, double lri, warch *a);
+typedef struct _w_optim {
+	void **data; // Data for the Optimizer
+	
 
-void runWekuaOptim(woptim *optim, wmatrix *output, wmatrix *ow, wloss *l, uint32_t nw, cl_event *be);
-void wekuaFreeOptim(woptim *optim, uint32_t nw, cl_event *be);
+	// To update the weight
+	void (*step)(wcache cache, werror error, wmatrix *weigth);
 
+	void (*free_func)(void *optim, uint32_t nw, cl_event *be);
+} *woptim;
+
+woptim wekuaOptimSG(void *lr, void *lri, wnetwork net); // Gradient descent optimization
+woptim wekuaOptimSGM(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // Gradient descent momentum optimization
+woptim wekuaOptimAdaGrad(void *lr, void *lri, wnetwork net); // Gradient adaptive optimization
+woptim wekuaOptimRMSProp(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // RMSProp optimization
+woptim wekuaOptimAdaDelta(void *lr, void *lri, wnetwork net); // AdaDelta optimization
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

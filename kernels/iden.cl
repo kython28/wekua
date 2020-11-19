@@ -1,4 +1,8 @@
-__kernel void iden(__global double *a, unsigned long c){
+#include "/usr/lib/wekua_kernels/dtype.cl"
+
+__kernel void iden(__global wks *a, unsigned long col){
 	unsigned long i = get_global_id(0);
-	a[i*c+i] = 1.0;
+
+	a[i*col+i] = 1;
+
 }

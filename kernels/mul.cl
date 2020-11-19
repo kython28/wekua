@@ -1,22 +1,31 @@
-__kernel void mul(__global double *a, __global double *b,
-	__global double *c, __global double *d,
-	unsigned long col, unsigned char com,
-	unsigned long offsetar, unsigned long offsetac){
-	unsigned long i = get_global_id(0);
+#include "/usr/lib/wekua_kernels/dtype.cl"
 
-	double aa, bb, cc, dd;
-	unsigned long ee;
+__kernel void mul(__global wks *a, __global wks *b,
+	__global wks *c, __global wks *d,
+	unsigned long col, unsigned long rcol,
+	unsigned long rcol2, unsigned char com
+){
+	unsigned long i = get_local_id(0);
+	unsigned long j = j*rcol;
+	i *= rcol2;
+
+	wks aa, bb, cc, dd, ee, ff;
 	if (com){
-		for (unsigned long j=0; j<col; j++){
-			ee = (i+offsetar)*col+j+offsetac;
-			aa = a[ee]; bb = b[ee];
-			cc = c[i]; dd = d[i];
-			c[i] = aa*cc - bb*dd;
-			d[i] = aa*dd + bb*cc;
+		cc = a[j]; dd = a[j];
+		for (unsigned long x=1; x<col; x++){
+			aa = a[j+x]; bb = b[j+x];
+			ee = cc; ff = dd;
+
+			cc = aa*ee - bb*ff;
+			dd = aa*ff + bb*ee;
 		}
+		c[i] = cc;
+		d[i] = dd;
 	}else{
-		for (unsigned long j=0; j<col; j++){
-			c[i] *= a[i*col+j];
+		aa = a[j];
+		for (unsigned long x=1; x<col; x++){
+			aa *= a[j+x];
 		}
+		c[i] = aa;
 	}
 }
