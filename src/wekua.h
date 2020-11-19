@@ -242,9 +242,11 @@ void wekuaCacheFree(wcache cache, uint32_t nw, cl_event *be);
 
 typedef struct _w_error {
 	wmatrix err; // Error derivate
-	wcache *o_err; // Other errors :v
+	wmatrix *o_err; // Other errors :v
 	uint64_t no_err;
 } *werror;
+
+int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be); // Mean Square Error
 
 void wekuaErrorFree(werror error, uint32_t nw, cl_event *be);
 
