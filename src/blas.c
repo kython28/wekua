@@ -38,10 +38,9 @@ int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl
 
 	clSetKernelArg(kernel, 4, len, alpha);
 	clSetKernelArg(kernel, 5, len, beta);
-	clSetKernelArg(kernel, 6, 8, &x->vl_shape[1]);
-	clSetKernelArg(kernel, 7, 1, &com);
+	clSetKernelArg(kernel, 6, 1, &com);
 
-	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, x->vl_shape, x->work_items, nw, be, e);
+	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &x->vl_shape[2], &x->work_items[8], nw, be, e);
 }
 
 int wekuaBlasScalar(wmatrix x, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e){
@@ -76,64 +75,69 @@ int wekuaBlasScalar(wmatrix x, void *alpha, void *beta, uint32_t nw, cl_event *b
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &x->vl_shape[2], &x->work_items[8], nw, be, e);
 }
 
-int wekuaBlasFastGemm(
-	void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_t b_trans, wmatrix b,
-	void *rbeta, void *ibeta, wmatrix c, uint32_t nw, cl_event *be
-);
-
 int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_t b_trans, wmatrix b,
 	void *rbeta, void *ibeta, wmatrix c, uint32_t nw, cl_event *be
 ){
-	if (a == NULL || b == NULL || c == NULL){
-		return CL_INVALID_MEM_OBJECT;
-	}else if ((a->dtype != b->dtype) || (b->dtype != c->dtype)) return CL_INVALID_MEM_OBJECT;
-	else if (ralpha == NULL && ialpha == NULL && rbeta == NULL && ibeta == NULL) return CL_INVALID_ARG_VALUE;
+	if (ralpha == NULL && ialpha == NULL && rbeta == NULL && ibeta == NULL) return CL_INVALID_ARG_VALUE;
+	else if (a == NULL || b == NULL || c == NULL) return CL_INVALID_MEM_OBJECT;
+	else if ((a->dtype&b->dtype) != c->dtype) return CL_INVALID_MEM_OBJECT;
 
-	if ((a->com|b->com|c->com) || ibeta != NULL || ialpha != NULL){
-		if (createComplexMatrix(a) || createComplexMatrix(b) || createComplexMatrix(c)){
+	if (ralpha == NULL) ralpha = (uint64_t*)&zero_blas;
+	if (ialpha == NULL) ialpha = (uint64_t*)&zero_blas;
+	if (rbeta == NULL) rbeta = (uint64_t*)&zero_blas;
+	if (ibeta == NULL) ibeta = (uint64_t*)&zero_blas;
+
+	wekuaContext ctx = a->ctx;
+	cl_kernel kernel;
+	cl_event e;
+
+	wmatrix x = NULL, y = NULL;
+	int ret;
+	uint8_t dtype = a->dtype, com = a->com|b->com|c->com;
+	uint32_t dl = ctx->dtype_length[dtype];
+
+	if (compileKernel(ctx, WEKUA_KERNEL_GEMM, dtype)){
+		return CL_BUILD_PROGRAM_FAILURE;
+	}
+
+	kernel = ctx->kernels[WEKUA_KERNEL_GEMM*10+dtype];
+
+	clWaitForEvents(nw, be);
+
+	if (com){
+		if (createComplexMatrix(a)|createComplexMatrix(b)|createComplexMatrix(c)){
 			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
 		}
 	}
 
-	if (c->shape[0] == c->shape[1] && c->shape[0]*c->shape[0]*c->shape[0] >= 27000000){
-		return wekuaBlasFastGemm(ralpha, ialpha, a_trans, a, b_trans, b, rbeta, ibeta, c, nw, be);
-	}
-
-	wekuaContext ctx = a->ctx;
-	uint8_t dtype = a->dtype;
-	uint32_t len = ctx->dtype_length[dtype];
-
-	cl_kernel kernel;
-	cl_event e;
-	wmatrix x, y;
-
-	if (compileKernel(ctx, WEKUA_KERNEL_GEMM, dtype)){
-		return CL_COMPILE_PROGRAM_FAILURE;
-	}
-	kernel = ctx->kernels[WEKUA_KERNEL_GEMM*10+dtype];
-
-	if (b_trans == 0){
-		y = wekuaMatrixTrans(b, nw, be, &e);
-		clWaitForEvents(1, &e);
-		clReleaseEvent(e);
-	}else{
-		y = b;
-	}
-
 	if (a_trans){
-		x = wekuaMatrixTrans(a, nw, be, &e);
+		x = wekuaMatrixTrans(a, 0, NULL, &e);
 		clWaitForEvents(1, &e);
 		clReleaseEvent(e);
-	}else{
-		x = a;
+	}else x = a;
+
+	if (b_trans) y = b;
+	else{
+		y = wekuaMatrixTrans(b, 0, NULL, &e);
+		clWaitForEvents(1, &e);
+		clReleaseEvent(e);
 	}
 
-	if (ralpha == NULL) ralpha = ((uint64_t*)&zero_blas);
-	if (ialpha == NULL) ialpha = ((uint64_t*)&zero_blas);
-	if (rbeta == NULL) rbeta = ((uint64_t*)&zero_blas);
-	if (ibeta == NULL) ibeta = ((uint64_t*)&zero_blas);
+	if (x == NULL || y == NULL) goto wekua_gemm_finish;
 
-	// Matrix
+
+	uint64_t shape[2], wi[2];
+
+	memcpy(shape, c->shape, 16);
+
+	if (shape[0]%2 != 0) shape[0]++;
+	if (shape[1]%2 != 0) shape[1]++;
+
+	shape[0] >>= 1;
+	shape[1] >>= 1;
+
+	getLWI(shape, wi, 2, ctx->max_work_group_size);
+
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &x->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &x->imag);
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &y->real);
@@ -141,29 +145,25 @@ int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_
 	clSetKernelArg(kernel, 4, sizeof(cl_mem), &c->real);
 	clSetKernelArg(kernel, 5, sizeof(cl_mem), &c->imag);
 
-	// Scalars
-	clSetKernelArg(kernel, 6, len, ralpha);
-	clSetKernelArg(kernel, 7, len, ialpha);
-	clSetKernelArg(kernel, 8, len, rbeta);
-	clSetKernelArg(kernel, 9, len, ibeta);
+	clSetKernelArg(kernel, 6, dl, ralpha);
+	clSetKernelArg(kernel, 7, dl, ialpha);
+	clSetKernelArg(kernel, 8, dl, rbeta);
+	clSetKernelArg(kernel, 9, dl, ibeta);
 
-	// Dimensions
-	clSetKernelArg(kernel, 10, 8, &x->vl_shape[1]);
-	clSetKernelArg(kernel, 11, 8, &y->vl_shape[1]);
-	clSetKernelArg(kernel, 12, 8, &c->col); // C Matrix dimension
+	clSetKernelArg(kernel, 10, 8, &c->col);
+	clSetKernelArg(kernel, 11, 8, &x->vl_shape[1]);
+	clSetKernelArg(kernel, 12, 1, &c->com);
 
-	// Does the matrix use complex numbers
-	clSetKernelArg(kernel, 13, 1, &a->com);
-
-	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, c->shape, &c->work_items[4], nw, be, &e);
+	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, shape, wi, 0, NULL, &e);
 
 	if (ret == CL_SUCCESS){
 		clWaitForEvents(1, &e);
-		if (x != a) wekuaFreeMatrix(x, 0, NULL);
-		if (y != b) wekuaFreeMatrix(y, 0, NULL);
-
 		clReleaseEvent(e);
 	}
+
+	wekua_gemm_finish:
+	if (x != a) wekuaFreeMatrix(x, 0, NULL);
+	if (y != b) wekuaFreeMatrix(y, 0, NULL);
 
 	return ret;
 }

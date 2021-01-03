@@ -1,7 +1,6 @@
 #ifndef WEKUA_H
 #define WEKUA_H
 
-#include <bits/stdint-uintn.h>
 #if defined(__APPLE__) || defined(__MACOSX)
 #include <OpenCL/cl.h>
 #else
@@ -55,13 +54,6 @@ typedef struct _wk_ctx {
 	const uint32_t *dtype_length;
 	uint32_t vector_width[10], compute_units;
 	uint64_t max_work_group_size;
-
-	// OpencL gemm_fast devices, commands_queue, kernels and programs
-	uint32_t num_sub_dev;
-	cl_device_id *subdevice;
-	cl_command_queue *gemm_cmd;
-	cl_kernel **gemm_kernels;
-	cl_program **gemm_programs;
 } *wekuaContext;
 
 wekuaContext createWekuaContext(wDevice *dev);
@@ -76,33 +68,33 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_AXPY 4
 #define WEKUA_KERNEL_SCAL 5
 #define WEKUA_KERNEL_DOT 6
-#define WEKUA_KERNEL_GEMM 7
-#define WEKUA_KERNEL_CONVERT 8
-#define WEKUA_KERNEL_ABS 9
-#define WEKUA_KERNEL_DIAG 10
-#define WEKUA_KERNEL_ARANGE 11
-#define WEKUA_KERNEL_POWER 12
-#define WEKUA_KERNEL_DIVIDE 13
-#define WEKUA_KERNEL_LOG 14
-#define WEKUA_KERNEL_SIN 15
-#define WEKUA_KERNEL_SINH 16
-#define WEKUA_KERNEL_COS 17
-#define WEKUA_KERNEL_COSH 18
-#define WEKUA_KERNEL_TAN 19
-#define WEKUA_KERNEL_TANH 20
-#define WEKUA_KERNEL_MUL 21
-#define WEKUA_KERNEL_FILL 22
-#define WEKUA_KERNEL_EULER_IDEN 23
-#define WEKUA_KERNEL_ROOT_DEV 24
-#define WEKUA_KERNEL_ROOT 25
-#define WEKUA_KERNEL_DET 26
-#define WEKUA_KERNEL_GAUSS 27
-#define WEKUA_KERNEL_GAUSS_2 28
-#define WEKUA_KERNEL_BIAS 29
-#define WEKUA_KERNEL_SIGMOID 30
+#define WEKUA_KERNEL_CONVERT 7
+#define WEKUA_KERNEL_ABS 8
+#define WEKUA_KERNEL_DIAG 9
+#define WEKUA_KERNEL_ARANGE 10
+#define WEKUA_KERNEL_POWER 11
+#define WEKUA_KERNEL_DIVIDE 12
+#define WEKUA_KERNEL_LOG 13
+#define WEKUA_KERNEL_SIN 14
+#define WEKUA_KERNEL_SINH 15
+#define WEKUA_KERNEL_COS 16
+#define WEKUA_KERNEL_COSH 17
+#define WEKUA_KERNEL_TAN 18
+#define WEKUA_KERNEL_TANH 19
+#define WEKUA_KERNEL_MUL 20
+#define WEKUA_KERNEL_FILL 21
+#define WEKUA_KERNEL_EULER_IDEN 22
+#define WEKUA_KERNEL_ROOT_DEV 23
+#define WEKUA_KERNEL_ROOT 24
+#define WEKUA_KERNEL_DET 25
+#define WEKUA_KERNEL_GAUSS 26
+#define WEKUA_KERNEL_GAUSS_2 27
+#define WEKUA_KERNEL_BIAS 28
+#define WEKUA_KERNEL_SIGMOID 29
+#define WEKUA_KERNEL_GEMM 30
+#define WEKUA_KERNEL_SUM 31
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
-uint8_t compileGemmKernels(wekuaContext ctx, uint8_t dtype);
 
 void freeWekuaContext(wekuaContext context);
 
@@ -140,8 +132,6 @@ typedef struct _wk_matrix {
 	uint64_t vl_shape[3];
 	uint64_t length, col, row, size;
 
-	uint64_t col_g, row_g; // Gemm Fast Info
-
 	// Data type
 	uint8_t dtype;
 
@@ -149,7 +139,7 @@ typedef struct _wk_matrix {
 	uint8_t com;
 
 	// Info for OpenCL
-	uint64_t work_items[10];
+	uint64_t work_items[9];
 } *wmatrix;
 
 void wekuaMatrixPrint(wmatrix a, uint32_t nw, cl_event *be); // To print wmatrix
@@ -230,6 +220,8 @@ wmatrix wekuaMatrixRoot(wmatrix a, uint32_t nw, cl_event *be); // Polynomial roo
 
 int wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be); // To free a matrix
 
+// void saveWekuaMatrix(const char *name, wmatrix a);
+// wmatrix loadWekuaMatrix(const char *name);
 
 // Deep Learning section
 
@@ -282,22 +274,18 @@ typedef struct _w_neuron {
 
 wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype);
 
-
 void wekuaNeuronFree(wneuron neur);
 
 
-typedef struct _w_net {
+typedef struct _w_net { // Sequential net
 	wneuron *neurons;
-	uint64_t nneur;
+	uint32_t nneur;
 	uint8_t dtype;
-
-	// To run the Network
-	wmatrix (*run)(wmatrix input, wcache **cache);
-
-	void (*backward)(werror error, wcache *cache, werror *err);
-
-	void (*free_func)(void *); // To free the network
 } *wnetwork;
+
+wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
+
+wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
 
 typedef struct _w_optim {
 	void **data; // Data for the Optimizer
@@ -314,7 +302,6 @@ woptim wekuaOptimSGM(void *alpha, void *alphai, void *beta, void *betai, wnetwor
 woptim wekuaOptimAdaGrad(void *lr, void *lri, wnetwork net); // Gradient adaptive optimization
 woptim wekuaOptimRMSProp(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // RMSProp optimization
 woptim wekuaOptimAdaDelta(void *lr, void *lri, wnetwork net); // AdaDelta optimization
-
 
 #ifdef __cplusplus
 }

@@ -171,27 +171,26 @@ wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 	a->ctx = ctx;
 	a->dtype = dtype;
 
-	a->size = r*c;
+	
 	a->shape[0] = r;
 	a->shape[1] = c;
 
-	if (c%4 != 0) c += 4 - c%4;
-	if (r%4 != 0) r += 4 - r%4;
-
-	a->col_g = c;
-	a->row_g = r;
-	a->row = r;
-
 	if (c%vl != 0) c += vl - c%vl;
+	if ((c/vl)%2 != 0) c += vl;
+	if (r%2 != 0) r++;
 
 	a->col = c;
+	a->row = r;
+
+	a->size = r*c;
+	a->length = r*c*dl;
+
+	c /= vl;
 
 	a->vl_shape[0] = r;
-	a->vl_shape[1] = c/vl;
+	a->vl_shape[1] = c;
 
-	a->vl_shape[2] = r*(c/vl);
-
-	a->length = r*c*dl;
+	a->vl_shape[2] = r*c;
 
 	getLWI(a->vl_shape, a->work_items, 2, max);
 	getLWI(a->vl_shape, &a->work_items[2], 1, max);
@@ -313,7 +312,7 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 	cl_mem ran_r=NULL, ran_i=NULL;
 	cl_event e;
 
-	uint64_t *ran_r_m, *ran_i_m, size = a->size*sizeof(double);
+	uint64_t *ran_r_m, *ran_i_m, size = a->size*8;
 
 	int ret;
 	
@@ -468,8 +467,8 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	b->size = a->size;
 
 	memcpy(b->shape, a->shape, 16);
-	memcpy(b->vl_shape, a->vl_shape, 16);
-	memcpy(b->work_items, a->work_items, 64);
+	memcpy(b->vl_shape, a->vl_shape, 24);
+	memcpy(b->work_items, a->work_items, 72);
 
 	int ret;
 	b->real = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, length, NULL, &ret);
@@ -787,7 +786,7 @@ wmatrix wekuaMatrixTrans(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 		}
 	}
 
-	register cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_TRANS*10+dtype];
+	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_TRANS*10+dtype];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);

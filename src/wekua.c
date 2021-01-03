@@ -6,7 +6,7 @@
 #include <fcntl.h>
 // #include <stdarg.h>
 
-#define KERNEL_NUM 31
+#define KERNEL_NUM 32
 
 const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/rand.cl",
@@ -16,7 +16,6 @@ const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/axpy.cl",
 	"/usr/lib/wekua_kernels/scal.cl",
 	"/usr/lib/wekua_kernels/dot.cl",
-	"/usr/lib/wekua_kernels/gemm.cl",
 	"/usr/lib/wekua_kernels/convert.cl",
 	"/usr/lib/wekua_kernels/abs.cl",
 	"/usr/lib/wekua_kernels/diag.cl",
@@ -39,17 +38,20 @@ const char kernels[KERNEL_NUM][40] = {
 	"/usr/lib/wekua_kernels/gauss.cl",
 	"/usr/lib/wekua_kernels/gauss2.cl",
 	"/usr/lib/wekua_kernels/bias.cl",
-	"/usr/lib/wekua_kernels/sigmoid.cl"
+	"/usr/lib/wekua_kernels/sigmoid.cl",
+	"/usr/lib/wekua_kernels/gemm.cl",
+	"/usr/lib/wekua_kernels/sum.cl"
 };
 
 const char ker_name[KERNEL_NUM][20] = {
 	"rand", "uniform", "iden", "trans", "axpy",
-	"scal", "doth", "gemm", "convert",
+	"scal", "doth", "convert",
 	"absolute", "diag", "arange", "power",
 	"divide", "lognatu", "sen", "senh", "cose",
 	"coseh", "tg", "tgh", "mul", "fill",
 	"euler_iden", "calc_dev", "aberth", "det",
-	"gauss", "gauss2", "bias", "sigmoid"
+	"gauss", "gauss2", "bias", "sigmoid",
+	"gemm", "sum_kernel"
 };
 
 const uint32_t dtype_length[10] = {
@@ -178,103 +180,37 @@ char *getKernelData(const char *name, long *size){
 	return cont;
 }
 
-uint8_t isSupport(wDevice *dev){
-	for (uint8_t x=0; x<3; x++){
-		if (dev->propie[x] == CL_DEVICE_PARTITION_BY_COUNTS) return 0;
-	}
-	return 1;
-}
-
 wekuaContext createWekuaContext(wDevice *dev){
 	if (dev == NULL){
 		return NULL;
 	}else if (dev->max_work_item_dimensions < 3) return NULL;
 
+	int ret;
+
 	wekuaContext context = (wekuaContext) calloc(1, sizeof(struct _wk_ctx));
 	if (context == NULL) return NULL;
 
-	cl_device_partition_property *prop;
-
-	uint32_t sdu = dev->compute_units, parti, nmp, cu;
-	cu = sdu;
-
-	cl_device_id *devs;
-	int ret;
-
-	if (isSupport(dev)) sdu = 0;
-	else sdu = dev->compute_units;
-
-	devs = (cl_device_id*) calloc(sdu+1, sizeof(cl_device_id));
-	devs[0] = dev->device;
-
-	if (sdu > 0){
-		if (sdu > 7) sdu = 7;
-
-		prop = (cl_device_partition_property*) calloc(sdu+3, sizeof(cl_device_partition_property));
-		prop[0] = CL_DEVICE_PARTITION_BY_COUNTS;
-		prop[sdu+1] = CL_DEVICE_PARTITION_BY_COUNTS_LIST_END;
-
-		nmp = cu%sdu;
-		cu = cu - nmp;
-		parti = cu/sdu;
-		for (uint32_t x=1; x<=sdu; x++) prop[x] = parti;
-		prop[1] += nmp;
-
-		ret = clCreateSubDevices(devs[0], prop, sdu, &devs[1], NULL);
-		if (ret != CL_SUCCESS){
-			free(context);
-			free(devs);
-			return NULL;
-		}
-
-		free(prop);
-	}
-
-
-	context->ctx = clCreateContext(NULL, sdu+1, devs, NULL, NULL, &ret);
+	context->ctx = clCreateContext(NULL, 1, &dev->device, NULL, NULL, &ret);
 	if (ret != CL_SUCCESS){
 		free(context);
 		return NULL;
 	}
 
-	context->command_queue = clCreateCommandQueueWithProperties(context->ctx, devs[0], NULL, NULL);
-
-	if (sdu > 0){
-		context->gemm_cmd = (cl_command_queue*) calloc(sdu, sizeof(cl_command_queue));
-		for (uint32_t x=0; x<sdu; x++){
-			context->gemm_cmd[x] = clCreateCommandQueueWithProperties(context->ctx, devs[x+1], NULL, NULL);
-		}
-	}else{
-		context->gemm_cmd = (cl_command_queue*) calloc(1, sizeof(cl_command_queue));
-		context->gemm_cmd[0] = context->command_queue;
-	}
+	context->command_queue = clCreateCommandQueueWithProperties(context->ctx, dev->device, NULL, NULL);
 
 	context->programs = (cl_program*) calloc(KERNEL_NUM*10, sizeof(cl_program));
 	context->kernels = (cl_kernel*) calloc(KERNEL_NUM*10, sizeof(cl_kernel));
 
 	memcpy(context->vector_width, dev->vector_width, 40);
 
-	if (sdu > 0){
-		context->subdevice = (cl_device_id*) calloc(sdu, sizeof(cl_device_id));
-		memcpy(context->subdevice, &devs[1], sizeof(cl_device_id)*sdu);
-	}else{
-		context->subdevice = (cl_device_id*) calloc(sdu+1, sizeof(cl_device_id));
-		context->subdevice[0] = dev->device;
-	}
-
-	context->dev = devs[0];
+	context->dev = dev->device;
 	dev->device = NULL;
 
 	context->dtype_length = dtype_length;
 	context->max_work_group_size = dev->max_work_group_size;
 	context->compute_units = dev->compute_units;
-	
-	if (sdu > 0) context->num_sub_dev = sdu;
-	else context->num_sub_dev = 1;
 
-	context->vector_width[WEKUA_DTYPE_FLOAT] = 1; // _cl_dot for float doesn't exists in PoCL
-
-	free(devs);
+	// context->vector_width[9] = 1;
 
 	return context;
 }
@@ -365,68 +301,6 @@ void freeWekuaContext(wekuaContext context){
 	if (context->programs != NULL){
 		for (uint32_t x=0; x<KERNEL_NUM*10; x++){
 			if (context->programs[x] != NULL) clReleaseProgram(context->programs[x]);
-		}
-	}
-
-	if (context->gemm_kernels != NULL){
-		if (context->gemm_kernels[0] != NULL){
-			for (uint32_t x=0; x<10; x++){
-				if (context->gemm_kernels[0][x] != NULL) clReleaseKernel(context->gemm_kernels[0][x]);
-			}
-		}
-
-		if (context->gemm_kernels[1] != NULL){
-			for (uint32_t x=0; x<10; x++){
-				if (context->gemm_kernels[1][x] != NULL) clReleaseKernel(context->gemm_kernels[1][x]);
-			}
-		}
-
-		if (context->gemm_kernels[2] != NULL){
-			for (uint32_t x=0; x<70; x++){
-				if (context->gemm_kernels[2][x] != NULL) clReleaseKernel(context->gemm_kernels[2][x]);
-			}
-		}
-
-		if (context->gemm_kernels[3] != NULL){
-			for (uint32_t x=0; x<10; x++){
-				if (context->gemm_kernels[3][x] != NULL) clReleaseKernel(context->gemm_kernels[3][x]);
-			}
-		}
-	}
-
-	if (context->gemm_programs != NULL){
-		if (context->gemm_programs[0] != NULL){
-			for (uint32_t x=0; x<10; x++){
-				if (context->gemm_programs[0][x] != NULL) clReleaseProgram(context->gemm_programs[0][x]);
-			}
-		}
-
-		if (context->gemm_programs[1] != NULL){
-			for (uint32_t x=0; x<10; x++){
-				if (context->gemm_programs[1][x] != NULL) clReleaseProgram(context->gemm_programs[1][x]);
-			}
-		}
-
-		if (context->gemm_programs[2] != NULL){
-			for (uint32_t x=0; x<70; x++){
-				if (context->gemm_programs[2][x] != NULL) clReleaseProgram(context->gemm_programs[2][x]);
-			}
-		}
-
-		if (context->gemm_programs[3] != NULL){
-			for (uint32_t x=0; x<10; x++){
-				if (context->gemm_programs[3][x] != NULL) clReleaseProgram(context->gemm_programs[3][x]);
-			}
-		}
-	}
-
-	if (context->gemm_cmd != NULL){
-		for (uint32_t x=0; x<context->num_sub_dev; x++){
-			if (context->gemm_cmd[x] != context->command_queue){
-				clReleaseDevice(context->subdevice[x]);
-				clFinish(context->gemm_cmd[x]);
-				clReleaseCommandQueue(context->gemm_cmd[x]);
-			}
 		}
 	}
 

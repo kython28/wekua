@@ -72,50 +72,90 @@ int wekuaMatrixSum(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 		return CL_INVALID_MEM_OBJECT;
 	}
 	int ret;
-	uint8_t dtype;
-	uint64_t col, row;
-	void *one;
+	wekuaContext ctx = a->ctx;
+	uint8_t dtype = a->dtype, com = a->com;
+	cl_kernel kernel;
+	cl_event e[2], *befo = NULL;
+	wmatrix b = NULL, c = NULL;
 
-	wekuaContext ctx;
-	wmatrix b = NULL, c = NULL, d = NULL, e = NULL;
+	uint32_t env = 0;
+	uint64_t col, row;
+
+	row = a->shape[0];
+	col = a->shape[1];
+
+	if (compileKernel(ctx, WEKUA_KERNEL_SUM, dtype)){
+		return CL_COMPILE_PROGRAM_FAILURE;
+	}
+
+	kernel = ctx->kernels[WEKUA_KERNEL_SUM*10+dtype];
 
 	clWaitForEvents(nw, be);
 
-	ctx = a->ctx;
-	dtype = a->dtype;
-	row = a->shape[0];
-	col = a->shape[1];
-	one = get_one(dtype, ctx->dtype_length[dtype]);
-	if (one == NULL){
-		ret = CL_MEM_OBJECT_ALLOCATION_FAILURE;
-		goto wk_sum_fail;
+	if (row == 1 && col == 1){
+		c = a;
+
+		goto wekua_matrix_sum_s2;
 	}
 
-	b = wekuaFillMatrix(ctx, 1, col, one, NULL, dtype);
-	c = wekuaAllocMatrix(ctx, row, 1, dtype);
-	d = wekuaFillMatrix(ctx, 1, row, one, NULL, dtype);
-	e = wekuaAllocMatrix(ctx, 1, 1, dtype);
+	if (com) c = wekuaAllocComplexMatrix(ctx, 1, 1, dtype);
+	else c = wekuaAllocMatrix(ctx, 1, 1, dtype);
 
-	if (b == NULL || c == NULL || d == NULL || e == NULL){
-		ret = CL_MEM_OBJECT_ALLOCATION_FAILURE;
-		goto wk_sum_fail;
+	if (row == 1){
+		b = a;
+		goto wekua_matrix_sum_s1;
+	}else if (col == 1){
+		b = wekuaMatrixTrans(a, 0, NULL, e);
+		if (b == NULL) goto wekua_matrix_sum;
+
+		clWaitForEvents(1, e);
+		clReleaseEvent(e[0]);
+
+		goto wekua_matrix_sum_s1;
 	}
 
-	ret = wekuaBlasGemm(one, NULL, 0, a, 1, b, NULL, NULL, c, 0, NULL);
-	if (ret != CL_SUCCESS) goto wk_sum_fail;
+	if (com) b = wekuaAllocComplexMatrix(ctx, 1, a->shape[0], dtype);
+	else b = wekuaAllocMatrix(ctx, 1, a->shape[0], dtype);
 
-	ret = wekuaBlasGemm(one, NULL, 0, d, 0, c, NULL, NULL, e, 0, NULL);
-	if (ret != CL_SUCCESS) goto wk_sum_fail;
-
-	wekuaGetValueFromMatrix(e, 0, 0, real, imag, 0, NULL);
-
-	wk_sum_fail:
-	wekuaFreeMatrix(b, 0, NULL);
-	wekuaFreeMatrix(c, 0, NULL);
-	wekuaFreeMatrix(d, 0, NULL);
-	wekuaFreeMatrix(e, 0, NULL);
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(kernel, 2, sizeof(cl_mem), &b->real);
+	clSetKernelArg(kernel, 3, sizeof(cl_mem), &b->imag);
+	clSetKernelArg(kernel, 4, 8, &a->vl_shape[1]);
+	clSetKernelArg(kernel, 5, 1, &a->com);
 	
-	if (one != NULL) free(one);
+	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &b->shape[1], &b->work_items[7], 0, NULL, e);
+	if (ret != CL_SUCCESS) goto wekua_matrix_sum;
+	env++;
+	befo = e;
+
+	wekua_matrix_sum_s1:
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), &b->real);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), &b->imag);
+	clSetKernelArg(kernel, 2, sizeof(cl_mem), &c->real);
+	clSetKernelArg(kernel, 3, sizeof(cl_mem), &c->imag);
+	clSetKernelArg(kernel, 4, 8, &b->vl_shape[1]);
+	clSetKernelArg(kernel, 5, 1, &b->com);
+	
+	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &c->shape[1], &c->work_items[7], env, befo, &e[env]);
+	if (ret != CL_SUCCESS){
+		if (env > 0){
+			clWaitForEvents(env, e);
+			clReleaseEvent(e[0]);
+		}
+		goto wekua_matrix_sum;
+	}
+	env++;
+
+	wekua_matrix_sum_s2:
+	wekuaGetValueFromMatrix(c, 0, 0, real, imag, env, e);
+
+	for (uint32_t x=0; x<env; x++) clReleaseEvent(e[x]);
+
+	wekua_matrix_sum:
+	if (a != b) wekuaFreeMatrix(b, 0, NULL);
+	if (a != c) wekuaFreeMatrix(c, 0, NULL);
+	
 	return ret;
 }
 
@@ -221,7 +261,7 @@ int wekuaMatrixMean(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be
 		return CL_INVALID_MEM_OBJECT;
 	}
 	uint8_t dtype = a->dtype;
-	uint64_t size = a->size;
+	uint64_t size = a->shape[0]*a->shape[1];
 	int ret = wekuaMatrixSum(a, real, imag, nw, be);
 
 	if (dtype == WEKUA_DTYPE_INT8){
@@ -532,5 +572,3 @@ wmatrix wekuaMatrixEulerIden(wmatrix angle, uint32_t nw, cl_event *be){
 
 	return a;
 }
-
-// wmatrix wekuaMatrixRoot(wmatrix a); // Polynomial roots

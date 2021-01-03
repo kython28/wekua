@@ -10,6 +10,12 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 	if (input == 0 || output == 0 || deep == 0 || acti == NULL) return NULL;
 	else if (dtype < WEKUA_DTYPE_FLOAT) return NULL;
 
+	if (bias){
+		if (compileKernel(ctx, WEKUA_KERNEL_BIAS, dtype)) return NULL;
+	}
+
+	if (compileKernel(ctx, WEKUA_KERNEL_GEMM, dtype)) return NULL;
+
 	wmatrix tmp;
 	cl_event e;
 
@@ -116,8 +122,6 @@ wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event 
 	cl_kernel kernel;
 	cl_command_queue cmd = ctx->command_queue;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_BIAS, dtype)) return NULL;
-
 	kernel = ctx->kernels[WEKUA_KERNEL_BIAS*10+dtype];
 
 	if (cache != NULL){
@@ -136,6 +140,8 @@ wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event 
 
 	one = get_one(dtype, dl);
 	if (one == NULL) goto wekua_rli_fail;
+
+	clWaitForEvents(nw, be);
 
 	wmatrix output = NULL, in = input;
 	for (uint64_t x=0; x<layer; x++){ 

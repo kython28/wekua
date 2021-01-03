@@ -179,3 +179,89 @@ typedef double16 wk;
 #define convert_T convert_double
 
 #endif
+
+#if width > 1
+
+#if dtype < 9 // PoCL doesn't support _cl_dot with float
+
+wks __attribute__((overloadable)) dot(wk aa, wk bb){
+	wk cc = aa*bb;
+	wks r = cc[0];
+
+	#if width >= 2
+	r += cc[1];
+	#endif
+
+	#if width >= 4
+	r += cc[2];
+	r += cc[3];
+	#endif
+
+	#if width >= 8
+	r += cc[4];
+	r += cc[5];
+	r += cc[6];
+	r += cc[7];
+	#endif
+
+	#if width == 16
+	r += cc[8];
+	r += cc[9];
+	r += cc[10];
+	r += cc[11];
+	r += cc[12];
+	r += cc[13];
+	r += cc[14];
+	r += cc[15];
+	#endif
+
+	return r;
+}
+
+#endif
+
+wks sum(wk a){
+	wks r = a[0];
+
+	#if width >= 2
+	r += a[1];
+	#endif
+
+	#if width >= 4
+	r += a[2];
+	r += a[3];
+	#endif
+
+	#if width >= 8
+	r += a[4];
+	r += a[5];
+	r += a[6];
+	r += a[7];
+	#endif
+
+	#if width == 16
+	r += a[8];
+	r += a[9];
+	r += a[10];
+	r += a[11];
+	r += a[12];
+	r += a[13];
+	r += a[14];
+	r += a[15];
+	#endif
+
+	return r;
+}
+
+#endif
+
+void complex_mul(wk *a, wk *b, wk c, wk d){
+	wk k1, k2, k3;
+
+	k1 = c*(a[0] + b[0]);
+	k2 = a[0]*(d - c);
+	k3 = b[0]*(c + d);
+
+	a[0] = k1 - k3;
+	b[0] = k1 + k2;
+}
