@@ -257,6 +257,7 @@ wacti wekuaActiSigmoid(); // -> 1/(1 + e^(-x))
 // wacti wekuaActiELU(); // -> alpha*(e^x - 1)
 
 int runWekuaActi(wacti acti, wmatrix input, uint32_t nw, cl_event *be);
+wmatrix wekuaActiGetDev(wacti acti, wmatrix output);
 void wekuaFreeActi(wacti acti, uint32_t nw, cl_event *be);
 
 typedef struct _w_neuron {
@@ -267,25 +268,27 @@ typedef struct _w_neuron {
 	wacti acti; // Activation function for the neuron
 
 	// To run the neuron
-	wmatrix (*run)(void *, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
+	wmatrix (*run)(void *, wmatrix, wcache *, uint32_t, cl_event *);
 
-	void (*backward)(void *, werror error, wcache cache, werror *err);
+	int (*backward)(void *, werror error, wcache cache, werror *err);
 } *wneuron;
 
 wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype);
 
+wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
+
 void wekuaNeuronFree(wneuron neur);
 
 
-typedef struct _w_net { // Sequential net
+typedef struct _w_net {
 	wneuron *neurons;
 	uint32_t nneur;
 	uint8_t dtype;
 } *wnetwork;
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
-
-wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
+wmatrix runWekuaSequentialNetwork(wnetwork net, wmatrix input, wcache **cache);
+int wekuaNetworkBackward(wnetwork net, werror error, wcache *cache, werror **err);
 
 typedef struct _w_optim {
 	void **data; // Data for the Optimizer

@@ -5,6 +5,68 @@ void *get_one(uint8_t dtype, uint32_t dl);
 wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
 int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e);
 
+// int (*backward)(void *, werror error, wcache cache, werror *err);
+
+int backward_linear(void *n, werror error, wcache cache, werror *err){
+	if (n == NULL || error == NULL || cache == NULL || err == NULL) return CL_INVALID_ARG_VALUE;
+
+	int ret;
+
+	wekuaContext ctx;
+	wneuron neuron = n;
+	
+	uint8_t dtype = neuron->dtype;
+
+	wacti acti = neuron->acti;
+	cl_event e;
+	
+	wmatrix *cache_data = cache->data;
+	wmatrix dev, *o_err, *weight, tmp;
+
+	weight = neuron->weight;
+	ctx = weight[0]->ctx;
+
+	void *one = get_one(dtype, ctx->dtype_length[dtype]);
+	uint64_t no_err = neuron->layer;
+
+	error->no_err = no_err;
+	o_err = (wmatrix*) calloc(no_err, sizeof(wmatrix));
+	error->o_err = o_err;
+	
+	tmp = error->err;
+
+	for (; no_err>0; no_err--){
+		register wmatrix s, w;
+
+		o_err[no_err-1] = tmp;
+
+		dev = wekuaActiGetDev(acti, cache_data[no_err]);
+		ret = wekuaMatrixDot(tmp, dev, 0, NULL, &e);
+		if (ret != CL_SUCCESS) break;
+
+		s = tmp;
+		w = weight[no_err-1];
+
+		tmp = wekuaAllocMatrix(ctx, s->shape[0], w->shape[1], dtype);
+		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 1, &e);
+		if (ret != CL_SUCCESS){
+			clWaitForEvents(1, &e);
+			clReleaseEvent(e);
+			break;
+		}
+
+		clReleaseEvent(e);
+	}
+
+	free(one);
+
+	if (ret == CL_SUCCESS){
+		err[0] = (werror) calloc(1, sizeof(struct _w_error));
+		err[0]->err = tmp;
+	}
+
+	return ret;
+}
 
 wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype){
 	if (input == 0 || output == 0 || deep == 0 || acti == NULL) return NULL;
@@ -76,6 +138,7 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 	}
 
 	neur->run = &run_linear;
+	neur->backward = &backward_linear;
 
 	goto wekua_linear_success;
 

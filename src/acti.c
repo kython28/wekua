@@ -11,3 +11,8 @@ void wekuaFreeActi(wacti acti, uint32_t nw, cl_event *be){
 
 	acti->free_func(acti, nw, be);
 }
+
+wmatrix wekuaActiGetDev(wacti acti, wmatrix output){
+	if (acti == NULL || output == NULL) return NULL;
+	return acti->get_dev(acti, output);
+}

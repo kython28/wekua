@@ -1,6 +1,6 @@
 CC = icc
 CFLAGS = -W -g -fPIC -O2 -march=native
-archives = wekua.o matrix.o print.o trig.o blas.o extra.o aberth_root.o cache.o linear.o acti.o acti_linear.o acti_sigmoid.o acti_tanh.o werror.o
+archives = wekua.o matrix.o print.o trig.o blas.o extra.o aberth_root.o cache.o linear.o acti.o acti_linear.o acti_sigmoid.o acti_tanh.o werror.o wnetwork.o
 
 main: $(archives)
 	$(CC) $(CFLAGS) -shared -lOpenCL $(archives) -o libwekua.so -lm

@@ -1,7 +1,8 @@
 #include "wekua.h"
 
-wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
-void backward_net(wneuron *neurons, uint32_t nneur, werror error, wcache *cache, werror *err);
+wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be){
+	return neuron->run(neuron, input, cache, nw, be);
+}
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype){
 	wnetwork net = (wnetwork) calloc(1, sizeof(struct _w_net));
@@ -13,7 +14,7 @@ wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype){
 	return net;
 }
 
-wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
+wmatrix runWekuaSequentialNetwork(wnetwork net, wmatrix input, wcache **cache){
 	if (net == NULL || input == NULL) return NULL;
 
 	wmatrix output = NULL, tmp[2] = {NULL, NULL};
@@ -29,7 +30,11 @@ wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
 		for (uint32_t x=0; x<nneur; x++){
 			tmp[d] = neurons[x]->run(neurons[x], tmp[d^1], &cache[0][x], 0, NULL);
 
-			if (tmp[d] == NULL) break;
+			if (tmp[d] == NULL){
+				output = NULL;
+				break;
+			}
+			output = tmp[d];
 
 			d ^= 1;
 			if (tmp[d] != input) wekuaFreeMatrix(tmp[d], 0, NULL);
@@ -39,14 +44,41 @@ wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
 		for (uint32_t x=0; x<nneur; x++){
 			tmp[d] = neurons[x]->run(neurons[x], tmp[d^1], NULL, 0, NULL);
 
-			if (tmp[d] == NULL) break;
+			if (tmp[d] == NULL){
+				output = NULL;
+				break;
+			}
+			output = tmp[d];
 
 			d ^= 1;
 			if (tmp[d] != input) wekuaFreeMatrix(tmp[d], 0, NULL);
 		}
 	}
 
-	wekuaFreeMatrix(tmp[d^1], 0, NULL);
-
 	return output;
+}
+
+int wekuaNetworkBackward(wnetwork net, werror error, wcache *cache, werror **err){
+	if (net == NULL || error == NULL || cache == NULL || err == NULL) return CL_INVALID_ARG_VALUE;
+
+	int ret;
+	uint32_t nneur = net->nneur;
+	uint32_t x = nneur;
+	wneuron *neurons = net->neurons;
+	err[0] = (werror*) calloc(nneur, sizeof(werror));
+
+	for (; x>0; x--){
+		register wneuron neuron_tmp = neurons[x-1];
+		ret = neuron_tmp->backward(neuron_tmp, error, cache[x-1], &err[0][x-1]);
+		error = err[0][x-1];
+
+		if (ret != CL_SUCCESS) break;
+	}
+
+	if (ret != CL_SUCCESS){
+		for (; x<nneur; x++) wekuaErrorFree(err[0][x], 0, NULL);
+		free(err[0]);
+	}
+
+	return ret;
 }

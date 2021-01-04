@@ -34,24 +34,27 @@ int main(){
 
 	wacti acti = wekuaActiSigmoid();
 
-	wneuron neuron = wekuaLinear(ctx, 2, 1, 1, 1, acti, WEKUA_DTYPE_FLOAT);
-	wcache cache;
+	wcache *cache;
+	wnetwork net = wekuaNeuronNetwork(1, WEKUA_DTYPE_FLOAT);
+	net->neurons[0] = wekuaLinear(ctx, 2, 1, 1, 1, acti, WEKUA_DTYPE_FLOAT); 
 	
 	gettimeofday(&start, 0);
 
-	wmatrix output = neuron->run(neuron, input, &cache, 0, NULL);
+	wmatrix output = runWekuaSequentialNetwork(net, input, &cache);
 
 	gettimeofday(&end, 0);
 
-	werror error_dev;
+	werror error_dev, *error_dev2;
 
-	for (uint64_t x=0; x<cache->ndata; x++){
-		wekuaMatrixPrint(cache->data[x], 0, NULL);
+	for (uint64_t x=0; x<cache[0]->ndata; x++){
+		wekuaMatrixPrint(cache[0]->data[x], 0, NULL);
 	}
 
-	printf("%d\n", wekuaMSE(output, output_wanted, &error, NULL, &error_dev, 0, NULL));
+	wekuaMSE(output, output_wanted, &error, NULL, &error_dev, 0, NULL);
 
-	wekuaMatrixPrint(error_dev->err, 0, NULL);
+	wekuaNetworkBackward(net, error_dev, cache, &error_dev2);
+
+	wekuaMatrixPrint(error_dev2[0]->err, 0, NULL);
 	wekuaMatrixPrint(output_wanted, 0, NULL);
 	wekuaMatrixPrint(output, 0, NULL);
 
