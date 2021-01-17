@@ -40,14 +40,14 @@ int main(){
 	
 	gettimeofday(&start, 0);
 
-	wmatrix output = runWekuaSequentialNetwork(net, input, &cache);
+	wmatrix output = runWekuaNetwork(net, input, &cache);
 
 	gettimeofday(&end, 0);
 
 	werror error_dev, *error_dev2;
 
 	for (uint64_t x=0; x<cache[0]->ndata; x++){
-		wekuaMatrixPrint(cache[0]->data[x], 0, NULL);
+		wekuaMatrixPrint(((wmatrix*)cache[0]->data)[x], 0, NULL);
 	}
 
 	wekuaMSE(output, output_wanted, &error, NULL, &error_dev, 0, NULL);

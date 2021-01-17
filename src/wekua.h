@@ -93,6 +93,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_SIGMOID 29
 #define WEKUA_KERNEL_GEMM 30
 #define WEKUA_KERNEL_SUM 31
+#define WEKUA_KERNEL_LINEAR_BIAS_AMEND 32
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
 
@@ -227,14 +228,14 @@ int wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be); // To free a matrix
 
 typedef struct _w_cache {
 	uint64_t ndata;
-	wmatrix *data;
+	void *data;
 } *wcache;
 
 void wekuaCacheFree(wcache cache, uint32_t nw, cl_event *be);
 
 typedef struct _w_error {
 	wmatrix err; // Error derivate
-	wmatrix *o_err; // Other errors :v
+	void *o_err; // Other errors :v
 	uint64_t no_err;
 } *werror;
 
@@ -269,42 +270,51 @@ typedef struct _w_neuron {
 
 	// To run the neuron
 	wmatrix (*run)(void *, wmatrix, wcache *, uint32_t, cl_event *);
-
 	int (*backward)(void *, werror error, wcache cache, werror *err);
+	int (*amend)(void *, werror error, wcache cache, int (*step)(void *, wmatrix, wmatrix, wmatrix, wmatrix));
+
+	void (*free_error)(werror);
+	void (*free_cache)(wcache);
 } *wneuron;
 
 wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype);
+wneuron wekuaConv1d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size, uint64_t stride, uint8_t bias);
+wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride, uint8_t bias);
 
 wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
 
+int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err);
+
 void wekuaNeuronFree(wneuron neur);
 
-
 typedef struct _w_net {
+	wekuaContext ctx;
 	wneuron *neurons;
 	uint32_t nneur;
 	uint8_t dtype;
 } *wnetwork;
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
-wmatrix runWekuaSequentialNetwork(wnetwork net, wmatrix input, wcache **cache);
-int wekuaNetworkBackward(wnetwork net, werror error, wcache *cache, werror **err);
+wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
+int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err);
 
 typedef struct _w_optim {
-	void **data; // Data for the Optimizer
-	
+	void *data; // Data for the Optimizer
+	wnetwork net;
 
 	// To update the weight
-	void (*step)(wcache cache, werror error, wmatrix *weigth);
+	int (*step)(void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix);
 
 	void (*free_func)(void *optim, uint32_t nw, cl_event *be);
 } *woptim;
 
-woptim wekuaOptimSG(void *lr, void *lri, wnetwork net); // Gradient descent optimization
-woptim wekuaOptimSGM(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // Gradient descent momentum optimization
+woptim wekuaOptimGD(void *lr, void *lri, wnetwork net); // Gradient descent optimization
+woptim wekuaOptimGDM(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // Gradient descent momentum optimization
 woptim wekuaOptimAdaGrad(void *lr, void *lri, wnetwork net); // Gradient adaptive optimization
 woptim wekuaOptimRMSProp(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // RMSProp optimization
 woptim wekuaOptimAdaDelta(void *lr, void *lri, wnetwork net); // AdaDelta optimization
+
+int wekuaOptimStep(woptim optim, werror *error, wcache *cache);
 
 #ifdef __cplusplus
 }
