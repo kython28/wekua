@@ -44,17 +44,19 @@ int main(){
 
 	gettimeofday(&end, 0);
 
-	werror error_dev, *error_dev2;
+	werror *error_dev, *error_dev2;
+
+	error_dev = (werror*) calloc(1, sizeof(werror));
 
 	for (uint64_t x=0; x<cache[0]->ndata; x++){
 		wekuaMatrixPrint(((wmatrix*)cache[0]->data)[x], 0, NULL);
 	}
 
-	wekuaMSE(output, output_wanted, &error, NULL, &error_dev, 0, NULL);
+	wekuaMSE(output, output_wanted, &error, NULL, error_dev, 0, NULL);
 
-	wekuaNetworkBackward(net, error_dev, cache, &error_dev2);
+	wekuaNetworkBackward(net, error_dev, cache, NULL);
 
-	wekuaMatrixPrint(error_dev2[0]->err, 0, NULL);
+	// wekuaMatrixPrint(error_dev2[0]->err, 0, NULL);
 	wekuaMatrixPrint(output_wanted, 0, NULL);
 	wekuaMatrixPrint(output, 0, NULL);
 

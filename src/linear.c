@@ -5,6 +5,9 @@ void *get_one(uint8_t dtype, uint32_t dl);
 wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
 int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e);
 int backward_linear(void *n, werror error, wcache cache, werror *err);
+int step_linear(void *neur, werror error, wcache cache, int (*func)(void *, wmatrix, wmatrix, wmatrix, wmatrix));
+wmatrix get_dev_bias(wekuaContext ctx, wmatrix error, uint8_t dtype);
+
 void free_error_linear(werror err);
 void free_cache_linear(wcache cache);
 
@@ -27,6 +30,8 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 	neur->layer = deep;
 	neur->dtype = dtype;
 	neur->acti = acti;
+	neur->free_cache = &free_cache_linear;
+	neur->free_error = &free_error_linear;
 
 	neur->weight = (wmatrix*) calloc(deep, sizeof(wmatrix));
 	if (neur->weight == NULL) return NULL;
@@ -281,4 +286,109 @@ int backward_linear(void *n, werror error, wcache cache, werror *err){
 	}
 
 	return ret;
+}
+
+wmatrix get_dev_bias(wekuaContext ctx, wmatrix error, uint8_t dtype){
+	cl_event e;
+	uint8_t com = error->com;
+	cl_kernel kernel;
+
+	if (compileKernel(ctx, WEKUA_KERNEL_LINEAR_BIAS_STEP, dtype)){
+		return NULL;
+	}
+
+	kernel = ctx->kernels[10*WEKUA_KERNEL_LINEAR_BIAS_STEP+10];
+
+	wmatrix dev = wekuaAllocMatrix(ctx, 1, error->shape[1], dtype);
+	if (com){
+		if (createComplexMatrix(dev)){
+			wekuaFreeMatrix(dev, 0, NULL);
+			return NULL;
+		}
+	}
+
+
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), &error->real);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), &error->imag);
+	clSetKernelArg(kernel, 2, sizeof(cl_mem), &dev->real);
+	clSetKernelArg(kernel, 3, sizeof(cl_mem), &dev->imag);
+	clSetKernelArg(kernel, 4, 8, &error->col);
+	clSetKernelArg(kernel, 5, 1, &com);
+
+	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &dev->shape[1], &dev->work_items[6],
+		0, NULL, &e
+	);
+
+	if (ret != CL_SUCCESS){
+		wekuaFreeMatrix(dev, 0, NULL);
+		return NULL;
+	}
+
+	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
+
+	return dev;
+}
+
+int step_linear(void *neur, void *opti_data, werror error, wcache cache, int (*func)(void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix)){
+	wneuron neuron = neur;
+	uint64_t layers = neuron->layer, x = 0;
+	uint8_t dtype = neuron->dtype;
+	uint32_t dl;
+	int ret;
+	
+	wekuaContext ctx;
+	wmatrix *weigth = neuron->weight;
+	wmatrix *bias = neuron->bias;
+	wmatrix *cache_d = cache->data;
+	wmatrix *errors = error->o_err;
+
+	wmatrix dev, dev_bias;
+	ctx = weigth[0]->ctx;
+	dl = ctx->dtype_length[dtype];
+
+	void *one = get_one(dtype, dl);
+
+	for (; x<layers; x++){
+		register wmatrix w = weigth[x];
+		register wmatrix e = errors[x];
+		register wmatrix a = cache_d[x];
+
+		dev = wekuaAllocMatrix(ctx, w->shape[0], w->shape[1], dtype);
+		ret = wekuaBlasGemm(one, NULL, 1, e, 0, a, NULL, NULL, dev, 0, NULL);
+		dev_bias = get_dev_bias(ctx, e, dtype);
+
+		if (ret != CL_SUCCESS || dev_bias == NULL){
+			wekuaFreeMatrix(dev, 0, NULL);
+			break;
+		}
+
+		ret = func(opti_data, dl, dev, dev_bias, w, bias[x]);
+
+		wekuaFreeMatrix(dev, 0, NULL);
+		wekuaFreeMatrix(dev_bias, 0, NULL);
+		if (ret != CL_SUCCESS) break;
+	}
+
+	free(one);
+	return ret;
+}
+
+void free_error_linear(werror err){
+	uint64_t no_err = err->no_err;
+	wmatrix *o_errors = err->o_err;
+	for (uint64_t x=0; x<no_err; x++) wekuaFreeMatrix(o_errors[x], 0, NULL);
+
+	wekuaFreeMatrix(err->err, 0, NULL);
+	free(o_errors);
+	free(err);
+}
+
+void free_cache_linear(wcache cache){
+	uint64_t ndata = cache->ndata;
+	wmatrix *data = cache->data;
+	for (uint64_t x=1; x<ndata; x++) wekuaFreeMatrix(data[x], 0, NULL);
+
+	free(data);
+	free(cache);
 }

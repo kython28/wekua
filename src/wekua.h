@@ -93,7 +93,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_SIGMOID 29
 #define WEKUA_KERNEL_GEMM 30
 #define WEKUA_KERNEL_SUM 31
-#define WEKUA_KERNEL_LINEAR_BIAS_AMEND 32
+#define WEKUA_KERNEL_LINEAR_BIAS_STEP 32
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
 
@@ -271,7 +271,7 @@ typedef struct _w_neuron {
 	// To run the neuron
 	wmatrix (*run)(void *, wmatrix, wcache *, uint32_t, cl_event *);
 	int (*backward)(void *, werror error, wcache cache, werror *err);
-	int (*amend)(void *, werror error, wcache cache, int (*step)(void *, wmatrix, wmatrix, wmatrix, wmatrix));
+	int (*step)(void *, void *, werror error, wcache cache, int (*)(void *, wmatrix, wmatrix, wmatrix, wmatrix));
 
 	void (*free_error)(werror);
 	void (*free_cache)(wcache);
@@ -299,8 +299,9 @@ wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
 int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err);
 
 typedef struct _w_optim {
+	wekuaContext ctx;
 	void *data; // Data for the Optimizer
-	wnetwork net;
+	uint8_t dtype;
 
 	// To update the weight
 	int (*step)(void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix);
@@ -308,13 +309,13 @@ typedef struct _w_optim {
 	void (*free_func)(void *optim, uint32_t nw, cl_event *be);
 } *woptim;
 
-woptim wekuaOptimGD(void *lr, void *lri, wnetwork net); // Gradient descent optimization
-woptim wekuaOptimGDM(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // Gradient descent momentum optimization
-woptim wekuaOptimAdaGrad(void *lr, void *lri, wnetwork net); // Gradient adaptive optimization
-woptim wekuaOptimRMSProp(void *alpha, void *alphai, void *beta, void *betai, wnetwork net); // RMSProp optimization
-woptim wekuaOptimAdaDelta(void *lr, void *lri, wnetwork net); // AdaDelta optimization
+woptim wekuaOptimGD(wekuaContext ctx, void *lr, void *lri, uint8_t dtype); // Gradient descent optimization
+woptim wekuaOptimGDM(wekuaContext ctx, void *alpha, void *alphai, void *beta, void *betai, uint8_t dtype); // Gradient descent momentum optimization
+woptim wekuaOptimAdaGrad(wekuaContext ctx, void *lr, void *lri, uint8_t dtype); // Gradient adaptive optimization
+woptim wekuaOptimRMSProp(wekuaContext ctx, void *alpha, void *alphai, void *beta, void *betai, uint8_t dtype); // RMSProp optimization
+woptim wekuaOptimAdaDelta(wekuaContext ctx, void *lr, void *lri, uint8_t dtype); // AdaDelta optimization
 
-int wekuaOptimStep(woptim optim, werror *error, wcache *cache);
+int wekuaOptimStep(woptim optim, wnetwork net, werror *error, wcache *cache);
 
 #ifdef __cplusplus
 }

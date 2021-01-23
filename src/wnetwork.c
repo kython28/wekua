@@ -66,19 +66,24 @@ int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err
 	uint32_t x = 0;
 	wneuron *neurons = net->neurons;
 	werror tmp_err = (werror) calloc(1, sizeof(struct _w_error));
+	wneuron neuron_tmp;
 
 	for (; x < (nneur-1); x++){
-		register wneuron neuron_tmp = neurons[nneur-x-1];
+		neuron_tmp = neurons[nneur-x-1];
 		ret = neuron_tmp->backward(neuron_tmp, error[x], cache[nneur-x-1], &error[x+1]);
 
 		if (ret != CL_SUCCESS) break;
 	}
 
 	if (ret != CL_SUCCESS) {
-		for (uint32_t y=1; y < x; y++) wekuaFreeMatrix(error[x], 0, NULL);
+		for (uint32_t y=1; y < x; y++){
+			neuron_tmp = neurons[nneur-y-1];
+			neuron_tmp->free_error(error[y]);
+		}
 	}
 
-	ret = neuron_tmp->backward(neuron_tmp, error[nneur-1], cache[nneur-1], err);
+	neuron_tmp = neurons[0];
+	ret = neuron_tmp->backward(neuron_tmp, error[nneur-1], cache[0], err);
 
 	return ret;
 }
