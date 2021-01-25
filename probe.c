@@ -46,7 +46,7 @@ int main(){
 	werror *error_dev;
 	error_dev = (werror*) calloc(2, sizeof(werror));
 
-	woptim optim = wekuaOptimGD(ctx, &alpha, NULL, WEKUA_DTYPE_DOUBLE);
+	woptim optim = wekuaOptimGD(ctx, net, &alpha, NULL, WEKUA_DTYPE_DOUBLE);
 	int ret;
 
 	for (uint32_t i = 0; i < 20000; i++){
@@ -55,7 +55,7 @@ int main(){
 		output = runWekuaNetwork(net, input, &cache);
 		ret = wekuaMSE(output, output_wanted, &error, NULL, error_dev, 0, NULL);
 		ret = wekuaNetworkBackward(net, error_dev, cache, NULL);
-		ret = wekuaOptimStep(optim, net, error_dev, cache);
+		ret = wekuaOptimStep(optim, error_dev, cache);
 
 		wekuaFreeNetCache(net, cache);
 		wekuaFreeNetError(net, error_dev);
