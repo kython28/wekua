@@ -37,7 +37,6 @@ wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
 			output = tmp[d];
 
 			d ^= 1;
-			if (tmp[d] != input) wekuaFreeMatrix(tmp[d], 0, NULL);
 		}
 	}else{
 		tmp[0] = input;
@@ -59,18 +58,18 @@ wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
 }
 
 int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err){
-	if (net == NULL || error == NULL || cache == NULL || err == NULL) return CL_INVALID_ARG_VALUE;
+	if (net == NULL || error == NULL || cache == NULL) return CL_INVALID_ARG_VALUE;
 
-	int ret;
+	int ret = CL_SUCCESS;
 	uint32_t nneur = net->nneur;
 	uint32_t x = 0;
 	wneuron *neurons = net->neurons;
-	werror tmp_err = (werror) calloc(1, sizeof(struct _w_error));
+	// werror tmp_err = (werror) calloc(1, sizeof(struct _w_error));
 	wneuron neuron_tmp;
 
 	for (; x < (nneur-1); x++){
-		neuron_tmp = neurons[nneur-x-1];
-		ret = neuron_tmp->backward(neuron_tmp, error[x], cache[nneur-x-1], &error[x+1]);
+		neuron_tmp = neurons[nneur-1-x];
+		ret = neuron_tmp->backward(neuron_tmp, error[x], cache[nneur-1-x], &error[x+1]);
 
 		if (ret != CL_SUCCESS) break;
 	}
@@ -80,10 +79,31 @@ int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err
 			neuron_tmp = neurons[nneur-y-1];
 			neuron_tmp->free_error(error[y]);
 		}
+	}else{
+		neuron_tmp = neurons[0];
+		ret = neuron_tmp->backward(neuron_tmp, error[nneur-1], cache[0], err);
 	}
 
-	neuron_tmp = neurons[0];
-	ret = neuron_tmp->backward(neuron_tmp, error[nneur-1], cache[0], err);
-
 	return ret;
+}
+
+void wekuaFreeNetCache(wnetwork net, wcache *cache){
+	if (net == NULL || cache == NULL) return;
+
+	uint32_t nneur = net->nneur;
+	wneuron *neurons = net->neurons;
+	for (uint32_t x=0; x<nneur; x++){
+		neurons[x]->free_cache(cache[x]);
+	}
+	free(cache);
+}
+
+void wekuaFreeNetError(wnetwork net, werror *error){
+	if (net == NULL || error == NULL) return;
+
+	uint32_t nneur = net->nneur;
+	wneuron *neurons = net->neurons;
+	for (uint32_t x=0; x<nneur; x++){
+		neurons[x]->free_error(error[x]);
+	}
 }

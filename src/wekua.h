@@ -231,8 +231,6 @@ typedef struct _w_cache {
 	void *data;
 } *wcache;
 
-void wekuaCacheFree(wcache cache, uint32_t nw, cl_event *be);
-
 typedef struct _w_error {
 	wmatrix err; // Error derivate
 	void *o_err; // Other errors :v
@@ -240,8 +238,6 @@ typedef struct _w_error {
 } *werror;
 
 int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be); // Mean Square Error
-
-void wekuaErrorFree(werror error, uint32_t nw, cl_event *be);
 
 typedef struct _w_acti {
 	void *data; // Activation function data
@@ -271,7 +267,7 @@ typedef struct _w_neuron {
 	// To run the neuron
 	wmatrix (*run)(void *, wmatrix, wcache *, uint32_t, cl_event *);
 	int (*backward)(void *, werror error, wcache cache, werror *err);
-	int (*step)(void *, void *, werror error, wcache cache, int (*)(void *, wmatrix, wmatrix, wmatrix, wmatrix));
+	int (*step)(void *, void *, werror error, wcache cache, int (*)(void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix));
 
 	void (*free_error)(werror);
 	void (*free_cache)(wcache);
@@ -297,6 +293,9 @@ typedef struct _w_net {
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
 wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
 int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err);
+
+void wekuaFreeNetCache(wnetwork net, wcache *cache);
+void wekuaFreeNetError(wnetwork net, werror *error);
 
 typedef struct _w_optim {
 	wekuaContext ctx;

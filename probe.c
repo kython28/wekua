@@ -13,54 +13,67 @@ int main(){
 	struct timeval start, end;
 	cl_event e;
 
-	float inputs[8] = {
+	double inputs[8] = {
 		1.0, 1.0,
 		1.0, 0.0,
 		0.0, 1.0,
 		0.0, 0.0
 	};
 
-	float outputs[4] = {
+	double outputs[4] = {
+		0.0,
 		1.0,
-		0.0,
-		0.0,
+		1.0,
 		0.0
 	};
 
-	float error;
+	double error = 1.0;
+	double alpha = 0.5;
 
-	wmatrix input = wekuaMatrixFromBuffer(ctx, 4, 2, inputs, NULL, WEKUA_DTYPE_FLOAT);
-	wmatrix output_wanted = wekuaMatrixFromBuffer(ctx, 4, 1, outputs, NULL, WEKUA_DTYPE_FLOAT);
+	uint32_t total = 0, t = 0;
+
+	wmatrix input = wekuaMatrixFromBuffer(ctx, 4, 2, inputs, NULL, WEKUA_DTYPE_DOUBLE);
+	wmatrix output_wanted = wekuaMatrixFromBuffer(ctx, 4, 1, outputs, NULL, WEKUA_DTYPE_DOUBLE);
 
 	wacti acti = wekuaActiSigmoid();
 
 	wcache *cache;
-	wnetwork net = wekuaNeuronNetwork(1, WEKUA_DTYPE_FLOAT);
-	net->neurons[0] = wekuaLinear(ctx, 2, 1, 1, 1, acti, WEKUA_DTYPE_FLOAT); 
-	
-	gettimeofday(&start, 0);
+	wnetwork net = wekuaNeuronNetwork(2, WEKUA_DTYPE_DOUBLE);
+	net->neurons[0] = wekuaLinear(ctx, 2, 20, 1, 1, acti, WEKUA_DTYPE_DOUBLE);
+	net->neurons[1] = wekuaLinear(ctx, 20, 1, 1, 1, acti, WEKUA_DTYPE_DOUBLE);
+	wmatrix output;
 
-	wmatrix output = runWekuaNetwork(net, input, &cache);
+	werror *error_dev;
+	error_dev = (werror*) calloc(2, sizeof(werror));
 
-	gettimeofday(&end, 0);
+	woptim optim = wekuaOptimGD(ctx, &alpha, NULL, WEKUA_DTYPE_DOUBLE);
+	int ret;
 
-	werror *error_dev, *error_dev2;
+	for (uint32_t i = 0; i < 20000; i++){
+		gettimeofday(&start, 0);
 
-	error_dev = (werror*) calloc(1, sizeof(werror));
+		output = runWekuaNetwork(net, input, &cache);
+		ret = wekuaMSE(output, output_wanted, &error, NULL, error_dev, 0, NULL);
+		ret = wekuaNetworkBackward(net, error_dev, cache, NULL);
+		ret = wekuaOptimStep(optim, net, error_dev, cache);
 
-	for (uint64_t x=0; x<cache[0]->ndata; x++){
-		wekuaMatrixPrint(((wmatrix*)cache[0]->data)[x], 0, NULL);
+		wekuaFreeNetCache(net, cache);
+		wekuaFreeNetError(net, error_dev);
+		
+		gettimeofday(&end, 0);
+
+		t += (end.tv_sec-start.tv_sec)*1000000 + (end.tv_usec-start.tv_usec);
+		total++;
+
+		printf("%d) Took: %ld us -> %e\n", i, t/total, error);
 	}
 
-	wekuaMSE(output, output_wanted, &error, NULL, error_dev, 0, NULL);
-
-	wekuaNetworkBackward(net, error_dev, cache, NULL);
-
-	// wekuaMatrixPrint(error_dev2[0]->err, 0, NULL);
+	
+	output = runWekuaNetwork(net, input, &cache);
 	wekuaMatrixPrint(output_wanted, 0, NULL);
 	wekuaMatrixPrint(output, 0, NULL);
 
-	printf("Took: %ld us\n", (end.tv_sec-start.tv_sec)*1000000 + (end.tv_usec-start.tv_usec));
+	// printf("Took: %ld us\n", (end.tv_sec-start.tv_sec)*1000000 + (end.tv_usec-start.tv_usec));
 
 	printf("%f\n", error);
 	wekuaFreeMatrix(input, 0, NULL);

@@ -65,7 +65,7 @@ void free_sigmoid(void *a, uint32_t nw, cl_event *be){
 	free(a);
 }
 
-wacti wekuaActiTanh(){
+wacti wekuaActiSigmoid(){
 	wacti acti = (wacti) calloc(1, sizeof(struct _w_acti));
 	if (acti == NULL) return NULL;
 	

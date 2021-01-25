@@ -1,14 +1,5 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
-void complex_mul(wk *a, wk *b, wk c, wk d){
-	wk e, f, g, h;
-	g = a[0]; h = b[0];
-	e = g*c - h*d;
-	f = g*d + h*c;
-	a[0] = e;
-	b[0] = f;
-}
-
 void calc_inv_complex(wk *a, wk *b){
 	wk c, d, aa, bb;
 	aa = a[0]; bb = b[0];

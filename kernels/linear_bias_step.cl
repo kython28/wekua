@@ -17,9 +17,9 @@ __kernel void linear_bias_step(
 	C11 = (wk)(0); C12 = (wk)(0);
 	#endif
 
-	for (unsigned long k = 0; k < col2; k += 2){
+	for (unsigned long k = 0; k < col; k += 2){
 		C11 += ar[arow + k] + ar[arow + k + 1];
-		C12 += ar[(arow << 1) + k] + ar[(arow << 1) + k + 1];
+		C12 += ar[arow + col + k] + ar[arow + col + k + 1];
 	}
 
 	#if width == 1
@@ -35,7 +35,7 @@ __kernel void linear_bias_step(
 		C11 = (wk)(0); C12 = (wk)(0);
 		#endif
 
-		for (unsigned long k = 0; k < col2; k += 2){
+		for (unsigned long k = 0; k < col; k += 2){
 			C11 += ai[arow + k] + ai[arow + k + 1];
 			C12 += ai[(arow << 1) + k] + ai[(arow << 1) + k + 1];
 		}

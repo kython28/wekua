@@ -17,13 +17,16 @@ int step_optim_gd(void *data, uint32_t dl, wmatrix error, wmatrix error_b, wmatr
 	if (ret != CL_SUCCESS) goto wk_step_optim_gd_fail;
 	evn++;
 
-	ret = wekuaBlasScalar(error_b, lr, lri, 0, NULL, &e[2]);
-	if (ret != CL_SUCCESS) goto wk_step_optim_gd_fail;
-	evn++;
+	if (error_b != NULL){
+		ret = wekuaBlasScalar(error_b, lr, lri, 0, NULL, &e[2]);
+		if (ret != CL_SUCCESS) goto wk_step_optim_gd_fail;
+		evn++;
 
-	ret = wekuaMatrixSub(bias, error_b, 1, &e[2], &e[3]);
-	if (ret != CL_SUCCESS) goto wk_step_optim_gd_fail;
-	evn++;
+		ret = wekuaMatrixSub(bias, error_b, 1, &e[2], &e[3]);
+		if (ret != CL_SUCCESS) goto wk_step_optim_gd_fail;
+		evn++;
+	}
+	
 
 	wk_step_optim_gd_fail:
 	clWaitForEvents(evn, e);
@@ -41,7 +44,7 @@ void free_optim_gd(void *opti, uint32_t nw, cl_event *be){
 }
 
 woptim wekuaOptimGD(wekuaContext ctx, void *lr, void *lri, uint8_t dtype){
-	if (lr == NULL && lri == NULL && net == NULL) return NULL;
+	if (lr == NULL && lri == NULL) return NULL;
 
 	woptim opti = (woptim) calloc(1, sizeof(struct _w_optim));
 	uint32_t dl = ctx->dtype_length[dtype];
@@ -55,7 +58,7 @@ woptim wekuaOptimGD(wekuaContext ctx, void *lr, void *lri, uint8_t dtype){
 	
 	memcpy(data, lr, dl);
 	if (lri != NULL){
-		memcpy(((uint8_t*)data)[dl], lri, dl);
+		memcpy(&((uint8_t*)data)[dl], lri, dl);
 	}
 
 	return opti;
@@ -67,32 +70,28 @@ woptim wekuaOptimRMSProp(wekuaContext ctx, void *alpha, void *alphai, void *beta
 woptim wekuaOptimAdaDelta(wekuaContext ctx, void *lr, void *lri, uint8_t dtype); // AdaDelta optimization
 
 int wekuaOptimStep(woptim optim, wnetwork net, werror *error, wcache *cache){
-	if (optim == NULL || net == NULL || error == NULL || wcache == NULL) return CL_INVALID_ARG_VALUE;
+	if (optim == NULL || net == NULL || error == NULL || cache == NULL) return CL_INVALID_ARG_VALUE;
 
 	int ret;
-	wneuron neurons = net->neurons;
+	wneuron *neurons = net->neurons;
 	uint32_t nneur = net->nneur;
 	uint32_t x = 0;
 	void *opti_data = optim->data;
 	int (*func)(void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix);
 
-	func = &optim->step;
+	func = optim->step;
+
+	wneuron neuron_tmp;
+	wcache cache_tmp;
+	werror error_tmp;
 
 	for (; x<nneur; x++){
-		register wneuron neuron_tmp = neurons[x];
-		register wcache cache_tmp = cache[x];
-		register werror error_tmp = error[nneur - x - 1];
+		neuron_tmp = neurons[x];
+		cache_tmp = cache[x];
+		error_tmp = error[nneur - x - 1];
 
 		ret = neuron_tmp->step(neuron_tmp, opti_data, error_tmp, cache_tmp, func);
 		if (ret != CL_SUCCESS) break;
-
-		neuron_tmp->free_cache(cache_tmp);
-		neuron_tmp->free_error(error_tmp);
-	}
-
-	if (ret == CL_SUCCESS){
-		free(error);
-		free(cache);
 	}
 
 	return ret;

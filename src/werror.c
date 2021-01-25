@@ -1,18 +1,5 @@
 #include "wekua.h"
 
-void wekuaErrorFree(werror error, uint32_t nw, cl_event *be){
-	wekuaFreeMatrix(error->err, nw, be);
-
-	wmatrix *er = error->o_err;
-	uint64_t n_error = error->no_err;
-
-	for (uint64_t x=0; x<n_error; x++){
-		wekuaFreeMatrix(er[x], 0, NULL);
-	}
-
-	free(error);
-}
-
 int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be){
 	if (output == NULL || output_wanted == NULL) return CL_INVALID_MEM_OBJECT;
 
@@ -31,12 +18,13 @@ int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, w
 	if (err != NULL){
 		void *two;
 
-		err[0] = (werror) calloc(1, sizeof(struct _w_error));
+		err[0] = (werror) calloc(1, sizeof(struct _w_error)); 
 		err[0]->err = wekuaMatrixCopy(tmp, 1, &e[env-1], &e[env]);
 		if (err[0]->err == NULL){
-			wekuaErrorFree(err[0], 0, NULL);
+			free(err[0]);
 			goto w_error_mse_fail;
 		}
+		env++;
 
 		if (tmp->dtype == WEKUA_DTYPE_FLOAT){
 			float twof = -2.0;
@@ -47,7 +35,8 @@ int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, w
 		}
 		ret = wekuaBlasScalar(err[0]->err, two, NULL, 1, &e[env-1], &e[env]);
 		if (ret != CL_SUCCESS){
-			wekuaErrorFree(err[0], 1, &e[env-1]);
+			wekuaFreeMatrix(err[0]->err, 0, NULL);
+			free(err[0]);
 			goto w_error_mse_fail;
 		}
 		env++;
