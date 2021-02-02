@@ -87,6 +87,29 @@ int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err
 	return ret;
 }
 
+void wekuaFreeNeuron(wneuron neur, uint32_t nw, cl_event *be){
+	if (neur == NULL) return;
+	clWaitForEvents(nw, be);
+
+	uint64_t layers = neur->layer;
+	wmatrix *w, *b;
+	w = neur->weight; b = neur->bias;
+	for (uint64_t i = 0; i < layers; i++){
+		wekuaFreeMatrix(w[i], 0, NULL);
+		if (b != NULL) wekuaFreeMatrix(b[i], 0, NULL);
+	}
+	free(neur);
+}
+
+void wekuaFreeNetwork(wnetwork net, uint32_t nw, cl_event *be){
+	if (net == NULL) return;
+	clWaitForEvents(nw, be);
+	uint32_t nneur = net->nneur;
+	wneuron *neurons = net->neurons;
+	for (uint32_t i = 0; i < nneur; i++) wekuaFreeNeuron(neurons[i], 0, NULL);
+	free(net);
+}
+
 void wekuaFreeNetCache(wnetwork net, wcache *cache){
 	if (net == NULL || cache == NULL) return;
 

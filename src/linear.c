@@ -6,7 +6,7 @@ void *get_one(uint8_t dtype, uint32_t dl);
 wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
 int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e);
 int backward_linear(void *n, werror error, wcache cache, werror *err);
-int step_linear(void *neur, void *opti_data, werror error, wcache cache, int (*func)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix));
+int step_linear(void *neur, void *opti_data, void *other, werror error, wcache cache, int (*func)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix));
 wmatrix get_dev_bias(wekuaContext ctx, wmatrix error, uint8_t dtype);
 
 void free_error_linear(werror err);
@@ -335,7 +335,7 @@ wmatrix get_dev_bias(wekuaContext ctx, wmatrix error, uint8_t dtype){
 	return dev;
 }
 
-int step_linear(void *neur, void *opti_data, werror error, wcache cache, int (*func)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix)){
+int step_linear(void *neur, void *opti_data, void *other, werror error, wcache cache, int (*func)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix)){
 	wneuron neuron = neur;
 	uint64_t layers = neuron->layer, x = 0;
 	uint8_t dtype = neuron->dtype;
@@ -344,26 +344,24 @@ int step_linear(void *neur, void *opti_data, werror error, wcache cache, int (*f
 	int ret;
 	
 	wekuaContext ctx;
-	void **extra_data = neuron->extra_data;
 	wmatrix *weigth = neuron->weight;
 	wmatrix *bias = neuron->bias;
 	wmatrix *cache_d = cache->data;
 	wmatrix *errors = error->o_err;
+	wmatrix **grad = other;
 
 	wmatrix dev, dev_bias = NULL;
 	ctx = weigth[0]->ctx;
 	dl = ctx->dtype_length[dtype];
 
 	void *one = get_one(dtype, dl);
-
-	wmatrix w, e, a;
-	void *optim_data;
+	wmatrix w, e, a, *g = NULL;
 	for (; x<layers; x++){
 		w = weigth[x];
 		e = errors[x];
 		a = cache_d[x];
 
-		if (extra_data != NULL) optim_data = extra_data[x];
+		if (grad != NULL) g = grad[x];
 
 		e = wekuaMatrixTrans(errors[x], 0, NULL, &event);
 
@@ -378,10 +376,10 @@ int step_linear(void *neur, void *opti_data, werror error, wcache cache, int (*f
 				break;
 			}
 
-			ret = func(opti_data, optim_data, dl, dev, dev_bias, w, bias[x]);
+			ret = func(opti_data, g, dl, dev, dev_bias, w, bias[x]);
 			wekuaFreeMatrix(dev_bias, 0, NULL);
 		}else{
-			ret = func(opti_data, optim_data, dl, dev, NULL, w, NULL);
+			ret = func(opti_data, g, dl, dev, NULL, w, NULL);
 		}
 
 		wekuaFreeMatrix(dev, 0, NULL);

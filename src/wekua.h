@@ -94,6 +94,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_GEMM 30
 #define WEKUA_KERNEL_SUM 31
 #define WEKUA_KERNEL_LINEAR_BIAS_STEP 32
+#define WEKUA_KERNEL_SQRT 33
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
 
@@ -185,11 +186,6 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 	double start_r, double start_i, double end_r, double end_i,
 	double delta, uint8_t trans
 );
-wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be); // Matrix inverse
-wmatrix wekuaMatrixSolve(wmatrix a, wmatrix b, uint32_t nw, cl_event *be);
-wmatrix wekuaMatrixPinv(wmatrix a, uint32_t nw, cl_event *be); // Matrix Pseudo-inverse
-
-uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be); // Matrix range
 
 int wekuaMatrixAdd(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix addition
 int wekuaMatrixSub(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Substration
@@ -199,6 +195,13 @@ int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw
 int wekuaMatrixLn(wmatrix a, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = ln(a_{i})
 int wekuaMatrixLog(wmatrix a, wmatrix b, void *base_r, void *base_i);
 int wekuaMatrixTrace(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Matrix Trace
+int wekuaMatrixSqrt(wmatrix a, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = sqrt(a_{i})
+
+// Linear functions
+wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be); // Matrix inverse
+wmatrix wekuaMatrixSolve(wmatrix a, wmatrix b, uint32_t nw, cl_event *be);
+wmatrix wekuaMatrixPinv(wmatrix a, uint32_t nw, cl_event *be); // Matrix Pseudo-inverse
+uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be); // Matrix range
 int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Matrix determinant
 
 // Trigonometric functions
@@ -264,27 +267,24 @@ typedef struct _w_neuron {
 	uint8_t dtype; // Weight data type
 	wacti acti; // Activation function for the neuron
 
-	// Extra Data
-	void **extra_data; // Info for woptim
-
 	// To run the neuron
 	wmatrix (*run)(void *, wmatrix, wcache *, uint32_t, cl_event *);
 	int (*backward)(void *, werror error, wcache cache, werror *err);
-	int (*step)(void *, void *, werror error, wcache cache, int (*)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix));
+	int (*step)(void *, void *, void *, werror error, wcache cache, int (*)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix));
 
 	void (*free_error)(werror);
 	void (*free_cache)(wcache);
 } *wneuron;
 
 wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype);
-wneuron wekuaConv1d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size, uint64_t stride, uint8_t bias);
-wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride, uint8_t bias);
+// wneuron wekuaConv1d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size, uint64_t stride, uint8_t bias);
+// wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride, uint8_t bias);
 
 wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
 
 int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err);
 
-void wekuaNeuronFree(wneuron neur);
+void wekuaFreeNeuron(wneuron neur, uint32_t nw, cl_event *be);
 
 typedef struct _w_net {
 	wneuron *neurons;
@@ -298,11 +298,14 @@ int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err
 
 void wekuaFreeNetCache(wnetwork net, wcache *cache);
 void wekuaFreeNetError(wnetwork net, werror *error);
+void wekuaFreeNetwork(wnetwork net, uint32_t nw, cl_event *be);
 
 typedef struct _w_optim {
 	wekuaContext ctx;
 	wnetwork net;
-	void *data; // Data for the Optimizer
+	void *params; // Data for the Optimizer
+	void *others;
+	
 	uint8_t dtype;
 
 	// To update the weight
@@ -311,13 +314,16 @@ typedef struct _w_optim {
 	void (*free_func)(void *optim, uint32_t nw, cl_event *be);
 } *woptim;
 
-woptim wekuaOptimGD(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Gradient descent optimization
-// woptim wekuaOptimGDM(wnetwork net, void *alpha, void *alphai, void *beta, void *betai, uint8_t dtype); // Gradient descent momentum optimization
-// woptim wekuaOptimAdaGrad(wnetwork net, void *lr, void *lri, uint8_t dtype); // Gradient adaptive optimization
+woptim wekuaOptimGD(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Gradient descent
+woptim wekuaOptimGDM(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Gradient Descent momentum 
+woptim wekuaOptimNAG(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Nesterov Accelerated Gradient
+woptim wekuaOptimAdaGrad(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adaptive gradient optimizatione
 // woptim wekuaOptimRMSProp(wnetwork net, void *alpha, void *alphai, void *beta, void *betai, uint8_t dtype); // RMSProp optimization
 // woptim wekuaOptimAdaDelta(wnetwork net, void *lr, void *lri, uint8_t dtype); // AdaDelta optimization
 
 int wekuaOptimStep(woptim optim, werror *error, wcache *cache);
+
+void wekuaFreeOptim(woptim optim, uint32_t nw, cl_event *be);
 
 #ifdef __cplusplus
 }

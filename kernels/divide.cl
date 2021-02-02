@@ -7,10 +7,22 @@ __kernel void divide(__global wks *a, __global wks *b,
 
 	wks aa, bb, cc, dd;
 	if (com){
-		aa = c[i]; dd = d[i];
+		aa = c[i]; bb = d[i];
 
-		cc = aa/(aa*aa + bb*bb);
-		dd = -1.0*bb/(aa*aa + bb*bb);
+		cc = aa*aa + bb*bb;
+
+		#if dtype >= 8
+		if (cc == 0){
+			#if dtype == 8
+			cc += FLT_EPSILON;
+			#else
+			cc += DBL_EPSILON;
+			#endif
+		}
+		#endif
+
+		dd = -1.0*bb/cc;
+		cc = aa/cc;
 
 		aa = a[i]; bb = b[i];
 
