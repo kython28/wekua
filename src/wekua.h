@@ -29,7 +29,7 @@ typedef struct {
 	cl_device_type type; // Device type
 	uint8_t *name; // Device name
 	// Device Info
-	cl_device_partition_property propie[3];
+	cl_device_local_mem_type local_mem_type;
 	uint32_t compute_units, clock_frequency, max_work_item_dimensions, vector_width[10];
 	uint64_t max_work_group_size, nlen, max_global_size;
 } wDevice;
@@ -50,6 +50,8 @@ typedef struct _wk_ctx {
 	cl_kernel *kernels; // OpenCL kernels
 	
 	cl_device_id dev; // OpenCL device
+	cl_device_local_mem_type local_mem_type;
+
 	// Info
 	const uint32_t *dtype_length;
 	uint32_t vector_width[10], compute_units;
@@ -95,6 +97,9 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_SUM 31
 #define WEKUA_KERNEL_LINEAR_BIAS_STEP 32
 #define WEKUA_KERNEL_SQRT 33
+#define WEKUA_KERNEL_ADAGRAD 34
+#define WEKUA_KERNEL_GDM 35
+#define WEKUA_KERNEL_RMSPROP 36
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
 
@@ -318,6 +323,7 @@ woptim wekuaOptimGD(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t
 woptim wekuaOptimGDM(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Gradient Descent momentum 
 woptim wekuaOptimNAG(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Nesterov Accelerated Gradient
 woptim wekuaOptimAdaGrad(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adaptive gradient optimizatione
+woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // 
 // woptim wekuaOptimRMSProp(wnetwork net, void *alpha, void *alphai, void *beta, void *betai, uint8_t dtype); // RMSProp optimization
 // woptim wekuaOptimAdaDelta(wnetwork net, void *lr, void *lri, uint8_t dtype); // AdaDelta optimization
 

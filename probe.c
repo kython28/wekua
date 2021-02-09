@@ -8,19 +8,19 @@ int main(){
 	wekuaContext ctx = createSomeWekuaContext(CL_DEVICE_TYPE_CPU);
 	if (ctx == NULL) return 1;
 
-	double one = 1.0;
+	float one = 1.0;
 
 	struct timeval start, end;
 	cl_event e;
 
-	// double inputs[8] = {
+	// float inputs[8] = {
 	// 	1.0, 1.0,
 	// 	1.0, 0.0,
 	// 	0.0, 1.0,
 	// 	0.0, 0.0
 	// };
 
-	// double outputs[4] = {
+	// float outputs[4] = {
 	// 	0.0,
 	// 	1.0,
 	// 	1.0,
@@ -28,13 +28,16 @@ int main(){
 	// };
 
 	double error = 1.0;
-	double alpha = 0.1, beta = 0.099;
-	uint32_t total = 0, t = 0;
+	double alpha = 0.0001, beta = 0.9999;
+	uint64_t t=0, total = 0;
 
 	wmatrix input = wekuaMatrixArange(ctx, 0.0, 0.0, CL_M_PI, 0.0, 0.001, 1);
 	wmatrix output_wanted = wekuaMatrixArange(ctx, 0.0, 0.0, CL_M_PI, 0.0, 0.001, 1);
 	wekuaMatrixSin(output_wanted, 0, NULL, &e);
 	clWaitForEvents(1, &e);
+
+	// wmatrix input = wekuaMatrixFromBuffer(ctx, 4, 2, inputs, NULL, WEKUA_DTYPE_DOUBLE);
+	// wmatrix output_wanted = wekuaMatrixFromBuffer(ctx, 4, 1, outputs, NULL, WEKUA_DTYPE_DOUBLE);
 
 	wacti acti = wekuaActiTanh();
 	wacti lin_acti = wekuaActiLinear();
@@ -49,15 +52,16 @@ int main(){
 	werror *error_dev;
 	error_dev = (werror*) calloc(2, sizeof(werror));
 
-	woptim optim = wekuaOptimAdaGrad(ctx, net, &alpha, NULL, WEKUA_DTYPE_DOUBLE);
+	woptim optim = wekuaOptimRMSProp(ctx, net, &alpha, NULL, &beta, NULL, WEKUA_DTYPE_DOUBLE);
 	int ret;
 
-	for (uint32_t i = 0; i < 10000; i++){
+	uint64_t i=0;
+
+	while (error >= 1e-9){
 		// for (uint32_t x = 0; x < 2; x++){
 		gettimeofday(&start, 0);
 
 		output = runWekuaNetwork(net, input, &cache);
-		
 
 		ret = wekuaMSE(output, output_wanted, &error, NULL, error_dev, 0, NULL);
 		ret = wekuaNetworkBackward(net, error_dev, cache, NULL);
@@ -68,10 +72,14 @@ int main(){
 
 		gettimeofday(&end, 0);
 
-		t = (end.tv_sec-start.tv_sec)*1000000 + (end.tv_usec-start.tv_usec);
-		total++;
-		//}
-		printf("%d) Took: %ld us -> %.20e\n", i+1, t, error);
+		if (i > 0){
+			t += (end.tv_sec-start.tv_sec)*1000000 + (end.tv_usec-start.tv_usec);
+			total++;
+			//}
+			printf("%d) Took: %ld us -> %e\n", i, t/total, error);
+		}
+
+		i++;
 	}
 
 	

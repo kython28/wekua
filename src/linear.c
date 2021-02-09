@@ -4,7 +4,7 @@ void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max);
 void *get_one(uint8_t dtype, uint32_t dl);
 
 wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
-int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e);
+int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, cl_device_local_mem_type local_mem_type, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e);
 int backward_linear(void *n, werror error, wcache cache, werror *err);
 int step_linear(void *neur, void *opti_data, void *other, werror error, wcache cache, int (*func)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix));
 wmatrix get_dev_bias(wekuaContext ctx, wmatrix error, uint8_t dtype);
@@ -125,6 +125,7 @@ wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event 
 	uint8_t dtype = linear->dtype;
 	uint64_t layer = linear->layer;
 	uint32_t dl = ctx->dtype_length[dtype];
+	cl_device_local_mem_type local_mem_type = ctx->local_mem_type;
 	void *one;
 
 	cl_event e;
@@ -161,7 +162,7 @@ wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event 
 		if (ret != CL_SUCCESS) goto wekua_rli_fail;
 
 		if (bias != NULL){
-			ret = run_linear_bias(kernel, cmd, output, bias[x], dl, &e);
+			ret = run_linear_bias(kernel, cmd, local_mem_type, output, bias[x], dl, &e);
 			if (ret != CL_SUCCESS) goto wekua_rli_fail;
 
 			clWaitForEvents(1, &e);
@@ -201,14 +202,14 @@ wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event 
 	return output;
 }
 
-int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e){
+int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, cl_device_local_mem_type local_mem_type, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e){
 	if (output->com){
 		if (createComplexMatrix(bias)){
 			return 1;
 		}
 	}
 
-	uint64_t local_si = sizeof(cl_mem)*dl*output->work_items[1];
+	uint64_t local_si;
 	
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &bias->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &bias->imag);
@@ -218,8 +219,13 @@ int run_linear_bias(cl_kernel kernel, cl_command_queue cmd, wmatrix output, wmat
 	clSetKernelArg(kernel, 4, 8, &output->vl_shape[1]);
 	clSetKernelArg(kernel, 5, 1, &output->com);
 
-	clSetKernelArg(kernel, 6, local_si, NULL);
-	clSetKernelArg(kernel, 7, local_si, NULL);
+
+	if (local_mem_type == CL_LOCAL){
+		local_si = sizeof(cl_mem)*dl*output->work_items[1];
+
+		clSetKernelArg(kernel, 6, local_si, NULL);
+		clSetKernelArg(kernel, 7, local_si, NULL);
+	}
 
 	return clEnqueueNDRangeKernel(cmd, kernel, 2, NULL, output->vl_shape, output->work_items, 0, NULL, e);
 }

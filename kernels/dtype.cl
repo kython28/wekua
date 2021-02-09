@@ -265,3 +265,46 @@ void complex_mul(wk *a, wk *b, wk c, wk d){
 	a[0] = k1 - k3;
 	b[0] = k1 + k2;
 }
+
+void complex_mul_scal(wk *a, wk *b, wks c, wks d){
+	wk k1, k2, k3;
+
+	k1 = c*(a[0] + b[0]);
+	k2 = a[0]*(d - c);
+	k3 = b[0]*(c + d);
+
+	a[0] = k1 - k3;
+	b[0] = k1 + k2;
+}
+
+void calc_inv_complex(wk *a, wk *b){
+	wk c, d, aa, bb;
+	aa = a[0]; bb = b[0];
+
+	c = aa;
+	d = -bb;
+
+	aa = (aa*aa + bb*bb);
+
+	c /= aa;
+	d /= aa;
+	
+	a[0] = c;
+	b[0] = d;
+}
+
+void calc_inv_complex_scal(wks *a, wks *b){
+	wks c, d, aa, bb;
+	aa = a[0]; bb = b[0];
+
+	c = aa;
+	d = -bb;
+
+	aa = (aa*aa + bb*bb);
+
+	c /= aa;
+	d /= aa;
+	
+	a[0] = c;
+	b[0] = d;
+}

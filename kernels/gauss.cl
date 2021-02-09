@@ -1,21 +1,5 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
-void calc_inv_complex(wks *a, wks *b){
-	wks c, d, aa, bb;
-	aa = a[0]; bb = b[0];
-
-	c = aa;
-	d = -1.0*bb;
-
-	aa = (aa*aa + bb*bb);
-
-	c /= aa;
-	d /= aa;
-	
-	a[0] = c;
-	b[0] = d;
-}
-
 void gauss_real(__global wks *a, __global wks *b, __global wks *c, __global wks *d, unsigned long k, unsigned char otherm, unsigned long col){
 	wks a_c, b_c;
 	a_c = b[k]/a[k];
@@ -26,8 +10,6 @@ void gauss_real(__global wks *a, __global wks *b, __global wks *c, __global wks 
 			c[x] = c[x]*a_c - d[x];
 		}
 	}
-	
-
 }
 
 void gauss_complex(__global wks *ar, __global wks *ai, __global wks *br, __global wks *bi, __global wks *cr,
@@ -36,7 +18,7 @@ void gauss_complex(__global wks *ar, __global wks *ai, __global wks *br, __globa
 
 	ee = br[k]; ff = bi[k];
 	cc = ar[k]; dd = ai[k];
-	calc_inv_complex(&cc, &dd);
+	calc_inv_complex_scal(&cc, &dd);
 
 	aa = ee*cc - ff*dd;
 	bb = ee*dd + ff*cc;

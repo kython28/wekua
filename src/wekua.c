@@ -6,7 +6,7 @@
 #include <fcntl.h>
 // #include <stdarg.h>
 
-#define KERNEL_NUM 34
+#define KERNEL_NUM 37
 
 const char kernels[KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/rand.cl",
@@ -42,7 +42,10 @@ const char kernels[KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/gemm.cl",
 	"/usr/lib/wekua_kernels/sum.cl",
 	"/usr/lib/wekua_kernels/linear_bias_step.cl",
-	"/usr/lib/wekua_kernels/sqrt.cl"
+	"/usr/lib/wekua_kernels/sqrt.cl",
+	"/usr/lib/wekua_kernels/adagrad.cl",
+	"/usr/lib/wekua_kernels/gdm.cl",
+	"/usr/lib/wekua_kernels/rmsprop.cl"
 };
 
 const char ker_name[KERNEL_NUM][20] = {
@@ -54,7 +57,8 @@ const char ker_name[KERNEL_NUM][20] = {
 	"euler_iden", "calc_dev", "aberth", "det",
 	"gauss", "gauss2", "bias", "sigmoid",
 	"gemm", "sum_kernel", "linear_bias_step",
-	"sqrt_kernel"
+	"sqrt_kernel", "adagrad", "gdm",
+	"rmsprop"
 };
 
 const uint32_t dtype_length[10] = {
@@ -134,8 +138,7 @@ void wekuaDeviceFromclDevice(cl_device_id dev, wDevice *wdev){
 	clGetDeviceInfo(dev, CL_DEVICE_MAX_WORK_GROUP_SIZE, 8, &wdev->max_work_group_size, NULL);
 
 	clGetDeviceInfo(dev, CL_DEVICE_GLOBAL_MEM_SIZE, 8, &wdev->max_global_size, NULL);
-
-	clGetDeviceInfo(dev, CL_DEVICE_PARTITION_PROPERTIES, 3*sizeof(cl_device_partition_property), wdev->propie, NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_LOCAL_MEM_TYPE, sizeof(cl_device_local_mem_type), &wdev->local_mem_type, NULL);
 
 	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, 4, wdev->vector_width, NULL);
 	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, 4, &wdev->vector_width[1], NULL);
@@ -212,6 +215,7 @@ wekuaContext createWekuaContext(wDevice *dev){
 	context->dtype_length = dtype_length;
 	context->max_work_group_size = dev->max_work_group_size;
 	context->compute_units = dev->compute_units;
+	context->local_mem_type = dev->local_mem_type;
 
 	// context->vector_width[9] = 1;
 
@@ -257,9 +261,9 @@ uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype){
 		return 0;
 	}
 
-	char args[30], *source, *error;
+	char args[50], *source, *error;
 
-	sprintf(args, "-Dwidth=%d -Ddtype=%d", ctx->vector_width[dtype], dtype);
+	sprintf(args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type);
 
 	uint64_t size;
 	int ret;
