@@ -100,6 +100,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_ADAGRAD 34
 #define WEKUA_KERNEL_GDM 35
 #define WEKUA_KERNEL_RMSPROP 36
+#define WEKUA_KERNEL_ADADELTA 37
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
 
@@ -166,12 +167,6 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 
 void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
 void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
-
-int wekuaMatrixCopyRect(
-	wmatrix src, wmatrix dst,
-	uint64_t *src_origin, uint64_t *dst_origin,
-	uint64_t *region, uint32_t nw, cl_event *be
-);
 
 // Some BLAS functions
 int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // y = (alpha+beta*j)*x + y
@@ -323,9 +318,9 @@ woptim wekuaOptimGD(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t
 woptim wekuaOptimGDM(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Gradient Descent momentum 
 woptim wekuaOptimNAG(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Nesterov Accelerated Gradient
 woptim wekuaOptimAdaGrad(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adaptive gradient optimizatione
-woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // 
-// woptim wekuaOptimRMSProp(wnetwork net, void *alpha, void *alphai, void *beta, void *betai, uint8_t dtype); // RMSProp optimization
-// woptim wekuaOptimAdaDelta(wnetwork net, void *lr, void *lri, uint8_t dtype); // AdaDelta optimization
+woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Root Mean Square Propagation
+woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Adadelta
+// woptim wekuaOptimAdam(wekuaContext ctx,  wnetwork net, void *lr, void *lri, void *beta1, void *beta1i, void *beta2, void *beta2i, uint8_t dtype);
 
 int wekuaOptimStep(woptim optim, werror *error, wcache *cache);
 

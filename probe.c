@@ -52,12 +52,12 @@ int main(){
 	werror *error_dev;
 	error_dev = (werror*) calloc(2, sizeof(werror));
 
-	woptim optim = wekuaOptimRMSProp(ctx, net, &alpha, NULL, &beta, NULL, WEKUA_DTYPE_DOUBLE);
+	woptim optim = wekuaOptimAdadelta(ctx, net, &alpha, NULL, &beta, NULL, WEKUA_DTYPE_DOUBLE);
 	int ret;
 
 	uint64_t i=0;
 
-	while (error >= 1e-9){
+	while (error >= 1e-7){
 		// for (uint32_t x = 0; x < 2; x++){
 		gettimeofday(&start, 0);
 
@@ -76,7 +76,7 @@ int main(){
 			t += (end.tv_sec-start.tv_sec)*1000000 + (end.tv_usec-start.tv_usec);
 			total++;
 			//}
-			printf("%d) Took: %ld us -> %e\n", i, t/total, error);
+			printf("%lu) Took: %lu us -> %e\n", i, t/total, error);
 		}
 
 		i++;

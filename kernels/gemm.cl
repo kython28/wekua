@@ -197,17 +197,16 @@ __kernel void gemm( // Winograd
 			C21 += p1 - m2;
 			C22 += p1 + m4;
 		}
-
-		#if width == 1
-		cr[row_c] = ralpha*C11 + rbeta*cr[row_c];
-		cr[row_c + 1] = ralpha*C12 + rbeta*cr[row_c + 1];
-		cr[row_c1] = ralpha*C21 + rbeta*cr[row_c1];
-		cr[row_c1 + 1] = ralpha*C22 + rbeta*cr[row_c1 + 1];
-		#else
-		cr[row_c] = ralpha*sum(C11) + rbeta*cr[row_c];
-		cr[row_c + 1] = ralpha*sum(C12) + rbeta*cr[row_c + 1];
-		cr[row_c1] = ralpha*sum(C21) + rbeta*cr[row_c1];
-		cr[row_c1 + 1] = ralpha*sum(C22) + rbeta*cr[row_c1 + 1];
-		#endif
 	}
+	#if width == 1
+	cr[row_c] = ralpha*C11 + rbeta*cr[row_c];
+	cr[row_c + 1] = ralpha*C12 + rbeta*cr[row_c + 1];
+	cr[row_c1] = ralpha*C21 + rbeta*cr[row_c1];
+	cr[row_c1 + 1] = ralpha*C22 + rbeta*cr[row_c1 + 1];
+	#else
+	cr[row_c] = ralpha*sum(C11) + rbeta*cr[row_c];
+	cr[row_c + 1] = ralpha*sum(C12) + rbeta*cr[row_c + 1];
+	cr[row_c1] = ralpha*sum(C21) + rbeta*cr[row_c1];
+	cr[row_c1 + 1] = ralpha*sum(C22) + rbeta*cr[row_c1 + 1];
+	#endif
 }

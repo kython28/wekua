@@ -1,5 +1,9 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
+// *************************************************************************
+// This is not finished yet, come back soon
+// *************************************************************************
+
 void gauss_real(__global wks *a, __global wks *b, __global wks *c, __global wks *d, unsigned long k, unsigned char otherm, unsigned long col){
 	wks a_c, b_c;
 	a_c = b[k]/a[k];

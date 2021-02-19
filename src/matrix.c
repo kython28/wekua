@@ -661,79 +661,6 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 	return a;
 }
 
-
-int wekuaMatrixCopyRect(
-	wmatrix src, wmatrix dst,
-	uint64_t *src_origin, uint64_t *dst_origin,
-	uint64_t *region, uint32_t nw, cl_event *be
-){
-	if (src == NULL || dst == NULL || src_origin == NULL || dst_origin == NULL || region == NULL) return CL_INVALID_MEM_OBJECT;
-	else if (src->dtype != dst->dtype) return CL_INVALID_MEM_OBJECT;
-
-	int ret = CL_SUCCESS;
-	cl_command_queue cmd = dst->ctx->command_queue;
-	cl_event e[2];
-	uint8_t com = src->com;
-	uint32_t dl = dst->ctx->dtype_length[dst->dtype];
-	uint64_t ne = 0, col, col2, row, row2;
-
-	col = src->col*dl;
-	col2 = dst->col*dl;
-	row = src->row*col;
-	row2 = dst->row*col2;
-
-	src_origin[0] *= dl;
-	dst_origin[0] *= dl;
-	region[0] *= dl;
-
-	if (com){
-		if (createComplexMatrix(dst)){
-			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
-		}
-	}
-
-	if (src->ctx->ctx == dst->ctx->ctx){
-		ret = clEnqueueCopyBufferRect(
-			cmd, src->real, dst->real,
-			src_origin, dst_origin, region,
-			col, row, col2, row2, nw, be, e
-		);
-		if (ret != CL_SUCCESS) return ret;
-		ne++;
-
-		if (com){
-			ret = clEnqueueCopyBufferRect(
-				cmd, src->imag, dst->imag,
-				src_origin, dst_origin, region,
-				col, row, col2, row2, 0, NULL, &e[1]
-			);
-			if (ret == CL_SUCCESS) ne++;
-		}
-	}else{
-		ret = clEnqueueWriteBufferRect(
-			cmd, dst->real, CL_TRUE, dst_origin, src_origin,
-			region, col, row, col2, row2,
-			src->raw_real, nw, be, e
-		);
-		if (ret != CL_SUCCESS) return ret;
-		ne++;
-
-		if (com){
-			ret = clEnqueueWriteBufferRect(
-				cmd, dst->imag, CL_TRUE, dst_origin, src_origin,
-				region, col, row, col2, row2,
-				src->raw_imag, 0, NULL, &e[1]
-			);
-			if (ret == CL_SUCCESS) ne++;
-		}
-	}
-
-	clWaitForEvents(ne, e);
-	for (uint8_t x=0; x<ne; x++) clReleaseEvent(e[x]);
-
-	return ret;
-}
-
 wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype){
 	if (ctx == NULL || col == 0 || dtype > 9){
 		return NULL;
@@ -1086,8 +1013,6 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), b_imag);
 	clSetKernelArg(kernel, 4, 8, &rcol);
 	clSetKernelArg(kernel, 5, 1, &com);
-	clSetKernelArg(kernel, 6, sizeof(cl_mem)*dl, NULL);
-	clSetKernelArg(kernel, 7, sizeof(cl_mem)*dl, NULL);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, shape, wi, evn, e, &e[evn+1]);
 	if (ret != CL_SUCCESS) goto wekua_inv_fail;

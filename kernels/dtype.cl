@@ -277,6 +277,17 @@ void complex_mul_scal(wk *a, wk *b, wks c, wks d){
 	b[0] = k1 + k2;
 }
 
+void complex_mul_scal2(wk *a, wk *b, wks c, wks d){
+	wk k1, k2, k3;
+
+	k1 = c*(a[0] + b[0]);
+	k2 = a[0]*(d - c);
+	k3 = b[0]*(c + d);
+
+	a[0] = k1 - k3;
+	b[0] = k1 + k2;
+}
+
 void calc_inv_complex(wk *a, wk *b){
 	wk c, d, aa, bb;
 	aa = a[0]; bb = b[0];
