@@ -1478,10 +1478,13 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 	uint8_t dtype = a->dtype;
 	int ret = CL_SUCCESS;
 	uint32_t evn;
-	uint64_t col = a->shape[1];
+	uint64_t col = a->shape[1], rcol = a->vl_shape[1], *shape, *wi;
 	void *one;
 	cl_event *e = NULL, *befo = NULL;
 	cl_kernel kernel;
+
+	shape = a->vl_shape;
+	wi = &a->work_items[3];
 
 	wmatrix b = NULL, c = NULL;
 
@@ -1508,22 +1511,20 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 	}
 
 	befo = e;
-	for (evn=0; evn<col; evn++){
+	for (evn=0; evn<col;){
 		clSetKernelArg(kernel, 0, sizeof(cl_mem), &b->real);
 		clSetKernelArg(kernel, 1, sizeof(cl_mem), &b->imag);
 		clSetKernelArg(kernel, 2, sizeof(cl_mem), &c->real);
 		clSetKernelArg(kernel, 3, sizeof(cl_mem), &c->imag);
 		clSetKernelArg(kernel, 4, 8, &evn);
-		clSetKernelArg(kernel, 5, 8, &col);
-		clSetKernelArg(kernel, 6, 8, &b->col);
-		clSetKernelArg(kernel, 7, 1, &b->com);
+		clSetKernelArg(kernel, 5, 8, &rcol);
+		clSetKernelArg(kernel, 6, 1, &b->com);
 
-		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, b->shape, &b->work_items[6], 1, befo, &e[evn+1]);
+		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, shape, wi, 1, befo, &e[evn+1]);
 		if (ret != CL_SUCCESS) goto wekua_det_fail;
 		befo = &e[evn+1];
+		evn++;
 	}
-
-	evn++;
 
 	ret = wekuaMatrixMul(c, real, imag, evn, e);
 	if (ret == CL_SUCCESS){
@@ -1531,6 +1532,8 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 		free(e);
 		e = NULL;
 	}
+
+	printf("%d\n", ret);
 
 	wekua_det_fail:
 	if (one != NULL) free(one);

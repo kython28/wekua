@@ -12,6 +12,8 @@ void gauss_real(__global wk *a, __global wk *b, __global wk *c, __global wk *d, 
 	a_c = b[addr][mod]/a[addr][mod];
 	#endif
 
+	if (isnan(a_c) || isinf(a_c)) return;
+
 	for (unsigned long x=0; x<col; x++){
 		a[x] = a[x]*a_c - b[x];
 		if (otherm){
@@ -40,6 +42,8 @@ void gauss_complex(__global wk *ar, __global wk *ai, __global wk *br, __global w
 
 	calc_inv_complex_scal(&cc, &dd);
 	complex_mul_scal2(&aa, &bb, cc, dd);
+
+	if (isnan(aa) || isnan(bb) || isinf(aa) || isinf(bb)) return;
 
 	for (unsigned long x=0; x<col; x++){
 		ee = ar[x]; ff = ai[x];

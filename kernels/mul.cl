@@ -6,7 +6,7 @@ __kernel void mul(__global wks *a, __global wks *b,
 	unsigned long rcol2, unsigned char com
 ){
 	unsigned long i = get_local_id(0);
-	unsigned long j = j*rcol;
+	unsigned long j = i*rcol;
 	i *= rcol2;
 
 	wks aa, bb, cc, dd, ee, ff;
