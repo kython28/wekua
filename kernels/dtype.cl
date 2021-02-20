@@ -256,33 +256,39 @@ wks sum(wk a){
 #endif
 
 void complex_mul(wk *a, wk *b, wk c, wk d){
-	wk k1, k2, k3;
+	wk k1, k2, k3, aa, bb;
 
-	k1 = c*(a[0] + b[0]);
-	k2 = a[0]*(d - c);
-	k3 = b[0]*(c + d);
+	aa = a[0]; bb = b[0];
+
+	k1 = c*(aa + bb);
+	k2 = aa*(d - c);
+	k3 = bb*(c + d);
 
 	a[0] = k1 - k3;
 	b[0] = k1 + k2;
 }
 
 void complex_mul_scal(wk *a, wk *b, wks c, wks d){
-	wk k1, k2, k3;
+	wk k1, k2, k3, aa, bb;
 
-	k1 = c*(a[0] + b[0]);
-	k2 = a[0]*(d - c);
-	k3 = b[0]*(c + d);
+	aa = a[0]; bb = b[0];
+
+	k1 = c*(aa + bb);
+	k2 = aa*(d - c);
+	k3 = bb*(c + d);
 
 	a[0] = k1 - k3;
 	b[0] = k1 + k2;
 }
 
-void complex_mul_scal2(wk *a, wk *b, wks c, wks d){
-	wk k1, k2, k3;
+void complex_mul_scal2(wks *a, wks *b, wks c, wks d){
+	wks k1, k2, k3, aa, bb;
 
-	k1 = c*(a[0] + b[0]);
-	k2 = a[0]*(d - c);
-	k3 = b[0]*(c + d);
+	aa = a[0]; bb = b[0];
+
+	k1 = c*(aa + bb);
+	k2 = aa*(d - c);
+	k3 = bb*(c + d);
 
 	a[0] = k1 - k3;
 	b[0] = k1 + k2;

@@ -1,12 +1,16 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
-// *************************************************************************
-// This is not finished yet, come back soon
-// *************************************************************************
+void gauss_real(__global wk *a, __global wk *b, __global wk *c, __global wk *d, unsigned long k, unsigned char otherm, unsigned long col){
+	wks a_c;
 
-void gauss_real(__global wks *a, __global wks *b, __global wks *c, __global wks *d, unsigned long k, unsigned char otherm, unsigned long col){
-	wks a_c, b_c;
+	#if width == 1
 	a_c = b[k]/a[k];
+	#else
+	unsigned long mod = k%width, addr;
+	addr = (k - mod)/width;
+
+	a_c = b[addr][mod]/a[addr][mod];
+	#endif
 
 	for (unsigned long x=0; x<col; x++){
 		a[x] = a[x]*a_c - b[x];
@@ -16,39 +20,52 @@ void gauss_real(__global wks *a, __global wks *b, __global wks *c, __global wks 
 	}
 }
 
-void gauss_complex(__global wks *ar, __global wks *ai, __global wks *br, __global wks *bi, __global wks *cr,
-	__global wks *ci, __global wks *dr, __global wks *di, unsigned long k, unsigned char otherm, unsigned long col){
-	wks aa, bb, cc, dd, ee, ff;
 
-	ee = br[k]; ff = bi[k];
+void gauss_complex(__global wk *ar, __global wk *ai, __global wk *br, __global wk *bi, __global wk *cr,
+	__global wk *ci, __global wk *dr, __global wk *di, unsigned long k, unsigned char otherm, unsigned long col){
+	wks aa, bb, cc, dd;
+
+	wk ee, ff;
+
+	#if width == 1
+	aa = br[k]; aa = bi[k];
 	cc = ar[k]; dd = ai[k];
-	calc_inv_complex_scal(&cc, &dd);
+	#else
+	unsigned long mod = k%width, addr;
+	addr = (k - mod)/width;
 
-	aa = ee*cc - ff*dd;
-	bb = ee*dd + ff*cc;
+	aa = br[addr][mod]; bb = bi[addr][mod];
+	cc = ar[addr][mod]; dd = ai[addr][mod];
+	#endif
+
+	calc_inv_complex_scal(&cc, &dd);
+	complex_mul_scal2(&aa, &bb, cc, dd);
 
 	for (unsigned long x=0; x<col; x++){
 		ee = ar[x]; ff = ai[x];
 
-		ar[x] = ee*aa - ff*bb - br[x];
-		ai[x] = ee*bb + ff*aa - bi[x];
+		complex_mul_scal(&ee, &ff, aa, bb);
+
+		ar[x] = ee - br[x];
+		ai[x] = ff - bi[x];
 
 		if (otherm){
 			ee = cr[x]; ff = ci[x];
 
-			cr[x] = ee*aa - ff*bb - dr[x];
-			ci[x] = ee*bb + ff*aa - di[x];
+			complex_mul_scal(&ee, &ff, aa, bb);
+
+			cr[x] = ee - dr[x];
+			ci[x] = ff - di[x];
 		}
 	}
 }
 
-
 __kernel void gauss(
-	__global wks *ar, __global wks *ai,
-	__global wks *br, __global wks *bi,
+	__global wk *ar, __global wk *ai,
+	__global wk *br, __global wk *bi,
 	unsigned long k, unsigned long col,
-	unsigned long rcol, unsigned char otherm,
-	unsigned char up, unsigned char com
+	unsigned char otherm, unsigned char up,
+	unsigned char com
 ){
 	unsigned long i = get_global_id(0);
 
@@ -57,23 +74,22 @@ __kernel void gauss(
 			if (com){
 				if (otherm){
 					gauss_complex(
-						&ar[i*rcol], &ai[i*rcol], &ar[k*rcol], &ai[k*rcol],
-						&br[i*rcol], &bi[i*rcol], &br[k*rcol], &bi[k*rcol],
+						&ar[i*col], &ai[i*col], &ar[k*col], &ai[k*col],
+						&br[i*col], &bi[i*col], &br[k*col], &bi[k*col],
 						k, otherm, col
 					);
 				}else{
 					gauss_complex(
-						&ar[i*rcol], &ai[i*rcol], &ar[k*rcol], &ai[k*rcol],
+						&ar[i*col], &ai[i*col], &ar[k*col], &ai[k*col],
 						0, 0, 0, 0,
 						k, otherm, col
 					);
 				}
-				
 			}else{
 				if (otherm){
-					gauss_real(&ar[i*rcol], &ar[k*rcol], &br[i*rcol], &br[k*rcol], k, otherm, col);
+					gauss_real(&ar[i*col], &ar[k*col], &br[i*col], &br[k*col], k, otherm, col);
 				}else{
-					gauss_real(&ar[i*rcol], &ar[k*rcol], 0, 0, k, otherm, col);
+					gauss_real(&ar[i*col], &ar[k*col], 0, 0, k, otherm, col);
 				}
 			}
 		}

@@ -952,7 +952,7 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 	else if (a->dtype < WEKUA_DTYPE_FLOAT) return NULL;
 
 	wekuaContext ctx = a->ctx;
-	uint64_t col = a->shape[1], rcol = a->col, evn, *shape = a->shape, *wi = &a->work_items[4];
+	uint64_t col = a->shape[1], rcol = a->vl_shape[1], evn, *shape = a->vl_shape, *wi = a->work_items;
 	uint8_t dtype = a->dtype, otherm = 1, com = a->com;
 	uint32_t dl = ctx->dtype_length[dtype];
 	int ret;
@@ -987,21 +987,23 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 	i_real = &inv->real;
 	i_imag = &inv->imag;
 
-	for (evn = 0; evn < col; evn++){
+	for (evn = 0; evn < col;){
 		clSetKernelArg(kernel, 0, sizeof(cl_mem), b_real);
 		clSetKernelArg(kernel, 1, sizeof(cl_mem), b_imag);
 		clSetKernelArg(kernel, 2, sizeof(cl_mem), i_real);
 		clSetKernelArg(kernel, 3, sizeof(cl_mem), i_imag);
 		clSetKernelArg(kernel, 4, 8, &evn);
-		clSetKernelArg(kernel, 5, 8, &col);
-		clSetKernelArg(kernel, 6, 8, &rcol);
+		clSetKernelArg(kernel, 5, 8, &rcol);
+		clSetKernelArg(kernel, 6, 1, &otherm);
 		clSetKernelArg(kernel, 7, 1, &otherm);
-		clSetKernelArg(kernel, 8, 1, &otherm);
-		clSetKernelArg(kernel, 9, 1, &com);
+		clSetKernelArg(kernel, 8, 1, &com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, shape, &wi[2], 1, &e[evn], &e[evn+1]);
 		if (ret != CL_SUCCESS) goto wekua_inv_fail;
+		evn++;
 	}
+
+	wekuaMatrixPrint(b, evn, e);
 
 	kernel = ctx->kernels[WEKUA_KERNEL_GAUSS_2*10+dtype];
 

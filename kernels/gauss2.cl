@@ -1,29 +1,44 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
-// *************************************************************************
-// This is not finished yet, come back soon (Only works for arrays with real elements)
-// *************************************************************************
-
 __kernel void gauss2(
-	__global wks *ar, __global wks *ai,
-	__global wks *br, __global wks *bi,
+	__global wk *ar, __global wk *ai,
+	__global wk *br, __global wk *bi,
 	unsigned long col, unsigned char com
 ){
 	unsigned long i = get_global_id(0);
 	unsigned long j = i*col + get_global_id(1);
+
+	#if width == 1
 	i += i*col;
+	#else
+	unsigned long mod = i%width;
+
+	i = i*col + (i - mod)/width;
+	#endif
 
 	if (com){
-		wks aa, bb;
-		aa = br[i]; bb = bi[i];
+		wk aa, bb;
+		wks cc, dd;
+		aa = ar[j]; bb = ai[j];
 
-		calc_inv_complex_scal(&aa, &bb);
-		complex_mul_scal2(&aa, &bb, ar[j], ai[j]);
+		#if width == 1
+		cc = br[i];
+		dd = bi[i];
+		#else
+		cc = br[i][mod];
+		dd = bi[i][mod];
+		#endif
+
+		calc_inv_complex_scal(&cc, &dd);
+		complex_mul_scal(&aa, &bb, cc, dd);
 
 		ar[j] = aa;
 		ai[j] = bb;
-
 	}else{
+		#if width == 1
 		ar[j] /= br[i];
+		#else
+		ar[j] /= br[i][mod];
+		#endif
 	}
 }

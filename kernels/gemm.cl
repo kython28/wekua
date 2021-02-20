@@ -115,7 +115,7 @@ __kernel void gemm( // Winograd
 			complex_mul(&m2, &m2_i, t1 - B21, t1_i - B21_i);
 
 			// M3
-			m3 = t2; m3_i = t2;
+			m3 = t2; m3_i = t2_i;
 			complex_mul(&m3, &m3_i, t0, t0_i);
 
 			// m4
@@ -143,7 +143,7 @@ __kernel void gemm( // Winograd
 
 			C11_i += m0_i + m1_i;
 			C12_i += p0_i + m4_i + m5_i;
-			C21_i += p1_i + m2_i;
+			C21_i += p1_i - m2_i;
 			C22_i += p1_i + m4_i;
 		}
 
