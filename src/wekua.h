@@ -101,6 +101,10 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_GDM 35
 #define WEKUA_KERNEL_RMSPROP 36
 #define WEKUA_KERNEL_ADADELTA 37
+#define WEKUA_KERNEL_RELU 38
+#define WEKUA_KERNEL_RELU_DEV 39
+#define WEKUA_KERNEL_LEAKY_RELU 40
+#define WEKUA_KERNEL_LEAKY_RELU_DEV 41
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
 
@@ -252,8 +256,8 @@ typedef struct _w_acti {
 wacti wekuaActiLinear(); // -> x
 wacti wekuaActiTanh(); // -> wekuaMatrixTanh(x)
 wacti wekuaActiSigmoid(); // -> 1/(1 + e^(-x))
-// wacti wekuaActiReLU(); // -> max(0, x)
-// wacti wekuaActiLeakyReLU(); // -> max(alpha*x, x)
+wacti wekuaActiReLU(); // -> max(0, x)
+wacti wekuaActiLeakyReLU(wekuaContext ctx, void *alpha, void *alphai, uint8_t dtype); // -> max(alpha*x, x) & (0.0 < alpha < 1.0)
 // wacti wekuaActiELU(); // -> alpha*(e^x - 1)
 
 int runWekuaActi(wacti acti, wmatrix input, uint32_t nw, cl_event *be);
