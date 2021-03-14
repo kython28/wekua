@@ -70,8 +70,13 @@ woptim wekuaOptimGD(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t
 	woptim opti = (woptim) calloc(1, sizeof(struct _w_optim));
 	void *data = calloc(2, dl);
 
-	memcpy(data, lr, dl);
-	if (lri != NULL) memcpy(data + dl, lri, dl);
+	if (dtype == WEKUA_DTYPE_FLOAT){
+		((float*)data)[0] = -1.0f*((float*)lr)[0];
+		if (lri != NULL) ((float*)data)[1] = -1.0f*((float*)lri)[0];
+	}else{
+		((double*)data)[0] = -1.0*((double*)lr)[0];
+		if (lri != NULL) ((double*)data)[1] = -1.0*((double*)lri)[0];
+	}
 	
 	opti->net = net;
 	opti->dtype = dtype;
