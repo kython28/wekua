@@ -40,26 +40,27 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 	neur->weight = (wmatrix*) calloc(deep, sizeof(wmatrix));
 	if (neur->weight == NULL) return NULL;
 
-	neur->weight[0] = wekuaMatrixRandn(ctx, output, input, 0);
+	void *start, *end;
+	if (dtype == WEKUA_DTYPE_FLOAT){
+		start = malloc(sizeof(float));
+		end = malloc(sizeof(float));
+
+		((float*)start)[0] = -1.0;
+		((float*)end)[0] = 1.0;
+	}else{
+		start = malloc(sizeof(double));
+		end = malloc(sizeof(double));
+
+		((double*)start)[0] = -1.0;
+		((double*)end)[0] = 1.0;
+	}
+
+	neur->weight[0] = wekuaMatrixRandUniform(ctx, output, input, start, NULL, end, NULL, dtype);
 	if (neur->weight[0] == NULL) goto wekua_linear_fail;
 
 	for (uint64_t x=1; x<deep; x++){
-		neur->weight[x] = wekuaMatrixRandn(ctx, output, output, 0);
+		neur->weight[x] = wekuaMatrixRandUniform(ctx, output, output, start, NULL, end, NULL, dtype);
 		if (neur->weight[x] == NULL) goto wekua_linear_fail;
-	}
-
-	if (dtype != WEKUA_DTYPE_DOUBLE){
-		for (uint64_t x=0; x<deep; x++){
-			tmp = neur->weight[x];
-			neur->weight[x] = wekuaMatrixConvert(tmp, dtype, 0, NULL, &e);
-			if (neur->weight[x] == NULL){
-				neur->weight[x] = tmp;
-				goto wekua_linear_fail;
-			}
-
-			wekuaFreeMatrix(tmp, 1, &e);
-			clReleaseEvent(e);
-		}
 	}
 
 	if (bias){
@@ -67,22 +68,8 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 		if (neur->bias == NULL) goto wekua_linear_fail;
 
 		for (uint64_t x=0; x<deep; x++){
-			neur->bias[x] = wekuaMatrixRandn(ctx, 1, output, 0);
+			neur->bias[x] = wekuaMatrixRandUniform(ctx, 1, output, start, NULL, end, NULL, dtype);
 			if (neur->bias[x] == NULL) goto wekua_linear_fail;
-		}
-
-		if (dtype != WEKUA_DTYPE_DOUBLE){
-			for (uint64_t x=0; x<deep; x++){
-				tmp = neur->bias[x];
-				neur->bias[x] = wekuaMatrixConvert(tmp, dtype, 0, NULL, &e);
-				if (neur->weight[x] == NULL){
-					neur->bias[x] = tmp;
-					goto wekua_linear_fail;
-				}
-
-				wekuaFreeMatrix(tmp, 1, &e);
-				clReleaseEvent(e);
-			}
 		}
 	}
 
@@ -107,6 +94,9 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 	neur = NULL;
 
 	wekua_linear_success:
+	free(start);
+	free(end);
+
 	return neur;
 }
 
@@ -148,12 +138,12 @@ wmatrix run_linear(void *m, wmatrix input, wcache *cache, uint32_t nw, cl_event 
 		data_cache[0] = input;
 	}
 
+	wmatrix output = NULL, in = input;
+
 	one = get_one(dtype, dl);
 	if (one == NULL) goto wekua_rli_fail;
 
 	clWaitForEvents(nw, be);
-
-	wmatrix output = NULL, in = input;
 	for (uint64_t x=0; x<layer; x++){ 
 		output = wekuaAllocMatrix(ctx, in->shape[0], weight[x]->shape[0], dtype);
 		if (output == NULL) goto wekua_rli_fail;
@@ -263,23 +253,20 @@ int backward_linear(void *n, werror error, wcache cache, werror *err){
 		o_err[no_err-1] = tmp;
 
 		dev = wekuaActiGetDev(acti, cache_data[no_err]);
+		if (dev == NULL) break;
+
 		ret = wekuaMatrixDot(tmp, dev, 0, NULL, &e);
-		wekuaFreeMatrix(dev, 0, NULL);
 		if (ret != CL_SUCCESS) break;
+
+		wekuaFreeMatrix(dev, 1, &e);
+		clReleaseEvent(e);
 
 		s = tmp;
 		w = weight[no_err-1];
 
 		tmp = wekuaAllocMatrix(ctx, s->shape[0], w->shape[1], dtype);
-		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 1, &e);
-		if (ret != CL_SUCCESS){
-			clWaitForEvents(1, &e);
-			clReleaseEvent(e);
-			break;
-		}
-
-		clReleaseEvent(e);
-		
+		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 0, NULL);
+		if (ret != CL_SUCCESS) break;
 	}
 	free(one);
 
@@ -364,15 +351,20 @@ int step_linear(void *neur, void *opti_data, void *other, werror error, wcache c
 	wmatrix w, e, a, *g = NULL;
 	for (; x<layers; x++){
 		w = weigth[x];
-		e = errors[x];
 		a = cache_d[x];
 
 		if (grad != NULL) g = grad[x];
 
 		e = wekuaMatrixTrans(errors[x], 0, NULL, &event);
+		if (e == NULL) break;
 
-		dev = wekuaAllocMatrix(ctx, w->shape[0], w->shape[1], dtype);
+		dev = wekuaAllocMatrix(ctx, w->shape[0], w->shape[1], dtype);		
 		ret = wekuaBlasGemm(one, NULL, 0, e, 0, a, NULL, NULL, dev, 1, &event);
+		if (ret != CL_SUCCESS){
+			wekuaFreeMatrix(dev, 0, NULL);
+			wekuaFreeMatrix(e, 0, NULL);
+			break;
+		}
 		clReleaseEvent(event);
 
 		if (bias != NULL){

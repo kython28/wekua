@@ -1,13 +1,6 @@
 #include "wekua.h"
 
-void *get_epsilon(uint8_t dtype, uint32_t dl){
-	void *epsilon = malloc(dl);
-
-	if (dtype == WEKUA_DTYPE_FLOAT) ((float*)epsilon)[0] = CL_FLT_EPSILON;
-	else ((double*)epsilon)[0] = CL_DBL_EPSILON;
-
-	return epsilon;
-}
+void *get_one(uint8_t dtype, uint32_t dl);
 
 void exchange_ptr(wmatrix a, wmatrix b){
 	void *tmp;
@@ -26,6 +19,13 @@ void exchange_ptr(wmatrix a, wmatrix b){
 	tmp = a->raw_imag;
 	a->raw_imag = b->raw_imag;
 	b->raw_imag = tmp;
+}
+
+int mem_set_zero(wmatrix a, cl_mem buf);
+void zero_optim(wmatrix a){
+	if (a == NULL) return;
+	mem_set_zero(a, a->real);
+	if (a->com) mem_set_zero(a, a->imag);
 }
 
 // Gradient Descent
@@ -153,6 +153,27 @@ int step_optim_gdm(void *data, void *grad, uint32_t dl, wmatrix error, wmatrix e
 	return ret;
 }
 
+int zero_optim_gdm(void *opti){
+	woptim optim = opti;
+	wnetwork net = optim->net;
+	wneuron neuron_tmp;
+	wmatrix ***velocity = optim->others;
+	uint32_t nneur = net->nneur;
+	uint64_t layers;
+
+	for (uint32_t i = 0; i < nneur; i++){
+		neuron_tmp = net->neurons[i];
+		layers = neuron_tmp->layer;
+		if (velocity[i] == NULL) break;
+		for (uint64_t j = 0; j < layers; j++){
+			if (velocity[i][j] == NULL) break;
+			zero_optim(velocity[i][j][0]);
+			zero_optim(velocity[i][j][1]);
+		}
+	}
+	return CL_SUCCESS;
+}
+
 void free_optim_gdm(void *opti, uint32_t nw, cl_event *be){
 	if (opti == NULL) return;
 	clWaitForEvents(nw, be);
@@ -229,6 +250,7 @@ woptim wekuaOptimGDM(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *
 	opti->params = data;
 	opti->others = velocity;
 	opti->step = &step_optim_gdm;
+	opti->zero = &zero_optim_gdm;
 	opti->free_func = &free_optim_gdm;
 
 	goto optim_gdm_success;
@@ -357,6 +379,30 @@ int step_optim_nag(void *data, void *grad, uint32_t dl, wmatrix error, wmatrix e
 	return ret;
 }
 
+int zero_optim_nag(void *opti){
+	woptim optim = opti;
+	wnetwork net = optim->net;
+	wneuron neuron_tmp;
+	wmatrix ***velocity = optim->others;
+	uint32_t nneur = net->nneur;
+	uint64_t layers;
+
+	for (uint32_t i = 0; i < nneur; i++){
+		neuron_tmp = net->neurons[i];
+		layers = neuron_tmp->layer;
+		if (velocity[i] == NULL) break;
+		for (uint64_t j = 0; j < layers; j++){
+			if (velocity[i][j] == NULL) break;
+			zero_optim(velocity[i][j][0]);
+			zero_optim(velocity[i][j][1]);
+			zero_optim(velocity[i][j][2]);
+			zero_optim(velocity[i][j][3]);
+		}
+	}
+	return CL_SUCCESS;
+}
+
+
 void free_optim_nag(void *opti, uint32_t nw, cl_event *be){
 	if (opti == NULL) return;
 	clWaitForEvents(nw, be);
@@ -443,6 +489,7 @@ woptim wekuaOptimNAG(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *
 	opti->params = data;
 	opti->others = velocity;
 	opti->step = &step_optim_nag;
+	opti->zero = &zero_optim_nag;
 	opti->free_func = &free_optim_nag;
 
 	goto optim_gdm_success;
@@ -534,6 +581,27 @@ int step_optim_adagrad(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 	return ret;
 }
 
+int zero_optim_adagrad(void *opti){
+	woptim optim = opti;
+	wnetwork net = optim->net;
+	wneuron neuron_tmp;
+	wmatrix ***velocity = optim->others;
+	uint32_t nneur = net->nneur;
+	uint64_t layers;
+
+	for (uint32_t i = 0; i < nneur; i++){
+		neuron_tmp = net->neurons[i];
+		layers = neuron_tmp->layer;
+		if (velocity[i] == NULL) break;
+		for (uint64_t j = 0; j < layers; j++){
+			if (velocity[i][j] == NULL) break;
+			zero_optim(velocity[i][j][0]);
+			zero_optim(velocity[i][j][1]);
+		}
+	}
+	return CL_SUCCESS;
+}
+
 void free_optim_adagrad(void *opti, uint32_t nw, cl_event *be){
 	if (opti == NULL) return;
 	clWaitForEvents(nw, be);
@@ -610,6 +678,7 @@ woptim wekuaOptimAdaGrad(wekuaContext ctx, wnetwork net, void *lr, void *lri, ui
 	opti->params = data;
 	opti->others = velocity;
 	opti->step = &step_optim_adagrad;
+	opti->zero = &zero_optim_adagrad;
 	opti->free_func = &free_optim_adagrad;
 
 	goto optim_gdm_success;
@@ -702,6 +771,27 @@ int step_optim_rmsprop(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 	return ret;
 }
 
+int zero_optim_rmsprop(void *opti){
+	woptim optim = opti;
+	wnetwork net = optim->net;
+	wneuron neuron_tmp;
+	wmatrix ***velocity = optim->others;
+	uint32_t nneur = net->nneur;
+	uint64_t layers;
+
+	for (uint32_t i = 0; i < nneur; i++){
+		neuron_tmp = net->neurons[i];
+		layers = neuron_tmp->layer;
+		if (velocity[i] == NULL) break;
+		for (uint64_t j = 0; j < layers; j++){
+			if (velocity[i][j] == NULL) break;
+			zero_optim(velocity[i][j][0]);
+			zero_optim(velocity[i][j][1]);
+		}
+	}
+	return CL_SUCCESS;
+}
+
 void free_optim_rmsprop(void *opti, uint32_t nw, cl_event *be){
 	if (opti == NULL) return;
 	clWaitForEvents(nw, be);
@@ -781,6 +871,7 @@ woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, vo
 	opti->params = data;
 	opti->others = velocity;
 	opti->step = &step_optim_rmsprop;
+	opti->zero = &zero_optim_rmsprop;
 	opti->free_func = &free_optim_rmsprop;
 
 	goto optim_gdm_success;
@@ -813,8 +904,6 @@ woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, vo
 int step_optim_adadelta(void *data, void *grad, uint32_t dl, wmatrix error, wmatrix error_b, wmatrix weight, wmatrix bias){
 	void *lr = data;
 	void *lri = data + dl;
-	void *betar = data + (dl << 1);
-	void *betai = data + dl*3;
 
 	int ret;
 	wekuaContext ctx = error->ctx;
@@ -840,10 +929,8 @@ int step_optim_adadelta(void *data, void *grad, uint32_t dl, wmatrix error, wmat
 	clSetKernelArg(kernel, 7, sizeof(cl_mem), &weight->imag);
 	clSetKernelArg(kernel, 8, dl, lr);
 	clSetKernelArg(kernel, 9, dl, lri);
-	clSetKernelArg(kernel, 10, dl, betar);
-	clSetKernelArg(kernel, 11, dl, betai);
-	clSetKernelArg(kernel, 12, 8, &weight->vl_shape[1]);
-	clSetKernelArg(kernel, 13, 1, &weight->com);
+	clSetKernelArg(kernel, 10, 8, &weight->vl_shape[1]);
+	clSetKernelArg(kernel, 11, 1, &weight->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, weight->vl_shape, weight->work_items, 0, NULL, e);
 	if (ret != CL_SUCCESS) goto wk_step_optim_adadelta_fail;
@@ -860,10 +947,8 @@ int step_optim_adadelta(void *data, void *grad, uint32_t dl, wmatrix error, wmat
 		clSetKernelArg(kernel, 7, sizeof(cl_mem), &bias->imag);
 		clSetKernelArg(kernel, 8, dl, lr);
 		clSetKernelArg(kernel, 9, dl, lri);
-		clSetKernelArg(kernel, 10, dl, betar);
-		clSetKernelArg(kernel, 11, dl, betai);
-		clSetKernelArg(kernel, 12, 8, &bias->vl_shape[1]);
-		clSetKernelArg(kernel, 13, 1, &bias->com);
+		clSetKernelArg(kernel, 10, 8, &bias->vl_shape[1]);
+		clSetKernelArg(kernel, 11, 1, &bias->com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, bias->vl_shape, bias->work_items, 0, NULL, &e[1]);
 		if (ret != CL_SUCCESS) goto wk_step_optim_adadelta_fail;
@@ -876,6 +961,29 @@ int step_optim_adadelta(void *data, void *grad, uint32_t dl, wmatrix error, wmat
 		for (uint32_t x=0; x<evn; x++) clReleaseEvent(e[x]);
 	}
 	return ret;
+}
+
+int zero_optim_adadelta(void *opti){
+	woptim optim = opti;
+	wnetwork net = optim->net;
+	wneuron neuron_tmp;
+	wmatrix ***velocity = optim->others;
+	uint32_t nneur = net->nneur;
+	uint64_t layers;
+
+	for (uint32_t i = 0; i < nneur; i++){
+		neuron_tmp = net->neurons[i];
+		layers = neuron_tmp->layer;
+		if (velocity[i] == NULL) break;
+		for (uint64_t j = 0; j < layers; j++){
+			if (velocity[i][j] == NULL) break;
+			zero_optim(velocity[i][j][0]);
+			zero_optim(velocity[i][j][1]);
+			zero_optim(velocity[i][j][2]);
+			zero_optim(velocity[i][j][3]);
+		}
+	}
+	return CL_SUCCESS;
 }
 
 void free_optim_adadelta(void *opti, uint32_t nw, cl_event *be){
@@ -909,20 +1017,18 @@ void free_optim_adadelta(void *opti, uint32_t nw, cl_event *be){
 	free(opti);
 }
 
-woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype){
-	if ((lr == NULL && lri == NULL) || (beta == NULL && betai == NULL) || ctx == NULL || net == NULL) return NULL;
+woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype){
+	if ((lr == NULL && lri == NULL) || ctx == NULL || net == NULL) return NULL;
 	else if (dtype < WEKUA_DTYPE_FLOAT) return NULL;
 
 	woptim opti = (woptim) calloc(1, sizeof(struct _w_optim));
 
 	uint32_t dl = ctx->dtype_length[dtype];
-	void *data = calloc(4, dl);
+	void *data = calloc(2, dl);
+	void *one = get_one(dtype, dl);
 
 	memcpy(data, lr, dl);
-	memcpy(data+(dl<<1), beta, dl);
-	
 	if (lri != NULL) memcpy(data+dl, lri, dl);
-	if (betai != NULL) memcpy(data+dl*3, betai, dl);
 
 	uint32_t nneur = net->nneur;
 	wmatrix ***velocity = (wmatrix***) calloc(nneur, sizeof(wmatrix**));
@@ -945,7 +1051,7 @@ woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, v
 			velocity[i][j][0] = wekuaAllocMatrix(ctx, weight_tmp->shape[0], weight_tmp->shape[1], dtype);
 			if (velocity[i][j][0] == NULL) goto optim_gdm_fail;
 
-			velocity[i][j][1] = wekuaAllocMatrix(ctx, weight_tmp->shape[0], weight_tmp->shape[1], dtype);
+			velocity[i][j][1] = wekuaFillMatrix(ctx, weight_tmp->shape[0], weight_tmp->shape[1], one, NULL, dtype);
 			if (velocity[i][j][1] == NULL) goto optim_gdm_fail;
 			if (bias){
 				weight_tmp = neuron_tmp->bias[j];
@@ -953,7 +1059,7 @@ woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, v
 				velocity[i][j][2] = wekuaAllocMatrix(ctx, weight_tmp->shape[0], weight_tmp->shape[1], dtype);
 				if (velocity[i][j][2] == NULL) goto optim_gdm_fail;
 
-				velocity[i][j][3] = wekuaAllocMatrix(ctx, weight_tmp->shape[0], weight_tmp->shape[1], dtype);
+				velocity[i][j][3] = wekuaFillMatrix(ctx, weight_tmp->shape[0], weight_tmp->shape[1], one, NULL, dtype);
 				if (velocity[i][j][3] == NULL) goto optim_gdm_fail;
 			}
 		}
@@ -965,6 +1071,7 @@ woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, v
 	opti->params = data;
 	opti->others = velocity;
 	opti->step = &step_optim_adadelta;
+	opti->zero = &zero_optim_adadelta;
 	opti->free_func = &free_optim_adadelta;
 
 	goto optim_gdm_success;
@@ -990,6 +1097,7 @@ woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, v
 
 	free(data);
 	optim_gdm_success:
+	free(one);
 	return opti;
 }
 
@@ -1024,6 +1132,12 @@ int wekuaOptimStep(woptim optim, werror *error, wcache *cache){
 	}
 
 	return ret;
+}
+
+int wekuaOptimZero(woptim optim){
+	if (optim == NULL) return CL_INVALID_ARG_VALUE;
+	if (optim->zero == NULL) return CL_SUCCESS;
+	return optim->zero(optim->others);
 }
 
 void wekuaFreeOptim(woptim optim, uint32_t nw, cl_event *be){

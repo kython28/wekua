@@ -6,7 +6,7 @@
 #include <fcntl.h>
 // #include <stdarg.h>
 
-#define KERNEL_NUM 42
+#define KERNEL_NUM 45
 
 const char kernels[KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/rand.cl",
@@ -50,7 +50,10 @@ const char kernels[KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/relu.cl",
 	"/usr/lib/wekua_kernels/relu_dev.cl",
 	"/usr/lib/wekua_kernels/leakyrelu.cl",
-	"/usr/lib/wekua_kernels/leakyrelu_dev.cl"
+	"/usr/lib/wekua_kernels/leakyrelu_dev.cl",
+	"/usr/lib/wekua_kernels/mse.cl",
+	"/usr/lib/wekua_kernels/sigmoid_dev.cl",
+	"/usr/lib/wekua_kernels/tanh_dev.cl"
 };
 
 const char ker_name[KERNEL_NUM][20] = {
@@ -64,7 +67,8 @@ const char ker_name[KERNEL_NUM][20] = {
 	"gemm", "sum_kernel", "linear_bias_step",
 	"sqrt_kernel", "adagrad", "gdm",
 	"rmsprop", "adadelta", "relu", "relu_dev",
-	"leakyrelu", "leakyrelu_dev"
+	"leakyrelu", "leakyrelu_dev", "mse",
+	"sigmoid_dev", "tanh_dev"
 };
 
 const uint32_t dtype_length[10] = {

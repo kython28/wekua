@@ -1,59 +1,83 @@
 #include "wekua.h"
 
-int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be){
+int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error_scal, void *errori_scal, werror *err, uint32_t nw, cl_event *be){
 	if (output == NULL || output_wanted == NULL) return CL_INVALID_MEM_OBJECT;
 
-	cl_event e[5];
-	uint32_t env = 0;
 	int ret;
+	cl_event e;
+	wekuaContext ctx = output->ctx;
+	cl_kernel kernel;
+	uint8_t dtype = output->dtype, dev = 0, com = output->com|output_wanted->com;
+	wmatrix error;
+	
+	wmatrix dev_m = NULL;
+	cl_mem *dev_r = NULL, *dev_i = NULL;
 
-	wmatrix tmp = wekuaMatrixCopy(output_wanted, nw, be, e);
-	if (tmp == NULL) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
-	env++;
-
-	ret = wekuaMatrixSub(tmp, output, 1, e, &e[1]);
-	if (ret != CL_SUCCESS) goto w_error_mse_fail;
-	env++;
-
-	if (err != NULL){
-		void *two;
-
-		err[0] = (werror) calloc(1, sizeof(struct _w_error)); 
-		err[0]->err = wekuaMatrixCopy(tmp, 1, &e[env-1], &e[env]);
-		if (err[0]->err == NULL){
-			free(err[0]);
-			goto w_error_mse_fail;
+	if (com){
+		if (createComplexMatrix(output_wanted)|createComplexMatrix(output)){
+			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
 		}
-		env++;
-
-		if (tmp->dtype == WEKUA_DTYPE_FLOAT){
-			float twof = -2.0;
-			two = &twof;
-		}else{
-			double twod = -2.0;
-			two = &twod;
-		}
-		ret = wekuaBlasScalar(err[0]->err, two, NULL, 1, &e[env-1], &e[env]);
-		if (ret != CL_SUCCESS){
-			wekuaFreeMatrix(err[0]->err, 0, NULL);
-			free(err[0]);
-			goto w_error_mse_fail;
-		}
-		env++;
 	}
 
-	ret = wekuaMatrixDot(tmp, tmp, 1, &e[env-1], &e[env]);
-	if (ret != CL_SUCCESS) goto w_error_mse_fail;
-	env++;
+	if (err != NULL){
+		dev = 1;
+		err[0] = (werror) calloc(1, sizeof(struct _w_error));
+		if (com){
+			dev_m = wekuaAllocComplexMatrix(ctx, output->shape[0], output->shape[1], dtype);
+		}else{
+			dev_m = wekuaAllocMatrix(ctx, output->shape[0], output->shape[1], dtype);
+		}
+		if (dev_m == NULL){
+			free(err[0]);
+			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		}
 
-	ret = wekuaMatrixMean(tmp, error, errori, 1, &e[env-1]);
-	if (ret != CL_SUCCESS) goto w_error_mse_fail;
+		err[0]->err = dev_m;
+		
+		dev_r = &dev_m->real;
+		dev_i = &dev_m->imag;
+	}
 
-	w_error_mse_fail:
-	if (env > 0) clWaitForEvents(env, e);
-	for (uint32_t i=0; i<env; i++) clReleaseEvent(e[i]);
+	if (compileKernel(ctx, WEKUA_KERNEL_MSE, dtype)){
+		return CL_BUILD_PROGRAM_FAILURE;
+	}
 
-	wekuaFreeMatrix(tmp, 0, NULL);
+	if (com){
+		error = wekuaAllocComplexMatrix(ctx, output->shape[0], output->shape[1], dtype);
+	}else{
+		error = wekuaAllocMatrix(ctx, output->shape[0], output->shape[1], dtype);
+	}
+	if (error == NULL) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+
+	kernel = ctx->kernels[10*WEKUA_KERNEL_MSE + dtype];
+
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), &output_wanted->real);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), &output_wanted->imag);
+	clSetKernelArg(kernel, 2, sizeof(cl_mem), &output->real);
+	clSetKernelArg(kernel, 3, sizeof(cl_mem), &output->imag);
+	clSetKernelArg(kernel, 4, sizeof(cl_mem), &error->real);
+	clSetKernelArg(kernel, 5, sizeof(cl_mem), &error->imag);
+	clSetKernelArg(kernel, 6, sizeof(cl_mem), dev_r);
+	clSetKernelArg(kernel, 7, sizeof(cl_mem), dev_i);
+	clSetKernelArg(kernel, 8, 8, &output->vl_shape[1]);
+	clSetKernelArg(kernel, 9, 1, &dev);
+	clSetKernelArg(kernel, 10, 1, &com);
+
+	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, output->vl_shape, output->work_items, nw, be, &e);
+	if (ret != CL_SUCCESS) goto wekua_mse_fail;
+
+	ret = wekuaMatrixMean(error, error_scal, errori_scal, 1, &e);
+	if (ret != CL_SUCCESS) clWaitForEvents(1, &e);
+	clReleaseEvent(e);
+
+	wekua_mse_fail:
+	if (ret != CL_SUCCESS){
+		if (err != NULL){
+			wekuaFreeMatrix(dev_m, 0, NULL);	
+			free(err[0]);
+		}
+	}
+	wekuaFreeMatrix(error, 0, NULL);
 
 	return ret;
 }

@@ -105,6 +105,9 @@ wekuaContext createSomeWekuaContext(cl_device_type type);
 #define WEKUA_KERNEL_RELU_DEV 39
 #define WEKUA_KERNEL_LEAKY_RELU 40
 #define WEKUA_KERNEL_LEAKY_RELU_DEV 41
+#define WEKUA_KERNEL_MSE 42
+#define WEKUA_KERNEL_SIGMOID_DEV 43
+#define WEKUA_KERNEL_TANH_DEV 44
 
 uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
 
@@ -172,10 +175,15 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
 void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
 
+int wekuaCopyMatrixRegion(
+	wmatrix src, uint64_t src_offset_x, uint64_t src_offset_y,
+	wmatrix dst, uint64_t dst_offset_x, uint64_t dst_offset_y,
+	uint64_t w, uint64_t h
+);
+
 // Some BLAS functions
 int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // y = (alpha+beta*j)*x + y
 int wekuaBlasScalar(wmatrix x, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // Dot all elements in a matrix for a scalar. Alpha is real number and Beta is imaginary number
-
 int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_t b_trans, wmatrix b,
 	void *rbeta, void *ibeta, wmatrix c, uint32_t nw, cl_event *be
 );
@@ -228,8 +236,8 @@ wmatrix wekuaMatrixRoot(wmatrix a, uint32_t nw, cl_event *be); // Polynomial roo
 
 int wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be); // To free a matrix
 
-// void saveWekuaMatrix(const char *name, wmatrix a);
-// wmatrix loadWekuaMatrix(const char *name);
+uint8_t saveWekuaMatrix(const char *name, wmatrix a);
+wmatrix loadWekuaMatrix(const char *name, wekuaContext ctx);
 
 // Deep Learning section
 
@@ -314,7 +322,7 @@ typedef struct _w_optim {
 
 	// To update the weight
 	int (*step)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix);
-
+	int (*zero)(void *);
 	void (*free_func)(void *optim, uint32_t nw, cl_event *be);
 } *woptim;
 
@@ -323,10 +331,11 @@ woptim wekuaOptimGDM(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *
 woptim wekuaOptimNAG(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Nesterov Accelerated Gradient
 woptim wekuaOptimAdaGrad(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adaptive gradient optimizatione
 woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Root Mean Square Propagation
-woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Adadelta
+woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adadelta
 // woptim wekuaOptimAdam(wekuaContext ctx,  wnetwork net, void *lr, void *lri, void *beta1, void *beta1i, void *beta2, void *beta2i, uint8_t dtype);
 
 int wekuaOptimStep(woptim optim, werror *error, wcache *cache);
+int wekuaOptimZero(woptim optim);
 
 void wekuaFreeOptim(woptim optim, uint32_t nw, cl_event *be);
 

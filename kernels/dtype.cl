@@ -18,18 +18,18 @@ typedef char16 wk;
 
 #elif dtype == 1
 
-typedef unsigned char wks;
+typedef uchar wks;
 
 #if width == 1
-typedef unsigned char wk;
+typedef uchar wk;
 #elif width == 2
-typedef unsigned char2 wk;
+typedef uchar2 wk;
 #elif width == 4
-typedef unsigned char4 wk;
+typedef uchar4 wk;
 #elif width == 8
-typedef unsigned char8 wk;
+typedef uchar8 wk;
 #elif width == 16
-typedef unsigned char16 wk;
+typedef uchar16 wk;
 #endif
 
 #define convert_T convert_uchar_sat_rte
@@ -54,18 +54,18 @@ typedef short16 wk;
 
 #elif dtype == 3
 
-typedef unsigned short wks;
+typedef ushort wks;
 
 #if width == 1
-typedef unsigned short wk;
+typedef ushort wk;
 #elif width == 2
-typedef unsigned short2 wk;
+typedef ushort2 wk;
 #elif width == 4
-typedef unsigned short4 wk;
+typedef ushort4 wk;
 #elif width == 8
-typedef unsigned short8 wk;
+typedef ushort8 wk;
 #elif width == 16
-typedef unsigned short16 wk;
+typedef ushort16 wk;
 #endif
 
 #define convert_T convert_ushort_sat_rte
@@ -90,18 +90,18 @@ typedef int16 wk;
 
 #elif dtype == 5
 
-typedef unsigned int wks;
+typedef uint wks;
 
 #if width == 1
-typedef unsigned int wk;
+typedef uint wk;
 #elif width == 2
-typedef unsigned int2 wk;
+typedef uint2 wk;
 #elif width == 4
-typedef unsigned int4 wk;
+typedef uint4 wk;
 #elif width == 8
-typedef unsigned int8 wk;
+typedef uint8 wk;
 #elif width == 16
-typedef unsigned int16 wk;
+typedef uint16 wk;
 #endif
 
 #define convert_T convert_uint_sat_rte
@@ -126,18 +126,18 @@ typedef long16 wk;
 
 #elif dtype == 7
 
-typedef unsigned long wks;
+typedef ulong wks;
 
 #if width == 1
-typedef unsigned long wk;
+typedef ulong wk;
 #elif width == 2
-typedef unsigned long2 wk;
+typedef ulong2 wk;
 #elif width == 4
-typedef unsigned long4 wk;
+typedef ulong4 wk;
 #elif width == 8
-typedef unsigned long8 wk;
+typedef ulong8 wk;
 #elif width == 16
-typedef unsigned long16 wk;
+typedef ulong16 wk;
 #endif
 
 #define convert_T convert_ulong_sat_rte
@@ -268,6 +268,7 @@ void complex_mul(wk *a, wk *b, wk c, wk d){
 	b[0] = k1 + k2;
 }
 
+#if dtype >= 8
 void complex_mul_scal(wk *a, wk *b, wks c, wks d){
 	wk k1, k2, k3, aa, bb;
 
@@ -280,6 +281,7 @@ void complex_mul_scal(wk *a, wk *b, wks c, wks d){
 	a[0] = k1 - k3;
 	b[0] = k1 + k2;
 }
+#endif
 
 void complex_mul_scal2(wks *a, wks *b, wks c, wks d){
 	wks k1, k2, k3, aa, bb;

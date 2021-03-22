@@ -1,6 +1,4 @@
 #include "wekua.h"
-#include <CL/cl.h>
-#include <bits/stdint-uintn.h>
 
 uint64_t zero = 0;
 
@@ -79,9 +77,8 @@ int mem_set_zero(wmatrix a, cl_mem buf){
 	cl_event e;
 
 	wekuaContext ctx = a->ctx;
-	uint32_t dtype_length = ctx->dtype_length[a->dtype];
 
-	ret = clEnqueueFillBuffer(ctx->command_queue, buf, &zero, (uint64_t)dtype_length, 0, a->length, 0, NULL, &e);
+	ret = clEnqueueFillBuffer(ctx->command_queue, buf, &zero, ctx->dtype_length[a->dtype], 0, a->length, 0, NULL, &e);
 	if (ret == CL_SUCCESS){
 		clWaitForEvents(1, &e);
 		clReleaseEvent(e);
@@ -225,7 +222,7 @@ wmatrix wekuaAllocMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 
 	if (mem_set_zero(a, a->real) != CL_SUCCESS){
 		if (wekuaFreeMatrix(a, 0, NULL) != CL_SUCCESS){
-			free(a);			
+			free(a);
 		}
 		a = NULL;
 	}
@@ -244,10 +241,8 @@ wmatrix wekuaAllocComplexMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_
 }
 
 wmatrix wekuaFillMatrix(wekuaContext ctx, uint64_t r, uint64_t c, void *alpha, void *beta, uint8_t dtype){
-	wmatrix a = wekuaMatrixEmpty(ctx, r, c, dtype);
-	if (a == NULL){
-		return NULL;
-	}
+	wmatrix a = wekuaAllocMatrix(ctx, r, c, dtype);
+	if (a == NULL) return NULL;
 	
 	int ret;
 	uint32_t dl = ctx->dtype_length[dtype], evn = 0;
@@ -455,8 +450,8 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (b == NULL) return NULL;
 
 	wekuaContext ctx = a->ctx;
-	register uint64_t length = a->length;
-	register uint8_t com = a->com;
+	uint64_t length = a->length;
+	uint8_t com = a->com;
 
 	b->dtype = a->dtype;
 	b->length = length;
@@ -479,7 +474,7 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	ret = clEnqueueCopyBuffer(ctx->command_queue, a->real, b->real, 0, 0, length, nw, be, e);
 	if (ret != CL_SUCCESS){
 		wekuaFreeMatrix(b, 0, NULL);
-		b = NULL;
+		return NULL;
 	}
 	if (com && b){
 		b->imag = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, length, NULL, &ret);
@@ -673,7 +668,7 @@ wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype){
 	}
 	int ret;
 
-	register cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_IDEN*10+dtype];
+	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_IDEN*10+dtype];
 	cl_event e;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &iden->real);
@@ -1479,7 +1474,7 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 	int ret = CL_SUCCESS;
 	uint32_t evn;
 	uint64_t col = a->shape[1], rcol = a->vl_shape[1], *shape, *wi;
-	void *one;
+	void *one = NULL;
 	cl_event *e = NULL, *befo = NULL;
 	cl_kernel kernel;
 
@@ -1532,8 +1527,6 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 		free(e);
 		e = NULL;
 	}
-
-	printf("%d\n", ret);
 
 	wekua_det_fail:
 	if (one != NULL) free(one);
