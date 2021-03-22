@@ -27,13 +27,8 @@ __kernel void rmsprop(
 
 		k2 = sqrt(gra*gra + grai*grai);
 
-		#if dtype == 8
 		k1 = sqrt((k2 + gra)/2 + FLT_EPSILON);
 		k2 = sqrt((k2 - gra)/2 + FLT_EPSILON);
-		#else
-		k1 = sqrt((k2 + gra)/2 + DBL_EPSILON);
-		k2 = sqrt((k2 - gra)/2 + DBL_EPSILON);
-		#endif
 
 		calc_inv_complex(&k1, &k2);
 		complex_mul_scal(&error, &errori, alpha, alphai);
@@ -47,11 +42,7 @@ __kernel void rmsprop(
 		gra = beta*gr[i];
 		gra += (1 - beta)*error*error;
 
-		#if dtype == 8
 		wr[i] -= alpha*error/sqrt(gra + FLT_EPSILON);
-		#else
-		wr[i] -= alpha*error/sqrt(gra + DBL_EPSILON);
-		#endif
 	}
 	gr[i] = gra;
 }

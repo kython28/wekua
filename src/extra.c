@@ -71,7 +71,7 @@ int wekuaMatrixSum(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 	if (a == NULL || (real == NULL && imag == NULL)){
 		return CL_INVALID_MEM_OBJECT;
 	}
-	int ret;
+	int ret = CL_SUCCESS;
 	wekuaContext ctx = a->ctx;
 	uint8_t dtype = a->dtype, com = a->com;
 	cl_kernel kernel;
@@ -571,4 +571,91 @@ wmatrix wekuaMatrixEulerIden(wmatrix angle, uint32_t nw, cl_event *be){
 	}
 
 	return a;
+}
+
+int wekuaCopyMatrixRegion(
+	wmatrix a, uint64_t a_offset_x, uint64_t a_offset_y,
+	wmatrix b, uint64_t b_offset_x, uint64_t b_offset_y,
+	uint64_t w, uint64_t h
+){
+	if (a == NULL || b == NULL) return CL_INVALID_MEM_OBJECT;
+	if (a_offset_y+h > a->shape[0] || a_offset_x+w > a->shape[1]) return CL_INVALID_ARG_VALUE;
+	if (b_offset_y+h > b->shape[0] || b_offset_x+w > b->shape[1]) return CL_INVALID_ARG_VALUE;
+	if (a->dtype != b->dtype) return CL_INVALID_MEM_OBJECT;
+
+	cl_event e;
+	wekuaContext ctx = a->ctx;
+	uint32_t dl = ctx->dtype_length[a->dtype];
+	uint8_t com = a->com;
+	int ret;
+
+	uint64_t region[3];
+	uint64_t src_origin[3], dst_origin[3];
+
+	src_origin[0] = a_offset_x;
+	src_origin[1] = a_offset_y;
+	src_origin[2] = 0;
+
+	dst_origin[0] = b_offset_x;
+	dst_origin[1] = b_offset_y;
+	dst_origin[2] = 0;
+
+	region[0] = w*dl;
+	region[1] = h;
+	region[2] = 1;
+
+	if (com){
+		if (createComplexMatrix(b)){
+			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		}
+	}
+
+	if (ctx == b->ctx){
+		ret = clEnqueueCopyBufferRect(
+			ctx->command_queue,
+			a->real, b->real,
+			src_origin, dst_origin,
+			region, a->col*dl, 0,
+			b->col*dl, 0, 0, NULL, &e
+		);
+		if (ret != CL_SUCCESS) return ret;
+
+		clWaitForEvents(1, &e);
+		clReleaseEvent(e);
+		
+		if (com){
+			ret = clEnqueueCopyBufferRect(
+				ctx->command_queue,
+				a->imag, b->imag,
+				src_origin, dst_origin,
+				region, a->col*dl, 0,
+				b->col*dl, 0, 0, NULL, &e
+			);
+			if (ret != CL_SUCCESS) return ret;
+
+			clWaitForEvents(1, &e);
+			clReleaseEvent(e);
+		}
+	}else{
+		ret = clEnqueueWriteBufferRect(
+			ctx->command_queue,
+			a->real, CL_TRUE,
+			src_origin, dst_origin,
+			region, a->col*dl, 0,
+			b->col*dl, 0, b->raw_real, 0, NULL, NULL
+		);
+		if (ret != CL_SUCCESS) return ret;
+		if (com){
+			ret = clEnqueueWriteBufferRect(
+				ctx->command_queue,
+				a->imag, CL_TRUE,
+				src_origin, dst_origin,
+				region, a->col*dl, 0,
+				b->col*dl, 0, b->raw_imag, 0, NULL, NULL
+			);
+			if (ret != CL_SUCCESS) return ret;
+		}
+	}
+
+	return ret;
 }

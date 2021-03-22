@@ -123,7 +123,10 @@ int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_
 		clReleaseEvent(e);
 	}
 
-	if (x == NULL || y == NULL) goto wekua_gemm_finish;
+	if (x == NULL || y == NULL){
+		ret = CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		goto wekua_gemm_finish;
+	}
 
 
 	uint64_t shape[2], wi[2];
