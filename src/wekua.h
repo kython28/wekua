@@ -58,8 +58,8 @@ typedef struct _wk_ctx {
 	uint64_t max_work_group_size;
 } *wekuaContext;
 
-wekuaContext createWekuaContext(wDevice *dev);
-wekuaContext createSomeWekuaContext(cl_device_type type);
+wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors);
+wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
 
 // Kernels
 
