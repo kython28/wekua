@@ -196,7 +196,7 @@ char *getKernelData(const char *name, long *size){
 	return cont;
 }
 
-wekuaContext createWekuaContext(wDevice *dev){
+wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 	if (dev == NULL){
 		return NULL;
 	}else if (dev->max_work_item_dimensions < 3) return NULL;
@@ -217,7 +217,11 @@ wekuaContext createWekuaContext(wDevice *dev){
 	context->programs = (cl_program*) calloc(KERNEL_NUM*10, sizeof(cl_program));
 	context->kernels = (cl_kernel*) calloc(KERNEL_NUM*10, sizeof(cl_kernel));
 
-	memcpy(context->vector_width, dev->vector_width, 40);
+	if (use_vectors){
+		memcpy(context->vector_width, dev->vector_width, 40);
+	}else{
+		for (uint8_t x=0; x<10; x++) context->vector_width[x] = 1;
+	}
 
 	context->dev = dev->device;
 	dev->device = NULL;
@@ -227,12 +231,10 @@ wekuaContext createWekuaContext(wDevice *dev){
 	context->compute_units = dev->compute_units;
 	context->local_mem_type = dev->local_mem_type;
 
-	// context->vector_width[9] = 1;
-
 	return context;
 }
 
-wekuaContext createSomeWekuaContext(cl_device_type type){
+wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors){
 	wDevice **devs;
 	wPlatform *plat;
 	wekuaContext ctx;
@@ -257,7 +259,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type){
 			}
 		}
 	}
-	ctx = createWekuaContext(&devs[ps][ds]);
+	ctx = createWekuaContext(&devs[ps][ds], use_vectors);
 	freeWekuaPlatform(plat, nplat);
 	for (uint32_t p=0; p<nplat; p++){
 		freeWekuaDevice(devs[p], ndev[p]);

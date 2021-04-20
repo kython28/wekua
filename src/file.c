@@ -13,6 +13,20 @@ struct header {
 	uint8_t com; // Does the matrix use complex elements?
 };
 
+int open_a_file(const char *name, uint8_t w){
+	int fd;
+	if (w){
+		fd = open(name, O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+		if (fd < 0){
+			fd = open(name, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+			if (fd < 0) return -1;
+		}
+	}else{
+		fd = open(name, O_RDWR);
+		if (fd < 0) return -1;
+	}
+	return fd;
+}
 
 uint8_t saveMatrix(int fd, wmatrix a){
 	uint8_t ret = CL_SUCCESS;
@@ -122,16 +136,42 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 }
 
 
+uint8_t saveNeuron(int fd, wneuron neuron){
+	uint64_t layer = neuron->layer;
+	for (uint64_t x=0; x<layer; x++){
+		if (saveMatrix(fd, neuron->weight[x])) break;
+	}
+	if (neuron->bias){
+		for (uint64_t x=0; x<layer; x++){
+			if (saveMatrix(fd, neuron->bias[x])) break;
+		}
+	}
+	return 0;
+}
+
+void loadNeuron(int fd, wekuaContext ctx, wneuron neuron){
+	wmatrix *w, *b;
+	uint64_t layer = neuron->layer;
+
+	w = neuron->weight;
+	b = neuron->bias;
+	for (uint64_t x=0; x<layer; x++){
+		w[x] = loadMatrix(fd, ctx);
+	}
+	if (b){
+		for (uint64_t x=0; x<layer; x++){
+			b[x] = loadMatrix(fd, ctx);
+		}
+	}
+}
+
 uint8_t saveWekuaMatrix(const char *name, wmatrix a){
-	if (name == NULL || a == NULL) return CL_INVALID_ARG_VALUE;
+	if (name == NULL || a == NULL) return 1;
 
 	int fd;
 	uint8_t ret;
-	fd = open(name, O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-	if (fd < 0){
-		fd = open(name, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-		if (fd < 0) return 1;
-	}
+	fd = open_a_file(name, 1);
+	if (fd < 0) return 1;
 
 	ret = saveMatrix(fd, a);
 
@@ -143,10 +183,97 @@ wmatrix loadWekuaMatrix(const char *name, wekuaContext ctx){
 	if (name == NULL || ctx == NULL) return NULL;
 	wmatrix a;
 
-	int fd = open(name, O_RDWR);
+	int fd = open_a_file(name, 0);
 	if (fd < 0) return NULL;
 
 	a = loadMatrix(fd, ctx);
 
 	return a;
+}
+
+uint8_t saveWekuaNeuron(const char *name, wneuron neuron){
+	if (name == NULL || neuron == NULL) return 1;
+	int fd;
+	uint8_t ret;
+	uint64_t layer = neuron->layer;
+
+	fd = open_a_file(name, 1);
+	if (fd < 0) return 1;
+
+	ret = saveNeuron(fd, neuron);
+	close(fd);
+	return ret;
+}
+
+uint8_t loadWekuaNeuron(const char *name, wneuron neuron){
+	if (name == NULL || neuron == NULL) return 1;
+	int fd = open_a_file(name, 0);
+	if (fd < 0) return 1;
+
+	wmatrix *w, *b;
+	wekuaContext ctx;
+	uint64_t layer = neuron->layer;
+
+	w = neuron->weight;
+	b = neuron->bias;
+
+	ctx = w[0]->ctx;
+
+	for (uint64_t x=0; x<layer; x++) wekuaFreeMatrix(w[x], 0, NULL);
+	if (b){
+		for (uint64_t x=0; x<layer; x++) wekuaFreeMatrix(b[x], 0, NULL);
+	}
+
+	loadNeuron(fd, ctx, neuron);
+
+	close(fd);
+	return 0;
+}
+
+uint8_t saveWekuaNetwork(const char *name, wnetwork net){
+	if (name == NULL || net == NULL) return 1;
+
+	uint8_t ret = 0;
+	int fd = open_a_file(name, 1);
+	if (fd < 0) return 1;
+
+	uint32_t nneur = net->nneur;
+	wneuron *neurons = net->neurons;
+	for (uint32_t x=0; x<nneur; x++){
+		if (saveNeuron(fd, neurons[x])){
+			ret = 1;
+			break;
+		}
+	}
+
+	close(fd);
+	return ret;
+}
+
+uint8_t loadWekuaNetwork(const char *name, wnetwork net, wekuaContext ctx){
+	if (name == NULL || net == NULL || ctx == NULL) return 1;
+
+	uint8_t ret = 0;
+	int fd = open_a_file(name, 0);
+	if (fd < 0) return 1;
+
+	uint32_t nneur = net->nneur;
+	wneuron *neurons = net->neurons;
+	for (uint32_t x=0; x<nneur; x++){
+		wmatrix *w, *b;
+		wneuron neuron = neurons[x];
+		uint64_t layer = neuron->layer;
+		w = neuron->weight;
+		b = neuron->bias;
+		
+		for (uint64_t x=0; x<layer; x++) wekuaFreeMatrix(w[x], 0, NULL);
+		if (b){
+			for (uint64_t x=0; x<layer; x++) wekuaFreeMatrix(b[x], 0, NULL);
+		}
+
+		loadNeuron(fd, ctx, neuron);
+	}
+
+	close(fd);
+	return ret;
 }

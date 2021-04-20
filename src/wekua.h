@@ -58,8 +58,8 @@ typedef struct _wk_ctx {
 	uint64_t max_work_group_size;
 } *wekuaContext;
 
-wekuaContext createWekuaContext(wDevice *dev);
-wekuaContext createSomeWekuaContext(cl_device_type type);
+wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors);
+wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
 
 // Kernels
 
@@ -296,6 +296,9 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 
 int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err);
 
+uint8_t saveWekuaNeuron(const char *name, wneuron neuron);
+uint8_t loadWekuaNeuron(const char *name, wneuron neuron);
+
 void wekuaFreeNeuron(wneuron neur, uint32_t nw, cl_event *be);
 
 typedef struct _w_net {
@@ -307,6 +310,9 @@ typedef struct _w_net {
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
 wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
 int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err);
+
+uint8_t saveWekuaNetwork(const char *name, wnetwork net);
+uint8_t loadWekuaNetwork(const char *name, wnetwork net, wekuaContext ctx);
 
 void wekuaFreeNetCache(wnetwork net, wcache *cache);
 void wekuaFreeNetError(wnetwork net, werror *error);
