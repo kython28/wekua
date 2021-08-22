@@ -38,9 +38,8 @@ int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error_scal, void *erro
 		dev_i = &dev_m->imag;
 	}
 
-	if (compileKernel(ctx, WEKUA_KERNEL_MSE, dtype)){
-		return CL_BUILD_PROGRAM_FAILURE;
-	}
+	kernel = compileKernel(ctx, WEKUA_KERNEL_MSE, dtype, com);
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	if (com){
 		error = wekuaAllocComplexMatrix(ctx, output->shape[0], output->shape[1], dtype);
@@ -48,8 +47,6 @@ int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error_scal, void *erro
 		error = wekuaAllocMatrix(ctx, output->shape[0], output->shape[1], dtype);
 	}
 	if (error == NULL) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
-
-	kernel = ctx->kernels[10*WEKUA_KERNEL_MSE + dtype];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &output_wanted->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &output_wanted->imag);
@@ -61,7 +58,6 @@ int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error_scal, void *erro
 	clSetKernelArg(kernel, 7, sizeof(cl_mem), dev_i);
 	clSetKernelArg(kernel, 8, 8, &output->vl_shape[1]);
 	clSetKernelArg(kernel, 9, 1, &dev);
-	clSetKernelArg(kernel, 10, 1, &com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, output->vl_shape, output->work_items, nw, be, &e);
 	if (ret != CL_SUCCESS) goto wekua_mse_fail;

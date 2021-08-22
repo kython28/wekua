@@ -6,19 +6,19 @@ __kernel void sigmoid_dev(
 	unsigned char com){
 	unsigned long i = get_global_id(0);
 	
+#if com
 	wk aa, bb, cc, dd;
-	if (com){
-		aa = ar[i];
-		bb = ai[i];
+	aa = ar[i];
+	bb = ai[i];
 
-		cc = 1 - aa;
-		dd = -bb;
-		complex_mul(&aa, &bb, cc, dd);
+	cc = 1 - aa;
+	dd = -bb;
+	complex_mul(&aa, &bb, cc, dd);
 
-		br[i] = aa;
-		bi[i] = bb;
-	}else{
-		aa = ar[i];
-		br[i] = (1 - aa)*aa;
-	}
+	br[i] = aa;
+	bi[i] = bb;
+#else
+	aa = ar[i];
+	br[i] = (1 - aa)*aa;
+#endif
 }

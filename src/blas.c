@@ -16,9 +16,8 @@ int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl
 	uint32_t len;
 
 	wekuaContext ctx = x->ctx;
-	if (compileKernel(ctx, WEKUA_KERNEL_AXPY, dtype)){
-		return CL_COMPILE_PROGRAM_FAILURE;
-	}
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_AXPY, dtype, com);
+	if (com) return CL_COMPILE_PROGRAM_FAILURE;
 	len = ctx->dtype_length[dtype];
 
 	if (com){
@@ -27,7 +26,6 @@ int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl
 		}
 	}
 
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_AXPY*10+dtype];
 	if (alpha == NULL) alpha = ((uint64_t*)&zero_blas);
 	if (beta == NULL) beta = ((uint64_t*)&zero_blas);
 
@@ -38,7 +36,6 @@ int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl
 
 	clSetKernelArg(kernel, 4, len, alpha);
 	clSetKernelArg(kernel, 5, len, beta);
-	clSetKernelArg(kernel, 6, 1, &com);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &x->vl_shape[2], &x->work_items[8], nw, be, e);
 }
@@ -60,17 +57,13 @@ int wekuaBlasScalar(wmatrix x, void *alpha, void *beta, uint32_t nw, cl_event *b
 		}
 	}
 
-	if (compileKernel(ctx, WEKUA_KERNEL_SCAL, dtype)){
-		return CL_COMPILE_PROGRAM_FAILURE;
-	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_SCAL*10+dtype];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_SCAL, dtype, x->com);
+	if (kernel == NULL) return CL_COMPILE_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &x->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &x->imag);
 	clSetKernelArg(kernel, 2, len, alpha);
 	clSetKernelArg(kernel, 3, len, beta);
-	clSetKernelArg(kernel, 4, 1, &x->com);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &x->vl_shape[2], &x->work_items[8], nw, be, e);
 }
@@ -88,7 +81,7 @@ int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_
 	if (ibeta == NULL) ibeta = (uint64_t*)&zero_blas;
 
 	wekuaContext ctx = a->ctx;
-	cl_kernel kernel;
+	
 	cl_event e;
 
 	wmatrix x = NULL, y = NULL;
@@ -96,11 +89,8 @@ int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_
 	uint8_t dtype = a->dtype, com = a->com|b->com|c->com;
 	uint32_t dl = ctx->dtype_length[dtype];
 
-	if (compileKernel(ctx, WEKUA_KERNEL_GEMM, dtype)){
-		return CL_BUILD_PROGRAM_FAILURE;
-	}
-
-	kernel = ctx->kernels[WEKUA_KERNEL_GEMM*10+dtype];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_GEMM, dtype, com);
+	if (com) return CL_BUILD_PROGRAM_FAILURE;
 
 	clWaitForEvents(nw, be);
 
@@ -155,7 +145,6 @@ int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_
 
 	clSetKernelArg(kernel, 10, 8, &c->col);
 	clSetKernelArg(kernel, 11, 8, &x->vl_shape[1]);
-	clSetKernelArg(kernel, 12, 1, &c->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, shape, wi, 0, NULL, &e);
 

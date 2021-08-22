@@ -245,14 +245,14 @@ wmatrix wekuaFillMatrix(wekuaContext ctx, uint64_t r, uint64_t c, void *alpha, v
 	if (a == NULL) return NULL;
 	
 	int ret;
+	uint8_t com = 0;
 	uint32_t dl = ctx->dtype_length[dtype], evn = 0;
-
-	if (compileKernel(ctx, WEKUA_KERNEL_FILL, dtype)){
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_FILL, dtype, com);
+	if (kernel == NULL){
 		wekuaFreeMatrix(a, 0, NULL);
 		return NULL;
 	}
 
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_FILL*10 + dtype];
 	cl_event e;
 
 	if (beta == NULL) beta = &zero;
@@ -270,7 +270,6 @@ wmatrix wekuaFillMatrix(wekuaContext ctx, uint64_t r, uint64_t c, void *alpha, v
 	clSetKernelArg(kernel, 2, dl, alpha);
 	clSetKernelArg(kernel, 3, dl, beta);
 	clSetKernelArg(kernel, 4, 8, &a->col);
-	clSetKernelArg(kernel, 5, 1, &a->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->shape, &a->work_items[4], 0, NULL, &e);
 	if (ret == CL_SUCCESS){
@@ -283,9 +282,7 @@ wmatrix wekuaFillMatrix(wekuaContext ctx, uint64_t r, uint64_t c, void *alpha, v
 
 wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 	wmatrix a = wekuaAllocMatrix(ctx, r, c, WEKUA_DTYPE_DOUBLE);
-	if (a == NULL){
-		return NULL;
-	}
+	if (a == NULL) return NULL;
 
 	if (com){
 		if (createComplexMatrix(a)){
@@ -294,13 +291,11 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 		}
 	}
 	uint8_t dtype = WEKUA_DTYPE_DOUBLE;
-
-	if (compileKernel(ctx, WEKUA_KERNEL_RANDN, dtype)){
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_RANDN, dtype, com);
+	if (kernel == NULL){
 		wekuaFreeMatrix(a, 0, NULL);
 		return NULL;
 	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_RANDN*10+dtype];
 
 	cl_command_queue cmd = ctx->command_queue;
 	cl_context ct = ctx->ctx;
@@ -347,7 +342,6 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &ran_r);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &ran_i);
 	clSetKernelArg(kernel, 4, 8, &a->col);
-	clSetKernelArg(kernel, 5, 1, &com);
 	
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->shape, &a->work_items[4], 0, NULL, &e);
 	if (ret == CL_SUCCESS){
@@ -393,14 +387,12 @@ wmatrix wekuaMatrixRandUniform(wekuaContext ctx, uint64_t r, uint64_t c, void *r
 		return NULL;
 	}
 
-
-	if (compileKernel(ctx, WEKUA_KERNEL_RANDUNIFORM, dtype)){
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_RANDUNIFORM, dtype, com);
+	if (kernel == NULL){
 		if (a != b) wekuaFreeMatrix(b, evn, befo);
 		wekuaFreeMatrix(a, evn, befo);
 		return NULL;
 	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_RANDUNIFORM*10+dtype];
 
 	if (com){
 		clWaitForEvents(1, e);
@@ -417,7 +409,6 @@ wmatrix wekuaMatrixRandUniform(wekuaContext ctx, uint64_t r, uint64_t c, void *r
 	clSetKernelArg(kernel, 3, dl, ia);
 	clSetKernelArg(kernel, 4, dl, re);
 	clSetKernelArg(kernel, 5, dl, ie);
-	clSetKernelArg(kernel, 6, 1, &com);
 
 	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &b->vl_shape[2], &b->work_items[8], evn, befo, &e[evn]);
 	if (ret == CL_SUCCESS){
@@ -502,9 +493,7 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 }
 
 wmatrix wekuaMatrixResize(wmatrix a, uint64_t r, uint64_t c, void *alpha, void *beta){
-	if (a == NULL){
-		return NULL;
-	}
+	if (a == NULL) return NULL;
 	wekuaContext ctx = a->ctx;
 	uint8_t dtype = a->dtype, com;
 	cl_command_queue cmd = ctx->command_queue;
@@ -574,23 +563,16 @@ wmatrix wekuaMatrixResize(wmatrix a, uint64_t r, uint64_t c, void *alpha, void *
 }
 
 wmatrix wekuaMatrixConvert(wmatrix a, uint8_t dtype, uint32_t nw, cl_event *be, cl_event *e){
-	if (a == NULL){
-		return NULL;
-	}
-	if (a->dtype == dtype){
-		return wekuaMatrixCopy(a, nw, be, e);
-	}
+	if (a == NULL) return NULL;
+	if (a->dtype == dtype) return wekuaMatrixCopy(a, nw, be, e);
 	uint8_t com = a->com;
 	uint64_t col = a->shape[1], row = a->shape[0];
 	wekuaContext ctx = a->ctx;
 	cl_kernel kernel;
 	wmatrix b;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_CONVERT, dtype)){
-		return NULL;
-	}
-
-	kernel = ctx->kernels[WEKUA_KERNEL_CONVERT*10+dtype];
+	kernel = compileKernel(ctx, WEKUA_KERNEL_CONVERT, dtype, com);
+	if (kernel == NULL) return NULL;
 
 	if (com){
 		b = wekuaAllocComplexMatrix(ctx, row, col, dtype);
@@ -608,7 +590,6 @@ wmatrix wekuaMatrixConvert(wmatrix a, uint8_t dtype, uint32_t nw, cl_event *be, 
 	clSetKernelArg(kernel, 4, 8, &b->col);
 	clSetKernelArg(kernel, 5, 8, &a->col);
 	clSetKernelArg(kernel, 6, 1, &a->dtype);
-	clSetKernelArg(kernel, 7, 1, &com);
 
 	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, b->shape, &b->work_items[4], nw, be, e);
 	if (ret != CL_SUCCESS){
@@ -657,18 +638,13 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 }
 
 wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype){
-	if (ctx == NULL || col == 0 || dtype > 9){
-		return NULL;
-	}
+	if (ctx == NULL || col == 0 || dtype > 9) return NULL;
 	wmatrix iden = wekuaAllocMatrix(ctx, col, col, dtype);
 	if (iden == NULL) return iden;
-
-	if (compileKernel(ctx, WEKUA_KERNEL_IDEN, dtype)){
-		return NULL;
-	}
 	int ret;
 
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_IDEN*10+dtype];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_IDEN, dtype, 0);
+	if (kernel == NULL) return NULL;
 	cl_event e;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &iden->real);
@@ -687,37 +663,31 @@ wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype){
 }
 
 wmatrix wekuaMatrixTrans(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
-	if (a == NULL){
-		return NULL;
-	}
+	if (a == NULL) return NULL;
+
 	wekuaContext ctx = a->ctx;
 	uint64_t *shape = a->shape;
-	uint8_t dtype = a->dtype;
+	uint8_t dtype = a->dtype, com = a->com;
 	int ret;
+	
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_TRANS, dtype, com);
+	if (kernel == NULL) return NULL;
+
 	wmatrix b = wekuaAllocMatrix(ctx, shape[1], shape[0], dtype);
-
-	if (compileKernel(ctx, WEKUA_KERNEL_TRANS, dtype)){
-		wekuaFreeMatrix(b, 0, NULL);
-		return NULL;
-	}
-
-	if (a->com){
+	if (com){
 		if (createComplexMatrix(b)){
 			wekuaFreeMatrix(b, 0, NULL);
 			return NULL;
 		}
 	}
 
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_TRANS*10+dtype];
-
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &b->real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &b->imag);
-
+ 
 	clSetKernelArg(kernel, 4, 8, &a->col);
 	clSetKernelArg(kernel, 5, 8, &b->col);
-	clSetKernelArg(kernel, 6, 1, &a->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, shape, &a->work_items[4], nw, be, e);
 	if (ret != CL_SUCCESS){
@@ -760,13 +730,13 @@ wmatrix wekuaMatrixDiag(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 		return NULL;
 	}
 
-	if (compileKernel(ctx, WEKUA_KERNEL_DIAG, dtype)){
+	if (b == NULL) return NULL;
+
+	kernel = compileKernel(ctx, WEKUA_KERNEL_DIAG, dtype, com);
+	if (kernel == NULL){
 		wekuaFreeMatrix(b, 0, NULL);
 		return NULL;
 	}
-
-	kernel = ctx->kernels[WEKUA_KERNEL_DIAG*10+dtype];
-	if (b == NULL) return NULL;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
@@ -774,7 +744,6 @@ wmatrix wekuaMatrixDiag(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &b->imag);
 	clSetKernelArg(kernel, 4, 8, &a->col);
 	clSetKernelArg(kernel, 5, 1, &mode);
-	clSetKernelArg(kernel, 6, 1, &com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &col, &a->work_items[7], nw, be, e);
 	if (ret != CL_SUCCESS){
@@ -786,9 +755,8 @@ wmatrix wekuaMatrixDiag(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 }
 
 wmatrix wekuaMatrixAbs(wmatrix a, uint32_t nw, cl_event *be){
-	if (a == NULL){
-		return NULL;
-	}
+	if (a == NULL) return NULL;
+
 	cl_event e[2];
 	wekuaContext ctx = a->ctx;
 	wmatrix b;
@@ -802,21 +770,20 @@ wmatrix wekuaMatrixAbs(wmatrix a, uint32_t nw, cl_event *be){
 		b = wekuaMatrixCopy(a, nw, be, e);
 		dtype = a->dtype;
 	}
+	if (b == NULL) return NULL;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_ABS, dtype)){
+	kernel = compileKernel(ctx, WEKUA_KERNEL_ABS, dtype, com);
+	if (kernel == NULL){
+		wekuaFreeMatrix(b, 1, e);
+		clReleaseEvent(e[0]);
 		return NULL;
 	}
-
-	kernel = ctx->kernels[WEKUA_KERNEL_ABS*10+dtype];
-	if (b == NULL) return NULL;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &b->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &b->imag);
 	clSetKernelArg(kernel, 2, 8, &a->vl_shape[1]);
-	clSetKernelArg(kernel, 3, 1, &com);
 
 	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, b->vl_shape, a->work_items, 1, e, &e[1]);
-
 	if (ret == CL_SUCCESS){
 		removeComplexMatrix(b, 1, &e[1]);
 
@@ -837,9 +804,7 @@ wmatrix wekuaMatrixAbsdiff(wmatrix a, wmatrix b, uint32_t nw, cl_event *be){
 	int ret;
 
 	c = wekuaMatrixCopy(a, nw, be, e);
-	if (c == NULL){
-		return NULL;
-	}
+	if (c == NULL) return NULL;
 
 	ret = wekuaMatrixSub(c, b, 1, e, &e[1]);
 	if (ret != CL_SUCCESS){
@@ -849,9 +814,7 @@ wmatrix wekuaMatrixAbsdiff(wmatrix a, wmatrix b, uint32_t nw, cl_event *be){
 	}
 
 	d = wekuaMatrixAbs(c, 1, &e[1]);
-	if (d == NULL){
-		clWaitForEvents(1, &e[1]);
-	}
+	if (d == NULL) clWaitForEvents(1, &e[1]);
 
 	clReleaseEvent(e[0]);
 	clReleaseEvent(e[1]);
@@ -863,9 +826,7 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 	double start_r, double start_i, double end_r, double end_i,
 	double delta, uint8_t trans
 ){
-	if (start_r == end_r && start_i == end_i){
-		return NULL;
-	}
+	if (start_r == end_r && start_i == end_i) return NULL;
 
 	wmatrix a;
 	uint8_t com;
@@ -876,13 +837,6 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 
 	cl_event e;
 	cl_kernel kernel;
-
-	if (compileKernel(ctx, WEKUA_KERNEL_ARANGE, WEKUA_DTYPE_DOUBLE)){
-		return NULL;
-	}
-
-	kernel = ctx->kernels[WEKUA_KERNEL_ARANGE*10+WEKUA_DTYPE_DOUBLE];
-
 
 	xdis = end_r-start_r;
 	ydis = end_i-start_i;
@@ -915,6 +869,12 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 		}
 	}
 
+	kernel = compileKernel(ctx, WEKUA_KERNEL_ARANGE, WEKUA_DTYPE_DOUBLE, com);
+	if (kernel == NULL){
+		wekuaFreeMatrix(a, 0, NULL);
+		return NULL;
+	}
+
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
 
@@ -927,7 +887,6 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 
 	clSetKernelArg(kernel, 8, 8, &a->col);
 	clSetKernelArg(kernel, 9, 1, &trans);
-	clSetKernelArg(kernel, 10, 1, &com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->shape, &a->work_items[4], 0, NULL, &e);
 	if (ret != CL_SUCCESS){
@@ -957,11 +916,10 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 
 	cl_mem *b_real, *b_imag, *i_real, *i_imag;
 
+	if (compileKernel(ctx, WEKUA_KERNEL_GAUSS, dtype, com) == NULL) return NULL;
+	if (compileKernel(ctx, WEKUA_KERNEL_GAUSS_2, dtype, com) == NULL) return NULL;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_GAUSS, dtype)) return NULL;
-	if (compileKernel(ctx, WEKUA_KERNEL_GAUSS_2, dtype)) return NULL;
-
-	kernel = ctx->kernels[WEKUA_KERNEL_GAUSS*10+dtype];
+	kernel = compileKernel(ctx, WEKUA_KERNEL_GAUSS, dtype, com);
 
 	e = (cl_event*) calloc(col+2, sizeof(cl_event));
 	if (e == NULL) goto wekua_inv_fail;
@@ -991,7 +949,6 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 		clSetKernelArg(kernel, 5, 8, &rcol);
 		clSetKernelArg(kernel, 6, 1, &otherm);
 		clSetKernelArg(kernel, 7, 1, &otherm);
-		clSetKernelArg(kernel, 8, 1, &com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, shape, &wi[2], 1, &e[evn], &e[evn+1]);
 		if (ret != CL_SUCCESS) goto wekua_inv_fail;
@@ -1000,7 +957,7 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 
 	wekuaMatrixPrint(b, evn, e);
 
-	kernel = ctx->kernels[WEKUA_KERNEL_GAUSS_2*10+dtype];
+	kernel = compileKernel(ctx, WEKUA_KERNEL_GAUSS_2, dtype, com);
 
 	dl *= wi[4];
 
@@ -1009,7 +966,6 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), b_real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), b_imag);
 	clSetKernelArg(kernel, 4, 8, &rcol);
-	clSetKernelArg(kernel, 5, 1, &com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, shape, wi, evn, e, &e[evn+1]);
 	if (ret != CL_SUCCESS) goto wekua_inv_fail;
@@ -1114,9 +1070,9 @@ uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be){
 	cl_kernel kernel;
 	void *one = get_one(dtype, dl);
 
-	if (compileKernel(ctx, WEKUA_KERNEL_GAUSS, dtype)) goto wekua_rang_fail;
+	kernel = compileKernel(ctx, WEKUA_KERNEL_GAUSS, dtype, com);
+	if (kernel == NULL) goto wekua_rang_fail;
 
-	kernel = ctx->kernels[WEKUA_KERNEL_GAUSS*10+dtype];
 	if (r > a->shape[1]) r = a->shape[1];
 	col = a->shape[1];
 	rcol = a->col;
@@ -1143,7 +1099,6 @@ uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be){
 		clSetKernelArg(kernel, 6, 8, &rcol);
 		clSetKernelArg(kernel, 7, 1, &otherm);
 		clSetKernelArg(kernel, 8, 1, &otherm);
-		clSetKernelArg(kernel, 9, 1, &com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, shape, wi, 1, &e[evn], &e[evn + 1]);
 		if (ret != CL_SUCCESS) goto wekua_rang_fail;
@@ -1233,29 +1188,24 @@ int wekuaMatrixDot(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e)
 	}else if (memcmp(a->vl_shape, b->vl_shape, 16) != 0){
 		return CL_INVALID_MEM_OBJECT;
 	}
-	uint8_t dtype = a->dtype;
+	uint8_t dtype = a->dtype, com = a->com|b->com;
 
 	wekuaContext ctx = a->ctx;
-	if (ctx->kernels[WEKUA_KERNEL_DOT*10+dtype] == NULL){
-		if (compileKernel(ctx, 6, dtype)){
-			return CL_COMPILE_PROGRAM_FAILURE;
-		}
-	}
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_DOT, dtype, com);
 
-	if (a->com || b->com){
+	if (kernel == NULL) return CL_COMPILE_PROGRAM_FAILURE;
+
+	if (com){
 		if (createComplexMatrix(a) || createComplexMatrix(b)){
 			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
 		}
 	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_DOT*10+dtype];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &b->real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &b->imag);
 	clSetKernelArg(kernel, 4, 8, &a->vl_shape[1]);
-	clSetKernelArg(kernel, 5, 1, &a->com);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->vl_shape, a->work_items, nw, be, e);
 }
@@ -1269,71 +1219,60 @@ int wekuaMatrixDivide(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event 
 		return CL_INVALID_MEM_OBJECT;
 	}
 
-	uint8_t dtype = a->dtype;
+	uint8_t dtype = a->dtype, com = a->com|b->com;
 	if (dtype < WEKUA_DTYPE_FLOAT) return CL_INVALID_MEM_OBJECT;
 
 	wekuaContext ctx = a->ctx;
-	cl_kernel kernel;
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_DIVIDE, dtype, com);
 
-	if (compileKernel(ctx, WEKUA_KERNEL_DIVIDE, dtype)){
-		return CL_COMPILE_PROGRAM_FAILURE;
-	}else if (a->com|b->com){
+	if (kernel == NULL) return CL_COMPILE_PROGRAM_FAILURE;
+	
+	if (com){
 		if (createComplexMatrix(a)|createComplexMatrix(b)){
 			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
 		}
 	}
-
-	kernel = ctx->kernels[WEKUA_KERNEL_DIVIDE*10+dtype];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &b->real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &b->imag);
 	clSetKernelArg(kernel, 4, 8, &a->col);
-	clSetKernelArg(kernel, 5, 1, &a->com);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->shape, &a->work_items[4], nw, be, e);
 }
 
 int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw, cl_event *be, cl_event *e){
-	if (a == NULL && b == NULL){
-		return CL_INVALID_MEM_OBJECT;
-	}else if (a->dtype < WEKUA_DTYPE_FLOAT){
-		return CL_INVALID_MEM_OBJECT;
-	}
+	if (a == NULL) return CL_INVALID_MEM_OBJECT;
+	else if (a->dtype < WEKUA_DTYPE_FLOAT) return CL_INVALID_MEM_OBJECT;
 
-	uint8_t om = 0, dtype = a->dtype;
+	uint8_t om = 0, dtype = a->dtype, com = a->com;
 	wekuaContext ctx = a->ctx;
 	uint32_t dl = ctx->dtype_length[dtype];
-	cl_kernel kernel;
+	
 	cl_mem b_real = NULL, b_imag = NULL;
 
 	if (exp_r == NULL) exp_r = &zero;
 	if (exp_i == NULL) exp_i = &zero;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_POWER, dtype)){
-		return CL_COMPILE_PROGRAM_FAILURE;
-	}else if (b != NULL){
+	if (b != NULL){
 		om = 1;
 
-		if (memcmp(a->shape, b->shape, 16) != 0){
-			return CL_INVALID_MEM_OBJECT;
-		}
+		if (memcmp(a->shape, b->shape, 16) != 0) return CL_INVALID_MEM_OBJECT;
 
-		if (b->com|a->com){
-			if (createComplexMatrix(a)|createComplexMatrix(b)){
-				return CL_MEM_OBJECT_ALLOCATION_FAILURE;
-			}
+		com |= b->com;
+
+		if (com){
+			if (createComplexMatrix(a)|createComplexMatrix(b)) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
 		}
 		b_real = b->real;
 		b_imag = b->imag;
 	}else if (memcmp(&zero, exp_i, dl) != 0){
-		if (createComplexMatrix(a)){
-			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
-		}
+		if (createComplexMatrix(a)) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
 	}
 
-	kernel = ctx->kernels[WEKUA_KERNEL_POWER*10+WEKUA_DTYPE_DOUBLE];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_POWER, dtype, com);
+	if (kernel == NULL) return CL_COMPILE_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
@@ -1342,33 +1281,25 @@ int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw
 	clSetKernelArg(kernel, 4, dl, exp_r);
 	clSetKernelArg(kernel, 5, dl, exp_i);
 	clSetKernelArg(kernel, 6, 8, &a->col);
-	clSetKernelArg(kernel, 7, 1, &om);
-	clSetKernelArg(kernel, 8, 1, &a->com);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->shape, &a->work_items[4], nw, be, e);
 }
 
 int wekuaMatrixLn(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
-	if (a == NULL){
-		return CL_INVALID_MEM_OBJECT;
-	}
+	if (a == NULL) return CL_INVALID_MEM_OBJECT;
 
-	uint8_t dtype = a->dtype;
+	uint8_t dtype = a->dtype, com = a->com;
 	wekuaContext ctx = a->ctx;
 	cl_kernel kernel;
 
-	if (dtype < WEKUA_DTYPE_FLOAT){
-		return CL_INVALID_MEM_OBJECT;
-	}else if (compileKernel(ctx, WEKUA_KERNEL_LOG, dtype)){
-		return CL_COMPILE_PROGRAM_FAILURE;
-	}
+	if (dtype < WEKUA_DTYPE_FLOAT) return CL_INVALID_MEM_OBJECT;
 
-	kernel = ctx->kernels[WEKUA_KERNEL_LOG*10+dtype];
+	kernel = compileKernel(ctx, WEKUA_KERNEL_LOG, dtype, com);
+	if (kernel == NULL) return CL_COMPILE_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(kernel, 2, 1, &a->com);
-	clSetKernelArg(kernel, 3, 8, &a->vl_shape[1]);
+	clSetKernelArg(kernel, 2, 8, &a->vl_shape[1]);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->vl_shape, a->work_items, nw, be, e);
 }
@@ -1453,14 +1384,11 @@ int wekuaMatrixSqrt(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	wekuaContext ctx = a->ctx;
 	cl_kernel kernel;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_SQRT, dtype)){
-		return CL_BUILD_PROGRAM_FAILURE;
-	}
-	kernel = ctx->kernels[WEKUA_KERNEL_SQRT*10+dtype];
+	kernel = compileKernel(ctx, WEKUA_KERNEL_SQRT, dtype, a->com);
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
-	clSetKernelArg(kernel, 2, 1, &a->com);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &a->vl_shape[2], &a->work_items[8], nw, be, e);
 }
@@ -1470,7 +1398,7 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 	else if (a->dtype < WEKUA_DTYPE_FLOAT) return CL_INVALID_MEM_OBJECT;
 
 	wekuaContext ctx = a->ctx;
-	uint8_t dtype = a->dtype;
+	uint8_t dtype = a->dtype, com = a->com;
 	int ret = CL_SUCCESS;
 	uint32_t evn;
 	uint64_t col = a->shape[1], rcol = a->vl_shape[1], *shape, *wi;
@@ -1483,11 +1411,10 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 
 	wmatrix b = NULL, c = NULL;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_DET, dtype)) return CL_BUILD_PROGRAM_FAILURE;
+	kernel = compileKernel(ctx, WEKUA_KERNEL_DET, dtype, com);
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	if (col != a->shape[0]) return CL_INVALID_ARG_VALUE;
-
-	kernel = ctx->kernels[WEKUA_KERNEL_DET*10+dtype];
 
 	e = (cl_event*) calloc(a->shape[0]+1, sizeof(cl_event));
 	if (e == NULL) goto wekua_det_fail;
@@ -1513,7 +1440,6 @@ int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 		clSetKernelArg(kernel, 3, sizeof(cl_mem), &c->imag);
 		clSetKernelArg(kernel, 4, 8, &evn);
 		clSetKernelArg(kernel, 5, 8, &rcol);
-		clSetKernelArg(kernel, 6, 1, &b->com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, shape, wi, 1, befo, &e[evn+1]);
 		if (ret != CL_SUCCESS) goto wekua_det_fail;

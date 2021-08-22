@@ -109,7 +109,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
 #define WEKUA_KERNEL_SIGMOID_DEV 43
 #define WEKUA_KERNEL_TANH_DEV 44
 
-uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype);
+cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com);
 
 void freeWekuaContext(wekuaContext context);
 
@@ -280,7 +280,7 @@ typedef struct _w_neuron {
 	wacti acti; // Activation function for the neuron
 
 	// To run the neuron
-	wmatrix (*run)(void *, wmatrix, wcache *, uint32_t, cl_event *);
+	void* (*run)(void *, void *, wcache *, uint32_t, cl_event *);
 	int (*backward)(void *, werror error, wcache cache, werror *err);
 	int (*step)(void *, void *, void *, werror error, wcache cache, int (*)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix));
 
@@ -289,10 +289,17 @@ typedef struct _w_neuron {
 } *wneuron;
 
 wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype);
-// wneuron wekuaConv1d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size, uint64_t stride, uint8_t bias);
+
+
+typedef struct _w_conv_inputs {
+	uint32_t num; // Samples number
+	wmatrix *sample;
+} wconvinput;
+
+wneuron wekuaConv1d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size, uint64_t stride, uint8_t bias, wacti acti, uint8_t dtype);
 // wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride, uint8_t bias);
 
-wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
+void *runWekuaNeuron(wneuron neuron, void *input, wcache *cache, uint32_t nw, cl_event *be);
 
 int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err);
 
@@ -308,7 +315,7 @@ typedef struct _w_net {
 } *wnetwork;
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
-wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
+void *runWekuaNetwork(wnetwork net, void *input, wcache **cache);
 int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err);
 
 uint8_t saveWekuaNetwork(const char *name, wnetwork net);

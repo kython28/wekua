@@ -82,20 +82,16 @@ wmatrix getRoots(wekuaContext ctx, wmatrix ran, uint64_t degree, uint8_t dtype){
 }
 
 wmatrix getDev(wekuaContext ctx, wmatrix poly, uint8_t dtype){
-	if (compileKernel(ctx, WEKUA_KERNEL_ROOT_DEV, dtype)){
-		return NULL;
-	}
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_ROOT_DEV, dtype, poly->com);
+	if (kernel == NULL) return NULL;
 
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_ROOT_DEV*10+dtype];
 	cl_event e;
-
 	wmatrix dev = wekuaAllocComplexMatrix(ctx, 1, poly->shape[1]-1, poly->dtype);
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &dev->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &dev->imag);
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &poly->real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &poly->imag);
-	clSetKernelArg(kernel, 4, 1, &poly->com);
 
 	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &dev->shape[1], &dev->work_items[7], 0, NULL, &e);
 	if (ret == CL_SUCCESS){
@@ -118,14 +114,12 @@ wmatrix wekuaMatrixRoot(wmatrix poly, uint32_t nw, cl_event *be){
 	uint8_t dtype = poly->dtype;
 	uint32_t dl = ctx->dtype_length[dtype];
 	wmatrix ran, roots, dev;
-	cl_kernel kernel;
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_ROOT, dtype, 1);
 	cl_event e;
 	
-	if (compileKernel(ctx, WEKUA_KERNEL_ROOT, dtype)) return NULL;
+	if (kernel == NULL) return NULL;
 
 	if (createComplexMatrix(poly)) return NULL;
-
-	kernel = ctx->kernels[WEKUA_KERNEL_ROOT*10+dtype];
 
 	ran = getUpperLowerBounds(ctx, poly, dl, dtype);
 	roots = getRoots(ctx, ran, poly->shape[1]-1, dtype);

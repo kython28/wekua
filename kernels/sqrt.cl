@@ -6,15 +6,15 @@ __kernel void sqrt_kernel(
 ){
 	unsigned long i = get_global_id(0);
 
-	if (com){
-		wk aa, bb, r;
-		aa = ar[i]; bb = ai[i];
+#if com
+	wk aa, bb, r;
+	aa = ar[i]; bb = ai[i];
 
-		r = sqrt(aa*aa + bb*bb);
+	r = sqrt(aa*aa + bb*bb);
 
-		ar[i] = sqrt((r+aa)/2);
-		ai[i] = sqrt((r-aa)/2);
-	}else{
-		ar[i] = sqrt(ar[i]);
-	}
+	ar[i] = sqrt((r+aa)/2);
+	ai[i] = sqrt((r-aa)/2);
+#else
+	ar[i] = sqrt(ar[i]);
+#endif
 }

@@ -1,6 +1,6 @@
 #include "wekua.h"
 
-wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be){
+void *runWekuaNeuron(wneuron neuron, void *input, wcache *cache, uint32_t nw, cl_event *be){
 	return neuron->run(neuron, input, cache, nw, be);
 }
 
@@ -14,7 +14,7 @@ wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype){
 	return net;
 }
 
-wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
+void *runWekuaNetwork(wnetwork net, void *input, wcache **cache){
 	if (net == NULL || input == NULL) return NULL;
 
 	wmatrix output = NULL, tmp[2] = {NULL, NULL};

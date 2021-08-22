@@ -6,16 +6,12 @@ int wTrig(wmatrix a, uint8_t kn, uint32_t nw, cl_event *be, cl_event *e){
 	}
 
 	wekuaContext ctx = a->ctx;
-	if (compileKernel(ctx, kn, a->dtype)){
-		return CL_COMPILE_PROGRAM_FAILURE;
-	}
-
-	cl_kernel kernel = ctx->kernels[kn*10+a->dtype];
+	cl_kernel kernel = compileKernel(ctx, kn, a->dtype, a->com);
+	if (kernel == NULL) return CL_COMPILE_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(kernel, 2, 8, &a->vl_shape[1]);
-	clSetKernelArg(kernel, 3, 1, &a->com);
 
 	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->vl_shape, a->work_items, nw, be, e);
 }

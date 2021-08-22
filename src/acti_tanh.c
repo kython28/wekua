@@ -17,15 +17,13 @@ int run_tanh(void *data, wmatrix input, uint32_t nw, cl_event *be){
 wmatrix get_dev_tanh(void *data, wmatrix input){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype, com = input->com;
-	cl_kernel kernel;
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_TANH_DEV, dtype, com);
 	cl_event e;
 	int ret;
 
 	wmatrix dev;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_TANH_DEV, dtype)) return NULL;
-
-	kernel = ctx->kernels[WEKUA_KERNEL_TANH_DEV*10 + dtype];
+	if (kernel == NULL) return NULL;
 
 	if (com){
 		dev = wekuaAllocComplexMatrix(ctx, input->shape[0], input->shape[1], dtype);
@@ -37,7 +35,6 @@ wmatrix get_dev_tanh(void *data, wmatrix input){
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &input->imag);
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &dev->real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &dev->imag);
-	clSetKernelArg(kernel, 4, 1, &com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &input->vl_shape[2], &input->work_items[8], 0, NULL, &e);
 	if (ret != CL_SUCCESS){

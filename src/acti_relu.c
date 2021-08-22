@@ -3,17 +3,14 @@
 int run_relu(void *data, wmatrix input, uint32_t nw, cl_event *be){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype;
-	cl_kernel kernel;
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_RELU, dtype, input->com);
 	cl_event e;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_RELU, dtype)) return CL_BUILD_PROGRAM_FAILURE;
-
-	kernel = ctx->kernels[WEKUA_KERNEL_RELU*10 + dtype];
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &input->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &input->imag);
 	clSetKernelArg(kernel, 2, 8, &input->col);
-	clSetKernelArg(kernel, 3, 1, &input->com);
 
 	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, input->shape, &input->work_items[4], nw, be, &e);
 
@@ -28,10 +25,10 @@ int run_relu(void *data, wmatrix input, uint32_t nw, cl_event *be){
 wmatrix get_dev_relu(void *data, wmatrix input){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype;
-	cl_kernel kernel;
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_RELU_DEV, dtype, input->com);
 	cl_event e;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_RELU_DEV, dtype)) return NULL;
+	if (kernel == NULL) return NULL;
 
 	wmatrix dev = wekuaAllocMatrix(ctx, input->shape[0], input->shape[1], dtype);
 	if (input->com){
@@ -40,8 +37,6 @@ wmatrix get_dev_relu(void *data, wmatrix input){
 			return NULL;
 		}
 	}
-
-	kernel = ctx->kernels[WEKUA_KERNEL_RELU_DEV*10 + dtype];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &input->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &dev->real);

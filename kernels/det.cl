@@ -1,34 +1,7 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
-void gauss_real(__global wk *a, __global wk *b, __global wk *c, unsigned long k, unsigned long col){
-	wks a_c;
-
-	#if width == 1
-	a_c = b[k]/a[k];
-
-	if (isnan(a_c) || isinf(a_c)) return;
-
-	c[k] /= a_c;
-
-	for (unsigned long x=k; x<col; x++)
-	#else
-	unsigned long mod = k%width, addr;
-	addr = (k - mod)/width;
-
-	a_c = b[addr][mod]/a[addr][mod];
-
-	if (isnan(a_c) || isinf(a_c)) return;
-
-	c[addr][mod] /= a_c;
-	for (unsigned long x=addr; x<col; x++)
-	#endif
-	{
-		a[x] = a[x]*a_c - b[x];
-	}
-}
-
-
-void gauss_complex(__global wk *ar, __global wk *ai, __global wk *br, __global wk *bi, __global wk *cr,
+#if com
+void gauss(__global wk *ar, __global wk *ai, __global wk *br, __global wk *bi, __global wk *cr,
 	__global wk *ci, unsigned long k, unsigned long col){
 	wks aa, bb, cc, dd;
 
@@ -75,6 +48,34 @@ void gauss_complex(__global wk *ar, __global wk *ai, __global wk *br, __global w
 		ai[x] = ff - bi[x];
 	}
 }
+#else
+void gauss(__global wk *a, __global wk *b, __global wk *c, unsigned long k, unsigned long col){
+	wks a_c;
+
+	#if width == 1
+	a_c = b[k]/a[k];
+
+	if (isnan(a_c) || isinf(a_c)) return;
+
+	c[k] /= a_c;
+
+	for (unsigned long x=k; x<col; x++)
+	#else
+	unsigned long mod = k%width, addr;
+	addr = (k - mod)/width;
+
+	a_c = b[addr][mod]/a[addr][mod];
+
+	if (isnan(a_c) || isinf(a_c)) return;
+
+	c[addr][mod] /= a_c;
+	for (unsigned long x=addr; x<col; x++)
+	#endif
+	{
+		a[x] = a[x]*a_c - b[x];
+	}
+}
+#endif
 
 
 __kernel void det(
@@ -86,20 +87,22 @@ __kernel void det(
 	unsigned long i = get_global_id(0);
 
 	if (i > k){
-		if (com){
-			gauss_complex(
-				&ar[i*col], &ai[i*col], &ar[k*col], &ai[k*col],
-				&br[i*col], &bi[i*col], k, col
-			);
-		}else{
-			gauss_real(&ar[i*col], &ar[k*col], &br[i*col], k, col);
-		}
+#if com
+		gauss(
+			&ar[i*col], &ai[i*col], &ar[k*col], &ai[k*col],
+			&br[i*col], &bi[i*col], k, col
+		);
+#else
+		gauss(&ar[i*col], &ar[k*col], &br[i*col], k, col);
+#endif
 	}else if (i == k){
-		#if width == 1
+#if width == 1
 		k = k*col + k;
 		br[k] = ar[k];
-		if (com) bi[k] = ai[k];
-		#else
+#if com
+		bi[k] = ai[k];
+#endif
+#else
 		unsigned long mod = k%width, addr;
 		addr = (k - mod)/width;
 
@@ -107,7 +110,9 @@ __kernel void det(
 		k += addr;
 
 		br[k][mod] = ar[k][mod];
-		if (com) bi[k][mod] = ai[k][mod];
-		#endif
+#if com
+		bi[k][mod] = ai[k][mod];
+#endif
+#endif
 	}
 }

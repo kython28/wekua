@@ -98,17 +98,14 @@ int step_optim_gdm(void *data, void *grad, uint32_t dl, wmatrix error, wmatrix e
 
 	int ret;
 	wekuaContext ctx = error->ctx;
-	uint8_t dtype = error->dtype;
+	uint8_t dtype = error->dtype, com = weight->com;
 	uint32_t evn = 0;
 	cl_event e[2];
 
 	wmatrix *gradient = grad;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_GDM, dtype)){
-		return CL_BUILD_PROGRAM_FAILURE;
-	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_GDM*10+dtype];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_GDM, dtype, com);
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &error->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &error->imag);
@@ -121,13 +118,16 @@ int step_optim_gdm(void *data, void *grad, uint32_t dl, wmatrix error, wmatrix e
 	clSetKernelArg(kernel, 8, dl, betar);
 	clSetKernelArg(kernel, 9, dl, betai);
 	clSetKernelArg(kernel, 10, 8, &weight->vl_shape[1]);
-	clSetKernelArg(kernel, 11, 1, &weight->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, weight->vl_shape, weight->work_items, 0, NULL, e);
 	if (ret != CL_SUCCESS) goto wk_step_optim_gdm_fail;
 	evn++;
 
 	if (error_b != NULL){
+		if (com){
+			if (createComplexMatrix(bias)) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		}
+
 		clSetKernelArg(kernel, 0, sizeof(cl_mem), &error_b->real);
 		clSetKernelArg(kernel, 1, sizeof(cl_mem), &error_b->imag);
 		clSetKernelArg(kernel, 2, sizeof(cl_mem), &bias->real);
@@ -139,7 +139,6 @@ int step_optim_gdm(void *data, void *grad, uint32_t dl, wmatrix error, wmatrix e
 		clSetKernelArg(kernel, 8, dl, betar);
 		clSetKernelArg(kernel, 9, dl, betai);
 		clSetKernelArg(kernel, 10, 8, &bias->vl_shape[1]);
-		clSetKernelArg(kernel, 11, 1, &bias->com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, bias->vl_shape, bias->work_items, 0, NULL, &e[1]);
 		if (ret != CL_SUCCESS) goto wk_step_optim_gdm_fail;
@@ -529,17 +528,14 @@ int step_optim_adagrad(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 
 	int ret;
 	wekuaContext ctx = error->ctx;
-	uint8_t dtype = error->dtype;
+	uint8_t dtype = error->dtype, com = weight->com;
 	uint32_t evn = 0;
 	cl_event e[2];
 
 	wmatrix *gradient = grad;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_ADAGRAD, dtype)){
-		return CL_BUILD_PROGRAM_FAILURE;
-	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_ADAGRAD*10+dtype];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_ADAGRAD, dtype, com);
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &error->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &error->imag);
@@ -550,13 +546,16 @@ int step_optim_adagrad(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 	clSetKernelArg(kernel, 6, dl, lr);
 	clSetKernelArg(kernel, 7, dl, lri);
 	clSetKernelArg(kernel, 8, 8, &weight->vl_shape[1]);
-	clSetKernelArg(kernel, 9, 1, &weight->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, weight->vl_shape, weight->work_items, 0, NULL, e);
 	if (ret != CL_SUCCESS) goto wk_step_optim_adagrad_fail;
 	evn++;
 
 	if (error_b != NULL){
+		if (com){
+			if (createComplexMatrix(bias)) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		}
+
 		clSetKernelArg(kernel, 0, sizeof(cl_mem), &error_b->real);
 		clSetKernelArg(kernel, 1, sizeof(cl_mem), &error_b->imag);
 		clSetKernelArg(kernel, 2, sizeof(cl_mem), &bias->real);
@@ -566,7 +565,6 @@ int step_optim_adagrad(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 		clSetKernelArg(kernel, 6, dl, lr);
 		clSetKernelArg(kernel, 7, dl, lri);
 		clSetKernelArg(kernel, 8, 8, &bias->vl_shape[1]);
-		clSetKernelArg(kernel, 9, 1, &bias->com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, bias->vl_shape, bias->work_items, 0, NULL, &e[1]);
 		if (ret != CL_SUCCESS) goto wk_step_optim_adagrad_fail;
@@ -715,17 +713,14 @@ int step_optim_rmsprop(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 
 	int ret;
 	wekuaContext ctx = error->ctx;
-	uint8_t dtype = error->dtype;
+	uint8_t dtype = error->dtype, com = weight->com;
 	uint32_t evn = 0;
 	cl_event e[2];
 
 	wmatrix *gradient = grad;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_RMSPROP, dtype)){
-		return CL_BUILD_PROGRAM_FAILURE;
-	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_RMSPROP*10+dtype];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_RMSPROP, dtype, com);
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &error->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &error->imag);
@@ -738,13 +733,16 @@ int step_optim_rmsprop(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 	clSetKernelArg(kernel, 8, dl, betar);
 	clSetKernelArg(kernel, 9, dl, betai);
 	clSetKernelArg(kernel, 10, 8, &weight->vl_shape[1]);
-	clSetKernelArg(kernel, 11, 1, &weight->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, weight->vl_shape, weight->work_items, 0, NULL, e);
 	if (ret != CL_SUCCESS) goto wk_step_optim_adagrad_fail;
 	evn++;
 
 	if (error_b != NULL){
+		if (com){
+			if (createComplexMatrix(bias)) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		}
+
 		clSetKernelArg(kernel, 0, sizeof(cl_mem), &error_b->real);
 		clSetKernelArg(kernel, 1, sizeof(cl_mem), &error_b->imag);
 		clSetKernelArg(kernel, 2, sizeof(cl_mem), &bias->real);
@@ -756,7 +754,6 @@ int step_optim_rmsprop(void *data, void *grad, uint32_t dl, wmatrix error, wmatr
 		clSetKernelArg(kernel, 8, dl, betar);
 		clSetKernelArg(kernel, 9, dl, betai);
 		clSetKernelArg(kernel, 10, 8, &bias->vl_shape[1]);
-		clSetKernelArg(kernel, 11, 1, &bias->com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, bias->vl_shape, bias->work_items, 0, NULL, &e[1]);
 		if (ret != CL_SUCCESS) goto wk_step_optim_adagrad_fail;
@@ -907,17 +904,14 @@ int step_optim_adadelta(void *data, void *grad, uint32_t dl, wmatrix error, wmat
 
 	int ret;
 	wekuaContext ctx = error->ctx;
-	uint8_t dtype = error->dtype;
+	uint8_t dtype = error->dtype, com = weight->com;
 	uint32_t evn = 0;
 	cl_event e[2];
 
 	wmatrix *gradient = grad;
 
-	if (compileKernel(ctx, WEKUA_KERNEL_ADADELTA, dtype)){
-		return CL_BUILD_PROGRAM_FAILURE;
-	}
-
-	cl_kernel kernel = ctx->kernels[WEKUA_KERNEL_ADADELTA*10+dtype];
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_ADADELTA, dtype, com);
+	if (kernel == NULL) return CL_BUILD_PROGRAM_FAILURE;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &gradient[0]->real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradient[0]->imag);
@@ -930,13 +924,16 @@ int step_optim_adadelta(void *data, void *grad, uint32_t dl, wmatrix error, wmat
 	clSetKernelArg(kernel, 8, dl, lr);
 	clSetKernelArg(kernel, 9, dl, lri);
 	clSetKernelArg(kernel, 10, 8, &weight->vl_shape[1]);
-	clSetKernelArg(kernel, 11, 1, &weight->com);
 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, weight->vl_shape, weight->work_items, 0, NULL, e);
 	if (ret != CL_SUCCESS) goto wk_step_optim_adadelta_fail;
 	evn++;
 
 	if (error_b != NULL){
+		if (com){
+			if (createComplexMatrix(bias)) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		}
+
 		clSetKernelArg(kernel, 0, sizeof(cl_mem), &gradient[2]->real);
 		clSetKernelArg(kernel, 1, sizeof(cl_mem), &gradient[2]->imag);
 		clSetKernelArg(kernel, 2, sizeof(cl_mem), &gradient[3]->real);
@@ -948,7 +945,6 @@ int step_optim_adadelta(void *data, void *grad, uint32_t dl, wmatrix error, wmat
 		clSetKernelArg(kernel, 8, dl, lr);
 		clSetKernelArg(kernel, 9, dl, lri);
 		clSetKernelArg(kernel, 10, 8, &bias->vl_shape[1]);
-		clSetKernelArg(kernel, 11, 1, &bias->com);
 
 		ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, bias->vl_shape, bias->work_items, 0, NULL, &e[1]);
 		if (ret != CL_SUCCESS) goto wk_step_optim_adadelta_fail;

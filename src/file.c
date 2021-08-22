@@ -137,15 +137,22 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 
 
 uint8_t saveNeuron(int fd, wneuron neuron){
+	// -----------------------------------------
+	// This is temporary
 	uint64_t layer = neuron->layer;
+	wmatrix *w, *b;
+	w = neuron->weight;
+	b = neuron->bias;
+	
 	for (uint64_t x=0; x<layer; x++){
-		if (saveMatrix(fd, neuron->weight[x])) break;
+		if (saveMatrix(fd, w[x])) break;
 	}
-	if (neuron->bias){
+	if (b){
 		for (uint64_t x=0; x<layer; x++){
-			if (saveMatrix(fd, neuron->bias[x])) break;
+			if (saveMatrix(fd, b[x])) break;
 		}
 	}
+	// -----------------------------------------
 	return 0;
 }
 

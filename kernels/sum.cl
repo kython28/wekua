@@ -6,26 +6,29 @@ __kernel void sum_kernel(
 	unsigned long col, unsigned char com
 ){
 	unsigned long i = get_global_id(0);
-	unsigned long k = i*col;
+	unsigned long j = i*col;
+	col += j;
 
-	wk ra = ar[k], rb;
-	if (com){
-		rb = ai[k];
-		for (unsigned long j=1; j<col; j++){
-			ra += ar[k + j];
-			rb += ai[k + j];
-		}
-
-		#if width == 1
-		bi[i] = rb;
-		#else
-		bi[i] = sum(rb);
-		#endif
-	}else{
-		for (unsigned long j=1; j<col; j++){
-			ra += ar[k + j];
-		}
+	wk ra = ar[j];
+#if com
+	wk rb = ai[j];
+	j++;
+	for (; j<col; j++){
+		ra += ar[j];
+		rb += ai[j];
 	}
+
+	#if width == 1
+	bi[i] = rb;
+	#else
+	bi[i] = sum(rb);
+	#endif
+#else
+	j++;
+	for (; j<col; j++){
+		ra += ar[j];
+	}
+#endif
 
 	#if width == 1
 	br[i] = ra;

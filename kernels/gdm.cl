@@ -12,21 +12,22 @@ __kernel void gdm(
 ){
 	unsigned long i = get_global_id(0)*col + get_global_id(1);
 
-	wk t_vr = vr[i], t_vi, t_err = err[i], t_erri;
-	if (com){
-		t_vi = vi[i];
-		t_erri = erri[i];
+	wk t_vr = vr[i], t_err = err[i];
+#if com
+	wk t_vi, t_erri;
+	t_vi = vi[i];
+	t_erri = erri[i];
 
-		complex_mul_scal(&t_vr, &t_vi, betar, betai);
-		complex_mul_scal(&t_err, &t_erri, alphar, alphai);
+	complex_mul_scal(&t_vr, &t_vi, betar, betai);
+	complex_mul_scal(&t_err, &t_erri, alphar, alphai);
 
-		t_vr += t_err;
-		t_vi += t_erri;
+	t_vr += t_err;
+	t_vi += t_erri;
 
-		wi[i] -= t_vi;
-	}else{
-		t_vr = t_vr*betar + alphar*t_err;
-	}
+	wi[i] -= t_vi;
+#else
+	t_vr = t_vr*betar + alphar*t_err;
+#endif
 	wr[i] -= t_vr;
 	vr[i] = t_vr;
 }

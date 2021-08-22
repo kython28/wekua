@@ -6,9 +6,10 @@
 #include <fcntl.h>
 // #include <stdarg.h>
 
-#define KERNEL_NUM 45
+#define WEKUA_KERNEL_NUM 45
+#define KERNEL_COL 10*45
 
-const char kernels[KERNEL_NUM][50] = {
+const char kernels[WEKUA_KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/rand.cl",
 	"/usr/lib/wekua_kernels/randuniform.cl",
 	"/usr/lib/wekua_kernels/iden.cl",
@@ -56,7 +57,7 @@ const char kernels[KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/tanh_dev.cl"
 };
 
-const char ker_name[KERNEL_NUM][20] = {
+const char ker_name[WEKUA_KERNEL_NUM][20] = {
 	"rand", "uniform", "iden", "trans", "axpy",
 	"scal", "doth", "convert",
 	"absolute", "diag", "arange", "power",
@@ -214,8 +215,8 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 
 	context->command_queue = clCreateCommandQueueWithProperties(context->ctx, dev->device, NULL, NULL);
 
-	context->programs = (cl_program*) calloc(KERNEL_NUM*10, sizeof(cl_program));
-	context->kernels = (cl_kernel*) calloc(KERNEL_NUM*10, sizeof(cl_kernel));
+	context->programs = (cl_program*) calloc(2*KERNEL_COL, sizeof(cl_program));
+	context->kernels = (cl_kernel*) calloc(2*KERNEL_COL, sizeof(cl_kernel));
 
 	if (use_vectors){
 		memcpy(context->vector_width, dev->vector_width, 40);
@@ -268,57 +269,61 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors){
 	return ctx;
 }
 
-uint8_t compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype){
-	if (ctx->kernels[id*10+dtype] != NULL){
-		return 0;
-	}
+cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com){
+	uint32_t pos = com*KERNEL_COL + id*10 + dtype;
+	cl_kernel kernel = ctx->kernels[pos];
+	if (kernel != NULL) return kernel;
 
 	char args[50], *source, *error;
-
-	sprintf(args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type);
+	sprintf(args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
 
 	uint64_t size;
 	int ret;
 
 	source = getKernelData(kernels[id], (long*)&size);
 
-	ctx->programs[id*10+dtype] = clCreateProgramWithSource(ctx->ctx, 1, (const char**)&source, &size, &ret);
-	if (ret != CL_SUCCESS) return 1;
+	cl_program program = clCreateProgramWithSource(ctx->ctx, 1, (const char**)&source, &size, &ret);
+	if (ret != CL_SUCCESS) return NULL;
 
-	ret = clBuildProgram(ctx->programs[id*10+dtype], 1, &ctx->dev, args, NULL, NULL);
+	ret = clBuildProgram(program, 1, &ctx->dev, args, NULL, NULL);
 	if (ret != CL_SUCCESS){
-		clGetProgramBuildInfo(ctx->programs[id*10+dtype], ctx->dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
+		clGetProgramBuildInfo(program, ctx->dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
 		error = (char*) malloc(size);
-		clGetProgramBuildInfo(ctx->programs[id*10+dtype], ctx->dev, CL_PROGRAM_BUILD_LOG, size, error, NULL);
+		clGetProgramBuildInfo(program, ctx->dev, CL_PROGRAM_BUILD_LOG, size, error, NULL);
 		printf("%s\nSize: %ld\n", error, size);
 		free(error);
 		
 		printf("Return Code: %d\nKernel: %s\n", ret, ker_name[id]);
 		
-		clReleaseProgram(ctx->programs[id*10+dtype]);
-		ctx->programs[id*10+dtype] = NULL;
+		clReleaseProgram(program);
 		free(source);
-		return 1;
+		return NULL;
 	}
 	free(source);
 
-	ctx->kernels[id*10+dtype] = clCreateKernel(ctx->programs[id*10+dtype], ker_name[id], &ret);
-	if (ret != CL_SUCCESS) return 1;
+	kernel = clCreateKernel(program, ker_name[id], &ret);
+	if (ret != CL_SUCCESS){
+		clReleaseProgram(program);
+		return NULL;
+	}
 
-	return 0;
+	ctx->programs[pos] = program;
+	ctx->kernels[pos] = kernel;
+
+	return kernel;
 }
 
 void freeWekuaContext(wekuaContext context){
 	if (context == NULL) return;
 
 	if (context->kernels != NULL){
-		for (uint32_t x=0; x<KERNEL_NUM*10; x++){
+		for (uint32_t x=0; x<KERNEL_COL*2; x++){
 			if (context->kernels[x] != NULL) clReleaseKernel(context->kernels[x]);
 		}
 	}
 
 	if (context->programs != NULL){
-		for (uint32_t x=0; x<KERNEL_NUM*10; x++){
+		for (uint32_t x=0; x<KERNEL_COL*2; x++){
 			if (context->programs[x] != NULL) clReleaseProgram(context->programs[x]);
 		}
 	}
