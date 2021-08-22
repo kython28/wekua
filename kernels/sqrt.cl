@@ -1,8 +1,7 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
 __kernel void sqrt_kernel(
-	__global wk *ar, __global wk *ai,
-	unsigned char com
+	__global wk *ar, __global wk *ai
 ){
 	unsigned long i = get_global_id(0);
 

@@ -81,8 +81,7 @@ void gauss(__global wk *a, __global wk *b, __global wk *c, unsigned long k, unsi
 __kernel void det(
 	__global wk *ar, __global wk *ai,
 	__global wk *br, __global wk *bi,
-	unsigned long k, unsigned long col,
-	unsigned char com
+	unsigned long k, unsigned long col
 ){
 	unsigned long i = get_global_id(0);
 

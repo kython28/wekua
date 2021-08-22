@@ -10,6 +10,6 @@ __kernel void relu(
 		ar[i] = 0.0;
 #if com
 		ai[i] = 0.0;
-#else
+#endif
 	}
 }

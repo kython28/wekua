@@ -6,31 +6,6 @@
 #define EPSILON 1e-14
 #endif
 
-void complex_mul(wks *a, wks *b, wks c, wks d){
-	wks e, f, g, h;
-	g = a[0]; h = b[0];
-	e = g*c - h*d;
-	f = g*d + h*c;
-	a[0] = e;
-	b[0] = f;
-}
-
-void calc_inv_complex(wks *a, wks *b){
-	wks c, d, aa, bb;
-	aa = a[0]; bb = b[0];
-
-	c = aa;
-	d = -1.0*bb;
-
-	aa = (aa*aa + bb*bb);
-
-	c /= aa;
-	d /= aa;
-	
-	a[0] = c;
-	b[0] = d;
-}
-
 void calc_poly(wks r, wks i, wks *a, wks *b, __global wks *rpoly, __global wks *ipoly, unsigned long col){
 	a[0] = 0.0;
 	b[0] = 0.0;
@@ -38,7 +13,7 @@ void calc_poly(wks r, wks i, wks *a, wks *b, __global wks *rpoly, __global wks *
 	for (unsigned long x=0; x<col; x++){
 		aa += rpoly[x]*c - ipoly[x]*d;
 		bb += rpoly[x]*d + ipoly[x]*c;
-		complex_mul(&c, &d, r, i);
+		complex_mul_scal2(&c, &d, r, i);
 	}
 	a[0] = aa; b[0] = bb;
 }
@@ -49,9 +24,9 @@ void calc_ratio(wks r, wks i, wks *fr, wks *fi, __global wks *rpoly, __global wk
 	calc_poly(r, i, fr, fi, rpoly, ipoly, col+1);
 	calc_poly(r, i, &dr, &di, rdev, idev, col);
 
-	calc_inv_complex(&dr, &di);
+	calc_inv_complex_scal(&dr, &di);
 
-	complex_mul(fr, fi, dr, di);
+	complex_mul_scal2(fr, fi, dr, di);
 }
 
 __kernel void aberth(
@@ -74,16 +49,16 @@ __kernel void aberth(
 				ro = rroot[i]; io = iroot[i];
 				ro -= rroot[x]; io -= iroot[x];
 
-				calc_inv_complex(&ro, &io);
+				calc_inv_complex_scal(&ro, &io);
 				devr += ro; devi += io;
 			}
 		}
 
-		complex_mul(&devr, &devi, ratior, ratioi);
+		complex_mul_scal2(&devr, &devi, ratior, ratioi);
 		devr = 1.0 - devr;
 		devi *= -1.0;
-		calc_inv_complex(&devr, &devi);
-		complex_mul(&ratior, &ratioi, devr, devi);
+		calc_inv_complex_scal(&devr, &devi);
+		complex_mul_scal2(&ratior, &ratioi, devr, devi);
 
 		rroot[i] -= ratior;
 		iroot[i] -= ratioi;

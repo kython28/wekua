@@ -13,7 +13,7 @@ __kernel void leakyrelu_dev(
 		br[i] = alpha;
 #if com
 		bi[i] = alphai;
-#else
+#endif
 	}else if (aa > 0.0){
 		br[i] = 1.0;
 	}

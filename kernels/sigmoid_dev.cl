@@ -2,12 +2,12 @@
 
 __kernel void sigmoid_dev(
 	__global wk *ar, __global wk *ai,
-	__global wk *br, __global wk *bi,
-	unsigned char com){
+	__global wk *br, __global wk *bi){
 	unsigned long i = get_global_id(0);
 	
+	wk aa;
 #if com
-	wk aa, bb, cc, dd;
+	wk bb, cc, dd;
 	aa = ar[i];
 	bb = ai[i];
 

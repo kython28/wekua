@@ -45,5 +45,5 @@ __kernel void linear_bias_step(
 	#else
 	bi[j] = sum(C11); bi[j + 1] = sum(C12);
 	#endif
-#else
+#endif
 }

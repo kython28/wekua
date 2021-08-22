@@ -3,7 +3,7 @@
 __kernel void sum_kernel(
 	__global wk *ar, __global wk *ai,
 	__global wk *br, __global wk *bi,
-	unsigned long col, unsigned char com
+	unsigned long col
 ){
 	unsigned long i = get_global_id(0);
 	unsigned long j = i*col;

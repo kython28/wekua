@@ -8,7 +8,7 @@ __kernel void gdm(
 	wks alphar, wks alphai,
 	wks betar, wks betai,
 
-	unsigned long col, unsigned char com
+	unsigned long col
 ){
 	unsigned long i = get_global_id(0)*col + get_global_id(1);
 
