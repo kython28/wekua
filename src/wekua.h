@@ -108,6 +108,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
 #define WEKUA_KERNEL_MSE 42
 #define WEKUA_KERNEL_SIGMOID_DEV 43
 #define WEKUA_KERNEL_TANH_DEV 44
+#define WEKUA_KERNEL_ADAM 45
 
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com);
 
@@ -345,7 +346,7 @@ woptim wekuaOptimNAG(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *
 woptim wekuaOptimAdaGrad(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adaptive gradient optimizatione
 woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, void *beta, void *betai, uint8_t dtype); // Root Mean Square Propagation
 woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adadelta
-// woptim wekuaOptimAdam(wekuaContext ctx,  wnetwork net, void *lr, void *lri, void *beta1, void *beta1i, void *beta2, void *beta2i, uint8_t dtype);
+woptim wekuaOptimAdam(wekuaContext ctx,  wnetwork net, void *lr, void *lri, void *beta1, void *beta1i, void *beta2, void *beta2i, uint8_t dtype);
 
 int wekuaOptimStep(woptim optim, werror *error, wcache *cache);
 int wekuaOptimZero(woptim optim);
