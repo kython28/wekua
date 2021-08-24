@@ -40,7 +40,7 @@ __kernel void adagrad(
 	gra = gr[i];
 	gra += error*error;
 
-	wr[i] -= alpha*error*(rsqrt(gra) + FLT_EPSILON);
+	wr[i] -= alpha*error/(sqrt(gra) + FLT_EPSILON);
 #endif
 	gr[i] = gra;
 }

@@ -130,8 +130,6 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 	}
 
 	load_finish:
-	if (real != NULL) munmap(real, file_h.size);
-	if (imag != NULL) munmap(imag, file_h.size);
 	return a;
 }
 

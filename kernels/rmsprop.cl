@@ -43,7 +43,7 @@ __kernel void rmsprop(
 	gra = beta*gr[i];
 	gra += (1 - beta)*error*error;
 
-	wr[i] -= alpha*error*(rsqrt(gra) + FLT_EPSILON);
+	wr[i] -= alpha*error/(sqrt(gra) + FLT_EPSILON);
 #endif
 	gr[i] = gra;
 }
