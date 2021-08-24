@@ -64,7 +64,7 @@ __kernel void adadelta(
 
 	t_gra2 = gra2r[i];
 
-	error *= sqrt(t_gra2/t_gra1 + 1);
+	error *= sqrt((t_gra2 + FLT_EPSILON)/(t_gra1 + FLT_EPSILON));
 	wr[i] -= error;
 
 	t_gra2 *= alpha;
