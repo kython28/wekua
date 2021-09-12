@@ -10,7 +10,7 @@ __kernel void sigmoid(__global wk *a, __global wk *b){
 
 	unsigned long i = get_global_id(0);
 	wk c;
-	c = exp(-ONE*a[i]);
+	c = exp(-a[i]);
 #if com
 	wk aa, bb, d;
 	bb = b[i];
