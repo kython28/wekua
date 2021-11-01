@@ -6,8 +6,8 @@
 #include <fcntl.h>
 // #include <stdarg.h>
 
-#define WEKUA_KERNEL_NUM 46
-#define KERNEL_COL 10*46
+#define WEKUA_KERNEL_NUM 47
+#define KERNEL_COL 10*WEKUA_KERNEL_NUM
 
 const char kernels[WEKUA_KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/rand.cl",
@@ -56,6 +56,7 @@ const char kernels[WEKUA_KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/sigmoid_dev.cl",
 	"/usr/lib/wekua_kernels/tanh_dev.cl",
 	"/usr/lib/wekua_kernels/adam.cl",
+	"/usr/lib/wekua_kernels/crossentropy.cl",
 };
 
 const char ker_name[WEKUA_KERNEL_NUM][20] = {
@@ -70,7 +71,7 @@ const char ker_name[WEKUA_KERNEL_NUM][20] = {
 	"sqrt_kernel", "adagrad", "gdm",
 	"rmsprop", "adadelta", "relu", "relu_dev",
 	"leakyrelu", "leakyrelu_dev", "mse",
-	"sigmoid_dev", "tanh_dev", "adam"
+	"sigmoid_dev", "tanh_dev", "adam", "crossentropy"
 };
 
 const uint32_t dtype_length[10] = {
@@ -198,6 +199,44 @@ char *getKernelData(const char *name, long *size){
 	return cont;
 }
 
+
+struct w_matrix_free_arg {
+	uint8_t service;
+	pthread_mutex_t *lock;
+	wfifo fifo;
+};
+
+int UnmapBufferMatrix(wmatrix a);
+
+static void *wekua_matrix_free_worker(void *arg){
+	struct w_matrix_free_arg *data = arg;
+	pthread_mutex_t *lock = data->lock;
+	wfifo fifo = data->fifo;
+	uint8_t run;
+	while (1){
+		pthread_mutex_lock(lock);
+		run = data->service|wekuaFIFOisnotEmpty(fifo);
+		pthread_mutex_unlock(lock);
+		if (run){
+			wmatrix a = wekuaFIFOGet(fifo);
+			if (a){
+				register int ret = UnmapBufferMatrix(a);
+				if (a->real != NULL && ret == CL_SUCCESS){
+					ret = clReleaseMemObject(a->real);
+					if (ret == CL_SUCCESS) a->real = NULL;
+				}
+				if (a->imag != NULL && ret == CL_SUCCESS){
+					ret = clReleaseMemObject(a->imag);
+				}
+				if (ret == CL_SUCCESS) free(a);
+				else wekuaFIFOPut(fifo, a);
+			}else break;
+		}else break;
+	}
+	return NULL;
+}
+
+
 wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 	if (dev == NULL){
 		return NULL;
@@ -232,6 +271,16 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 	context->max_work_group_size = dev->max_work_group_size;
 	context->compute_units = dev->compute_units;
 	context->local_mem_type = dev->local_mem_type;
+
+	wfifo garbage_queue = wekuaAllocFIFO();
+	struct w_matrix_free_arg *data = calloc(1, sizeof(struct w_matrix_free_arg));
+	data->lock = calloc(1, sizeof(pthread_mutex_t));
+	pthread_mutex_init(data->lock, NULL);
+	data->fifo = garbage_queue;
+	data->service = 1;
+	context->garbage_queue = garbage_queue;
+	context->garbage_collector_arg = data;
+	pthread_create(&context->garbage_collector, NULL, &wekua_matrix_free_worker, data);
 
 	return context;
 }
@@ -316,6 +365,18 @@ cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com
 
 void freeWekuaContext(wekuaContext context){
 	if (context == NULL) return;
+
+	struct w_matrix_free_arg *data = context->garbage_collector_arg;
+
+	wfifo fifo = data->fifo;
+	wekuaFIFOPut(fifo, NULL);
+	pthread_mutex_lock(data->lock);
+	data->service = 0;
+	pthread_mutex_unlock(data->lock);
+	pthread_join(context->garbage_collector, NULL);
+
+	wekuaFreeFIFO(fifo);
+	free(data);
 
 	if (context->kernels != NULL){
 		for (uint32_t x=0; x<KERNEL_COL*2; x++){

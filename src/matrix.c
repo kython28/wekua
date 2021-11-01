@@ -134,23 +134,20 @@ int removeComplexMatrix(wmatrix b, uint32_t nw, cl_event *be){
 	return ret;
 }
 
-int wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be){
-	if (a == NULL){
-		return CL_INVALID_MEM_OBJECT;
-	}
-	int ret;
+void wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be){
+	if (a == NULL) return;
 
 	clWaitForEvents(nw, be);
-
-	ret = UnmapBufferMatrix(a);
-	if (a->real != NULL && ret == CL_SUCCESS){
-		ret = clReleaseMemObject(a->real);
-	}
-	if (a->imag != NULL && ret == CL_SUCCESS){
-		ret = clReleaseMemObject(a->imag);
-	}
-	if (ret == CL_SUCCESS) free(a);
-	return ret;
+	wekuaFIFOPut(a->ctx->garbage_queue, a);
+	// ret = UnmapBufferMatrix(a);
+	// if (a->real != NULL && ret == CL_SUCCESS){
+	// 	ret = clReleaseMemObject(a->real);
+	// }
+	// if (a->imag != NULL && ret == CL_SUCCESS){
+	// 	ret = clReleaseMemObject(a->imag);
+	// }
+	// if (ret == CL_SUCCESS) free(a);
+	// return ret;
 }
 
 wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype){
@@ -207,9 +204,7 @@ wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 	}
 	ret = MapBufferMatrix(a);
 	if (ret != CL_SUCCESS){
-		if (wekuaFreeMatrix(a, 0, NULL) != CL_SUCCESS){
-			free(a);
-		}
+		wekuaFreeMatrix(a, 0, NULL);
 	}
 	return a;
 }
@@ -221,9 +216,7 @@ wmatrix wekuaAllocMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 	}
 
 	if (mem_set_zero(a, a->real) != CL_SUCCESS){
-		if (wekuaFreeMatrix(a, 0, NULL) != CL_SUCCESS){
-			free(a);
-		}
+		wekuaFreeMatrix(a, 0, NULL);
 		a = NULL;
 	}
 	return a;
@@ -232,9 +225,7 @@ wmatrix wekuaAllocMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 wmatrix wekuaAllocComplexMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype){
 	wmatrix a = wekuaAllocMatrix(ctx, r, c, dtype);
 	if (createComplexMatrix(a)){
-		if (wekuaFreeMatrix(a, 0, NULL) != CL_SUCCESS){
-			free(a);
-		}
+		wekuaFreeMatrix(a, 0, NULL);
 		return NULL;
 	}
 	return a;
@@ -485,9 +476,8 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	}
 
 	if (MapBufferMatrix(b) != CL_SUCCESS){
-		if (wekuaFreeMatrix(b, 0, NULL) != CL_SUCCESS){
-			free(b);
-		}
+		wekuaFreeMatrix(b, 0, NULL);
+		b = NULL;
 	}
 	return b;
 }
@@ -593,9 +583,7 @@ wmatrix wekuaMatrixConvert(wmatrix a, uint8_t dtype, uint32_t nw, cl_event *be, 
 
 	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, b->shape, &b->work_items[4], nw, be, e);
 	if (ret != CL_SUCCESS){
-		if (wekuaFreeMatrix(b, 0, NULL) != CL_SUCCESS){
-			free(b);
-		}
+		wekuaFreeMatrix(b, 0, NULL);
 		b = NULL;
 	}
 

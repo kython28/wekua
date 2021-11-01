@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
+#include <pthread.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +44,22 @@ void wekuaDeviceFromclDevice(cl_device_id dev, wDevice *wdev);
 void freeWekuaPlatform(wPlatform *plat, uint32_t nplat);
 void freeWekuaDevice(wDevice *dev, uint32_t ndev);
 
+// Extra features
+
+typedef struct _w_fifo {
+	pthread_cond_t cond;
+	pthread_mutex_t lock;
+	void *data;
+	uint64_t qsize;
+} *wfifo;
+
+wfifo wekuaAllocFIFO();
+void *wekuaFIFOGet(wfifo fifo);
+uint8_t wekuaFIFOisEmpty(wfifo fifo);
+uint8_t wekuaFIFOisnotEmpty(wfifo fifo);
+void wekuaFIFOPut(wfifo fifo, void *data);
+void wekuaFreeFIFO(wfifo);
+
 typedef struct _wk_ctx {
 	cl_context ctx; // OpenCL Context
 	cl_command_queue command_queue; // OpenCL Command Queue
@@ -51,6 +68,11 @@ typedef struct _wk_ctx {
 	
 	cl_device_id dev; // OpenCL device
 	cl_device_local_mem_type local_mem_type;
+
+	// Garbage collector
+	pthread_t garbage_collector;
+	void *garbage_collector_arg;
+	wfifo garbage_queue;
 
 	// Info
 	const uint32_t *dtype_length;
@@ -109,6 +131,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
 #define WEKUA_KERNEL_SIGMOID_DEV 43
 #define WEKUA_KERNEL_TANH_DEV 44
 #define WEKUA_KERNEL_ADAM 45
+#define WEKUA_KERNEL_CROSS_ENTROPY 42
 
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com);
 
@@ -235,7 +258,7 @@ wmatrix wekuaMatrixPoly(wmatrix a, uint32_t nw, cl_event *be); // Matrix Poly (L
 wmatrix wekuaMatrixEulerIden(wmatrix angle, uint32_t nw, cl_event *be);
 wmatrix wekuaMatrixRoot(wmatrix a, uint32_t nw, cl_event *be); // Polynomial roots
 
-int wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be); // To free a matrix
+void wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be); // To free a matrix
 
 uint8_t saveWekuaMatrix(const char *name, wmatrix a);
 wmatrix loadWekuaMatrix(const char *name, wekuaContext ctx);
@@ -254,6 +277,7 @@ typedef struct _w_error {
 } *werror;
 
 int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be); // Mean Square Error
+int wekuaCrossEntropy(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be); // Cross Entropy Error
 
 typedef struct _w_acti {
 	void *data; // Activation function data
@@ -280,6 +304,8 @@ typedef struct _w_neuron {
 	uint8_t dtype; // Weight data type
 	wacti acti; // Activation function for the neuron
 
+	void *extra_data;
+
 	// To run the neuron
 	void* (*run)(void *, void *, wcache *, uint32_t, cl_event *);
 	int (*backward)(void *, werror error, wcache cache, werror *err);
@@ -297,8 +323,8 @@ typedef struct _w_conv_inputs {
 	wmatrix *sample;
 } wconvinput;
 
-wneuron wekuaConv1d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size, uint64_t stride, uint8_t bias, wacti acti, uint8_t dtype);
-// wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride, uint8_t bias);
+// wneuron wekuaConv1d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size, uint64_t stride, uint8_t bias, wacti acti, uint8_t dtype);
+wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride, uint8_t bias, uint8_t dtype);
 
 void *runWekuaNeuron(wneuron neuron, void *input, wcache *cache, uint32_t nw, cl_event *be);
 
