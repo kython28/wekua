@@ -1,4 +1,5 @@
-#include "wekua.h"
+#include "../headers/matrix.h"
+#include <stdio.h>
 
 void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be){
 	clWaitForEvents(nw, be);

@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/acti.h"
 
 int runWekuaActi(wacti acti, wmatrix input, uint32_t nw, cl_event *be){
 	if (acti == NULL || input == NULL) return CL_INVALID_MEM_OBJECT;

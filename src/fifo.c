@@ -1,4 +1,5 @@
-#include "wekua.h"
+#include "../headers/fifo.h"
+#include <stdlib.h>
 
 struct linked_list_node {
 	void *data;

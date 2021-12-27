@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/network.h"
 
 void *runWekuaNeuron(wneuron neuron, void *input, wcache *cache, uint32_t nw, cl_event *be){
 	return neuron->run(neuron, input, cache, nw, be);

@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/matrix.h"
 
 const uint64_t zero_blas = 0;
 

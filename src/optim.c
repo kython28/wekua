@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/optim.h"
 
 void *get_one(uint8_t dtype, uint32_t dl);
 

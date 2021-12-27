@@ -1,4 +1,8 @@
-#include "wekua.h"
+#include "../headers/matrix.h"
+#include "../headers/network.h"
+#include "../headers/neuron.h"
+
+#include <unistd.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>

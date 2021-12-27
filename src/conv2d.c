@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/neuron.h"
 
 struct _w_conv2d_info {
 	uint64_t row_kernel;
@@ -21,9 +21,9 @@ wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channel
 	uint32_t wl = ctx->vector_width[dtype];
 
 	kernel_size_w *= in_channels;
-	kernel_size_w += kernel_size_w - kernel_size_w%wl;
+	kernel_size_w += wl - kernel_size_w%wl;
 	kernel_size_w /= wl;
-	kernel_size_w += kernel_size_w - kernel_size_w%3;
+	kernel_size_w += 3 - kernel_size_w%3;
 	kernel_size_w *= wl;
 
 	w[0] = wekuaAllocMatrix(ctx, kernel_size_h, kernel_size_w, dtype);

@@ -1,4 +1,5 @@
-#include "wekua.h"
+#include "../headers/matrix.h"
+#include <math.h>
 
 wmatrix getUpperLowerBounds(wekuaContext ctx, wmatrix a, uint32_t dl, uint8_t dtype){
 	void *max;

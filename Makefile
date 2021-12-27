@@ -10,12 +10,19 @@ main: $(archives)
 
 install:
 	cp libwekua.so /usr/lib/
-	cp src/wekua.h /usr/include/wekua.h
+	rm -rf /usr/include/wekua
+	cp -r headers /usr/include/wekua
 	rm -rf /usr/lib/wekua_kernels/
 	cp -r kernels/ /usr/lib/wekua_kernels/
 	chmod 755 /usr/lib/wekua_kernels
 	chmod 644 /usr/lib/wekua_kernels/*
-	chmod 644 /usr/include/wekua.h
+	chmod 755 /usr/include/wekua
+	chmod 644 /usr/include/wekua/*
+
+uninstall:
+	rm -rf /usr/lib/libwekua.so
+	rm -rf /usr/include/wekua
+	rm -rf /usr/lib/wekua_kernels
 
 clean:
 	rm -rf $(archives)

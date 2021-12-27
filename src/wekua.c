@@ -1,4 +1,8 @@
-#include "wekua.h"
+#include "../headers/matrix.h"
+// #include "../headers/wekua.h"
+
+#include <unistd.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>

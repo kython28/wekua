@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/neuron.h"
 
 void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max);
 void *get_one(uint8_t dtype, uint32_t dl);
@@ -117,7 +117,7 @@ void *run_linear(void *m, void *input_ptr, wcache *cache, uint32_t nw, cl_event 
 	cl_event e;
 	cl_command_queue cmd = ctx->command_queue;
 
-	if (cache != NULL){
+	if (cache){
 		cache[0] = (wcache) calloc(1, sizeof(struct _w_cache));
 		if (cache[0] == NULL) return NULL;
 
@@ -154,10 +154,10 @@ void *run_linear(void *m, void *input_ptr, wcache *cache, uint32_t nw, cl_event 
 
 		runWekuaActi(acti, output, 0, NULL);
 
-		if (cache == NULL){
-			if (in != input) wekuaFreeMatrix(in, 0, NULL);
+		if (cache){
+			data_cache[x+1] = output;
 		}else{
-			((wmatrix*)cache[0]->data)[x+1] = output;
+			if (in != input) wekuaFreeMatrix(in, 0, NULL);
 		}
 
 		in = output;
@@ -253,15 +253,18 @@ int backward_linear(void *n, werror error, wcache cache, werror *err){
 		ret = wekuaMatrixDot(tmp, dev, 0, NULL, &e);
 		if (ret != CL_SUCCESS) break;
 
-		wekuaFreeMatrix(dev, 1, &e);
-		clReleaseEvent(e);
-
 		s = tmp;
 		w = weight[no_err-1];
 
 		tmp = wekuaAllocMatrix(ctx, s->shape[0], w->shape[1], dtype);
-		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 0, NULL);
-		if (ret != CL_SUCCESS) break;
+		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 1, &e);
+		if (ret != CL_SUCCESS){
+			wekuaFreeMatrix(dev, 1, &e);
+			clReleaseEvent(e);
+			break;
+		}
+		clReleaseEvent(e);
+		wekuaFreeMatrix(dev, 0, NULL);
 	}
 	free(one);
 
@@ -351,6 +354,7 @@ int step_linear(void *neur, void *opti_data, void *other, werror error, wcache c
 		dev = wekuaAllocMatrix(ctx, w->shape[0], w->shape[1], dtype);		
 		ret = wekuaBlasGemm(one, NULL, 0, e, 0, a, NULL, NULL, dev, 1, &event);
 		if (ret != CL_SUCCESS){
+			clWaitForEvents(1, &event);
 			wekuaFreeMatrix(dev, 0, NULL);
 			wekuaFreeMatrix(e, 0, NULL);
 			break;

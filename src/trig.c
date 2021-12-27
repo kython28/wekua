@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/matrix.h"
 
 int wTrig(wmatrix a, uint8_t kn, uint32_t nw, cl_event *be, cl_event *e){
 	if (a->dtype < WEKUA_DTYPE_FLOAT){

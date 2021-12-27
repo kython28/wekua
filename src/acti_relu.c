@@ -1,4 +1,4 @@
-#include "wekua.h"
+#include "../headers/acti.h"
 
 int run_relu(void *data, wmatrix input, uint32_t nw, cl_event *be){
 	wekuaContext ctx = input->ctx;

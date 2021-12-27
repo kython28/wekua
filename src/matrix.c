@@ -1,4 +1,5 @@
-#include "wekua.h"
+#include "../headers/matrix.h"
+#include <math.h>
 
 uint64_t zero = 0;
 
@@ -461,7 +462,6 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	if (com && b){
 		b->imag = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, length, NULL, &ret);
 		if (ret != CL_SUCCESS){
-			printf("Failed to allocate new memory :-(\n");
 			wekuaFreeMatrix(b, 0, NULL);
 			return NULL;
 		}
