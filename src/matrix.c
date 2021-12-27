@@ -73,6 +73,20 @@ int UnmapBufferMatrix(wmatrix a){
 	return ret;
 }
 
+int freeWekuaMatrix(void *ptr){
+	wmatrix a = ptr;
+	int ret = UnmapBufferMatrix(a);
+	if (a->real != NULL && ret == CL_SUCCESS){
+		ret = clReleaseMemObject(a->real);
+		if (ret == CL_SUCCESS) a->real = NULL;
+	}
+	if (a->imag != NULL && ret == CL_SUCCESS){
+		ret = clReleaseMemObject(a->imag);
+	}
+	if (ret == CL_SUCCESS) free(a);
+	return ret;
+}
+
 int mem_set_zero(wmatrix a, cl_mem buf){
 	int ret = CL_SUCCESS;
 	cl_event e;

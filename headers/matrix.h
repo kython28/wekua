@@ -29,6 +29,9 @@ extern "C" {
 void getRandomBuffer(void *buf, uint64_t size);
 
 typedef struct _wk_matrix {
+	// Free function
+	int (*free)(void *);
+
 	cl_mem real; // Real numbers
 	cl_mem imag; // Imaginary numbers
 

@@ -24,6 +24,7 @@ void wekuaFreeNetCache(wnetwork net, wcache *cache);
 void wekuaFreeNetError(wnetwork net, werror *error);
 void wekuaFreeNetwork(wnetwork net, uint32_t nw, cl_event *be);
 
+
 #ifdef __cplusplus
 }
 #endif

@@ -217,23 +217,19 @@ static void *wekua_matrix_free_worker(void *arg){
 	pthread_mutex_t *lock = data->lock;
 	wfifo fifo = data->fifo;
 	uint8_t run;
+
+	struct _w_obj {
+		int (*free)(void *);
+	} *obj;
+
 	while (1){
 		pthread_mutex_lock(lock);
 		run = data->service|wekuaFIFOisnotEmpty(fifo);
 		pthread_mutex_unlock(lock);
 		if (run){
-			wmatrix a = wekuaFIFOGet(fifo);
-			if (a){
-				register int ret = UnmapBufferMatrix(a);
-				if (a->real != NULL && ret == CL_SUCCESS){
-					ret = clReleaseMemObject(a->real);
-					if (ret == CL_SUCCESS) a->real = NULL;
-				}
-				if (a->imag != NULL && ret == CL_SUCCESS){
-					ret = clReleaseMemObject(a->imag);
-				}
-				if (ret == CL_SUCCESS) free(a);
-				else wekuaFIFOPut(fifo, a);
+			obj = wekuaFIFOGet(fifo);
+			if (obj){
+				if (obj->free(obj) != CL_SUCCESS) wekuaFIFOPut(fifo, obj);
 			}else break;
 		}else break;
 	}
