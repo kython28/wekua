@@ -14,7 +14,7 @@ typedef struct _w_net {
 } *wnetwork;
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
-void *runWekuaNetwork(wnetwork net, void *input, wcache **cache);
+wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
 int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err);
 
 uint8_t saveWekuaNetwork(const char *name, wnetwork net);

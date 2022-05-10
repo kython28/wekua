@@ -1,4 +1,5 @@
 #include "../headers/matrix.h"
+#include "buffer.h"
 #include <math.h>
 
 uint64_t zero = 0;
@@ -27,23 +28,24 @@ int MapBufferMatrix(wmatrix a){
 
 	int ret = CL_SUCCESS;
 	cl_command_queue cmd = a->ctx->command_queue;
-	cl_event e;
+	cl_event e[2];
+	uint32_t nw = 0;
 	uint64_t size = a->length;
 
 	if (a->real != NULL && a->raw_real == NULL){
-		a->raw_real = clEnqueueMapBuffer(cmd, a->real, CL_TRUE, CL_MAP_READ|CL_MAP_WRITE, 0, size, 0, 0, &e, &ret);	
-		if (ret == CL_SUCCESS){
-			clWaitForEvents(1, &e);
-			clReleaseEvent(e);
-		}
+		a->raw_real = clEnqueueMapBuffer(cmd, a->real, CL_TRUE, CL_MAP_READ|CL_MAP_WRITE, 0, size, 0, 0, e, &ret);
+		if (ret == CL_SUCCESS) nw++;
 	}
-	if (a->imag != NULL && a->raw_imag == NULL){
-		a->raw_imag = clEnqueueMapBuffer(cmd, a->imag, CL_TRUE, CL_MAP_READ|CL_MAP_WRITE, 0, size, 0, 0, &e, &ret);
-		if (ret == CL_SUCCESS){
-			clWaitForEvents(1, &e);
-			clReleaseEvent(e);
-		}
+	if (a->imag != NULL && a->raw_imag == NULL && ret == CL_SUCCESS){
+		a->raw_imag = clEnqueueMapBuffer(cmd, a->imag, CL_TRUE, CL_MAP_READ|CL_MAP_WRITE, 0, size, 0, 0, &e[nw], &ret);
+		if (ret == CL_SUCCESS) nw++;
 	}
+
+	if (nw > 0){
+		clWaitForEvents(nw, e);
+		for (uint32_t x=0; x<nw; x++) clReleaseEvent(e[x]);
+	}
+
 	return ret;
 }
 
@@ -112,7 +114,7 @@ uint8_t createComplexMatrix(wmatrix b){
 	uint64_t size = b->length;
 	int ret;
 
-	b->imag = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, size, NULL, &ret);
+	b->imag = wekuaCreateBuffer(ctx, size, &ret);
 	if (ret != CL_SUCCESS){
 		return 1;
 	}
@@ -154,15 +156,21 @@ void wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be){
 
 	clWaitForEvents(nw, be);
 	wekuaFIFOPut(a->ctx->garbage_queue, a);
-	// ret = UnmapBufferMatrix(a);
-	// if (a->real != NULL && ret == CL_SUCCESS){
-	// 	ret = clReleaseMemObject(a->real);
-	// }
-	// if (a->imag != NULL && ret == CL_SUCCESS){
-	// 	ret = clReleaseMemObject(a->imag);
-	// }
-	// if (ret == CL_SUCCESS) free(a);
-	// return ret;
+	
+}
+
+static int free_matrix(void *ptr){
+	wmatrix a = ptr;
+
+	int ret = UnmapBufferMatrix(a);
+	if (a->real != NULL && ret == CL_SUCCESS){
+		ret = clReleaseMemObject(a->real);
+	}
+	if (a->imag != NULL && ret == CL_SUCCESS){
+		ret = clReleaseMemObject(a->imag);
+	}
+	if (ret == CL_SUCCESS) free(a);
+	return ret;
 }
 
 wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype){
@@ -179,6 +187,8 @@ wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 
 	a->ctx = ctx;
 	a->dtype = dtype;
+
+	a->free = &free_matrix;
 
 	
 	a->shape[0] = r;
@@ -210,9 +220,10 @@ wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 	getLWI(&a->shape[1], &a->work_items[7], 1, max);
 
 	getLWI(&a->vl_shape[2], &a->work_items[8], 1, max);
-	
+
 	int ret;
-	a->real = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, a->length, NULL, &ret);
+
+	a->real = wekuaCreateBuffer(ctx, a->length, &ret);
 	if (ret != CL_SUCCESS){
 		free(a);
 		return NULL;
@@ -220,6 +231,7 @@ wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 	ret = MapBufferMatrix(a);
 	if (ret != CL_SUCCESS){
 		wekuaFreeMatrix(a, 0, NULL);
+		a = NULL;
 	}
 	return a;
 }
@@ -311,8 +323,8 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 	uint64_t *ran_r_m, *ran_i_m, size = a->size*8;
 
 	int ret;
-	
-	ran_r = clCreateBuffer(ct, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, size, NULL, &ret);
+
+	ran_r = wekuaCreateBuffer(ctx, size, &ret);
 	if (ret != CL_SUCCESS){
 		clReleaseMemObject(ran_r);
 		return NULL;
@@ -327,7 +339,7 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 	clReleaseEvent(e);
 
 	if (com){
-		ran_i = clCreateBuffer(ct, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, size, NULL, &ret);
+		ran_i = wekuaCreateBuffer(ctx, size, &ret);
 		if (ret != 0){
 			clReleaseMemObject(ran_r);
 			clReleaseMemObject(ran_i);
@@ -463,7 +475,7 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	memcpy(b->work_items, a->work_items, 72);
 
 	int ret;
-	b->real = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, length, NULL, &ret);
+	a->real = wekuaCreateBuffer(ctx, length, &ret);
 	if (ret != CL_SUCCESS){
 		free(b);
 		return NULL;
@@ -474,7 +486,7 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 		return NULL;
 	}
 	if (com && b){
-		b->imag = clCreateBuffer(ctx->ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, length, NULL, &ret);
+		b->imag = wekuaCreateBuffer(ctx, length, &ret);
 		if (ret != CL_SUCCESS){
 			wekuaFreeMatrix(b, 0, NULL);
 			return NULL;
@@ -557,7 +569,6 @@ wmatrix wekuaMatrixResize(wmatrix a, uint64_t r, uint64_t c, void *alpha, void *
 		}
 	}
 
-
 	if (we > 0) clWaitForEvents(1, &e[we-1]);
 	for (uint64_t i=0; i<we; i++){
 		clReleaseEvent(e[i]);
@@ -609,18 +620,20 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 	else if (rbuf == NULL && ibuf == NULL) return NULL;
 
 	wmatrix a = wekuaAllocMatrix(ctx, r, c, dtype);
-	uint64_t length = a->length, buff_ori[3], region[3];
+	uint64_t length = a->length, buff_ori[3] = {0}, region[3];
 	uint32_t dl = ctx->dtype_length[dtype];
 
-	memset(buff_ori, 0, 24);
+	cl_event e[2];
+	uint32_t events_num = 1;
+
 	region[0] = c*dl;
 	region[1] = r;
 	region[2] = 1;
 
 	clEnqueueWriteBufferRect(
-		ctx->command_queue, a->real, CL_TRUE, buff_ori,
+		ctx->command_queue, a->real, CL_FALSE, buff_ori,
 		buff_ori, region, a->col*dl, a->length, c*dl,
-		0, rbuf, 0, NULL, NULL
+		0, rbuf, 0, NULL, e
 	);
 
 
@@ -630,11 +643,16 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 			return NULL;
 		}
 		clEnqueueWriteBufferRect(
-			ctx->command_queue, a->imag, CL_TRUE, buff_ori,
+			ctx->command_queue, a->imag, CL_FALSE, buff_ori,
 			buff_ori, region, a->col*dl, a->length, c*dl,
-			0, ibuf, 0, NULL, NULL
+			0, ibuf, 0, NULL, &e[1]
 		);
+
+		events_num++;
 	}
+
+	clWaitForEvents(events_num, e);
+	for (uint32_t x=0; x<events_num; x++) clReleaseEvent(e[x]);
 
 	return a;
 }

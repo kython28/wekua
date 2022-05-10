@@ -21,6 +21,8 @@ typedef struct {
 } wPlatform;
 
 typedef struct {
+	wPlatform *platform; // Platform
+
 	cl_device_id device; // Device ID
 	cl_device_type type; // Device type
 	uint8_t *name; // Device name
@@ -31,7 +33,7 @@ typedef struct {
 } wDevice;
 
 uint32_t getPlatforms(wPlatform **platform);
-uint32_t getDevices(wPlatform platform , wDevice **device, cl_device_type type);
+uint32_t getDevices(wPlatform *platform , wDevice **device, cl_device_type type);
 
 void wekuaPlatformFromclPlatform(cl_platform_id platform, wPlatform *plat);
 void wekuaDeviceFromclDevice(cl_device_id dev, wDevice *wdev);
@@ -57,6 +59,13 @@ typedef struct _wk_ctx {
 	const uint32_t *dtype_length;
 	uint32_t vector_width[10], compute_units;
 	uint64_t max_work_group_size;
+
+	// Buffer functions
+	void *alloc_buffer_function;
+	cl_mem (*create_new_buffer)(cl_context ctx, void*, uint64_t size, int *ret);
+
+	void *buffer_release_function;
+	void (*release_buffer)(struct _wk_ctx *ctx, cl_mem buffer, int *ret);
 } *wekuaContext;
 
 wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors);

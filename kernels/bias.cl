@@ -1,19 +1,18 @@
 #include "/usr/lib/wekua_kernels/dtype.cl"
 
-
 __kernel void bias(
 	__global wk *ar, __global wk *ai,
 	__global wk *br, __global wk *bi,
 	unsigned long col
 
-#if mem_type == 0x1
+#if mem_type == 1
 	, __local wk *atiler, __local wk *atilei
 #endif
 ){
 	unsigned long j = get_global_id(1);
 	unsigned long i = get_global_id(0)*col + j;
 
-#if mem_type == 0x1
+#if mem_type == 1
 	unsigned long y = get_local_id(0);
 	unsigned long x = get_local_id(1);
 
@@ -27,7 +26,7 @@ __kernel void bias(
 
 	br[i] += atiler[x];
 #if com
-	br[i] += atilei[x];
+	bi[i] += atilei[x];
 #endif
 #else
 	br[i] += ar[j];

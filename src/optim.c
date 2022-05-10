@@ -1313,6 +1313,112 @@ woptim wekuaOptimAdam(wekuaContext ctx,  wnetwork net, void *lr, void *lri, void
 }
 
 
+
+
+
+static wmatrix get_dev_bias(wekuaContext ctx, wmatrix error, uint8_t dtype){
+	cl_event e;
+	uint8_t com = error->com;
+	uint64_t row, wi;
+
+	row = error->shape[0];
+
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_LINEAR_BIAS_STEP, dtype, com);
+	if (kernel == NULL) return NULL;
+
+	wmatrix dev = wekuaAllocMatrix(ctx, 1, row, dtype);
+	if (com){
+		if (createComplexMatrix(dev)){
+			wekuaFreeMatrix(dev, 0, NULL);
+			return NULL;
+		}
+	}
+
+	if (row%2 != 0) row++;
+	row /= 2;
+	getLWI(&row, &wi, 1, ctx->max_work_group_size);
+
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), &error->real);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), &error->imag);
+	clSetKernelArg(kernel, 2, sizeof(cl_mem), &dev->real);
+	clSetKernelArg(kernel, 3, sizeof(cl_mem), &dev->imag);
+	clSetKernelArg(kernel, 4, 8, &error->vl_shape[1]);
+
+	int ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &row, &wi,
+		0, NULL, &e
+	);
+
+	if (ret != CL_SUCCESS){
+		wekuaFreeMatrix(dev, 0, NULL);
+		return NULL;
+	}
+
+	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
+
+	return dev;
+}
+
+static int step(wneuron neuron, void *opti_data, wmatrix **grad, werror error, wcache cache, int (*func)(void *, void *, uint32_t, wmatrix, wmatrix, wmatrix, wmatrix)){
+	uint64_t layers = neuron->layer, x = 0;
+	uint8_t dtype = neuron->dtype;
+	uint32_t dl;
+	cl_event event;
+	int ret;
+	
+	wekuaContext ctx;
+	wmatrix *weigth = neuron->weight;
+	wmatrix *bias = neuron->bias;
+	wmatrix *cache_d = cache->data;
+	wmatrix *errors = error->o_err;
+
+	wmatrix dev, dev_bias = NULL;
+	ctx = weigth[0]->ctx;
+	dl = ctx->dtype_length[dtype];
+
+	void *one = get_one(dtype, dl);
+	wmatrix w, e, a, *g = NULL;
+	for (; x<layers; x++){
+		w = weigth[x];
+		a = cache_d[x];
+
+		if (grad != NULL) g = grad[x];
+
+		e = wekuaMatrixTrans(errors[x], 0, NULL, &event);
+		if (e == NULL) break;
+
+		dev = wekuaAllocMatrix(ctx, w->shape[0], w->shape[1], dtype);		
+		ret = wekuaBlasGemm(one, NULL, 0, e, 0, a, NULL, NULL, dev, 1, &event);
+		if (ret != CL_SUCCESS){
+			clWaitForEvents(1, &event);
+			wekuaFreeMatrix(dev, 0, NULL);
+			wekuaFreeMatrix(e, 0, NULL);
+			break;
+		}
+		clReleaseEvent(event);
+
+		if (bias != NULL){
+			dev_bias = get_dev_bias(ctx, e, dtype);
+			if (ret != CL_SUCCESS || dev_bias == NULL){
+				wekuaFreeMatrix(dev, 0, NULL);
+				break;
+			}
+
+			ret = func(opti_data, g, dl, dev, dev_bias, w, bias[x]);
+			wekuaFreeMatrix(dev_bias, 0, NULL);
+		}else{
+			ret = func(opti_data, g, dl, dev, NULL, w, NULL);
+		}
+
+		wekuaFreeMatrix(dev, 0, NULL);
+		wekuaFreeMatrix(e, 0, NULL);
+		if (ret != CL_SUCCESS) break;
+	}
+
+	free(one);
+	return ret;
+}
+
 int wekuaOptimStep(woptim optim, werror *error, wcache *cache){
 	if (optim == NULL || error == NULL || cache == NULL) return CL_INVALID_ARG_VALUE;
 
@@ -1333,13 +1439,9 @@ int wekuaOptimStep(woptim optim, werror *error, wcache *cache){
 	wmatrix **grad = NULL;
 
 	for (; x<nneur; x++){
-		neuron_tmp = neurons[x];
-		cache_tmp = cache[x];
-		error_tmp = error[nneur - x - 1];
-
 		if (others != NULL) grad = others[x];
 
-		ret = neuron_tmp->step(neuron_tmp, params, grad, error_tmp, cache_tmp, func);
+		ret = step(neurons[x], params, grad, error[nneur - x - 1], cache[x], func);
 		if (ret != CL_SUCCESS) break;
 	}
 

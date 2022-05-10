@@ -1,5 +1,6 @@
+#include "../headers/wekua.h"
 #include "../headers/matrix.h"
-// #include "../headers/wekua.h"
+#include "buffer.h"
 
 #include <unistd.h>
 #include <stdio.h>
@@ -8,12 +9,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-// #include <stdarg.h>
 
 #define WEKUA_KERNEL_NUM 47
 #define KERNEL_COL 10*WEKUA_KERNEL_NUM
 
-const char kernels[WEKUA_KERNEL_NUM][50] = {
+static const char kernels[WEKUA_KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/rand.cl",
 	"/usr/lib/wekua_kernels/randuniform.cl",
 	"/usr/lib/wekua_kernels/iden.cl",
@@ -63,7 +63,7 @@ const char kernels[WEKUA_KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/crossentropy.cl",
 };
 
-const char ker_name[WEKUA_KERNEL_NUM][20] = {
+static const char ker_name[WEKUA_KERNEL_NUM][20] = {
 	"rand", "uniform", "iden", "trans", "axpy",
 	"scal", "doth", "convert",
 	"absolute", "diag", "arange", "power",
@@ -126,14 +126,15 @@ void freeWekuaPlatform(wPlatform *plat, uint32_t nplat){
 	free(plat);
 }
 
-uint32_t getDevices(wPlatform platform , wDevice **device, cl_device_type type){
+uint32_t getDevices(wPlatform *platform , wDevice **device, cl_device_type type){
 	uint32_t ndev;
-	clGetDeviceIDs(platform.platform, type, 0, NULL, &ndev);
+	clGetDeviceIDs(platform->platform, type, 0, NULL, &ndev);
 	if (ndev > 0){
 		cl_device_id *dev = (cl_device_id*) calloc(ndev, sizeof(cl_device_id));
 		*device = (wDevice*) calloc(ndev, sizeof(wDevice));
-		clGetDeviceIDs(platform.platform, type, ndev, dev, NULL);
+		clGetDeviceIDs(platform->platform, type, ndev, dev, NULL);
 		for (uint32_t x=0; x<ndev; x++){
+			(*device)[x].platform = platform;
 			wekuaDeviceFromclDevice(dev[x], &(*device)[x]);
 		}
 		free(dev);
@@ -236,7 +237,6 @@ static void *wekua_matrix_free_worker(void *arg){
 	return NULL;
 }
 
-
 wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 	if (dev == NULL){
 		return NULL;
@@ -271,6 +271,7 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 	context->max_work_group_size = dev->max_work_group_size;
 	context->compute_units = dev->compute_units;
 	context->local_mem_type = dev->local_mem_type;
+	// context->local_mem_type = 0;
 
 	wfifo garbage_queue = wekuaAllocFIFO();
 	struct w_matrix_free_arg *data = calloc(1, sizeof(struct w_matrix_free_arg));
@@ -281,6 +282,8 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 	context->garbage_queue = garbage_queue;
 	context->garbage_collector_arg = data;
 	pthread_create(&context->garbage_collector, NULL, &wekua_matrix_free_worker, data);
+
+	getBuffersFunctions(context, dev->platform->platform);
 
 	return context;
 }
@@ -295,7 +298,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors){
 	ndev = (uint32_t*) calloc(nplat, 4);
 
 	for (uint32_t p=0; p<nplat; p++){
-		ndev[p] = getDevices(plat[p], &devs[p], type);
+		ndev[p] = getDevices(&plat[p], &devs[p], type);
 		for (uint32_t d=0; d<ndev[p]; d++){
 			if (devs[ps] == NULL){
 				ps = p;
