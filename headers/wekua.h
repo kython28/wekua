@@ -121,6 +121,8 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
 #define WEKUA_KERNEL_CROSS_ENTROPY 42
 
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com);
+cl_kernel compileCustomKernel(wekuaContext ctx, const char *filename, const char *kernel_name, char *args, cl_program *program);
+
 void freeWekuaContext(wekuaContext context);
 
 #ifdef __cplusplus

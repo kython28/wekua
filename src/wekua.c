@@ -3,7 +3,10 @@
 #include "buffer.h"
 
 #include <unistd.h>
+
+#define _GNU_SOURCE
 #include <stdio.h>
+
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
@@ -322,45 +325,54 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors){
 	return ctx;
 }
 
-cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com){
-	uint32_t pos = com*KERNEL_COL + id*10 + dtype;
-	cl_kernel kernel = ctx->kernels[pos];
-	if (kernel != NULL) return kernel;
-
-	char args[50], *source, *error;
-	sprintf(args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
+cl_kernel compileCustomKernel(wekuaContext ctx, const char *filename, const char *kernel_name, char *args, cl_program *program){
+	cl_kernel kernel;
+	char *source, *error;
 
 	uint64_t size;
 	int ret;
 
-	source = getKernelData(kernels[id], (long*)&size);
+	source = getKernelData(filename, (long*)&size);
 
-	cl_program program = clCreateProgramWithSource(ctx->ctx, 1, (const char**)&source, &size, &ret);
+	program[0] = clCreateProgramWithSource(ctx->ctx, 1, (const char**)&source, &size, &ret);
 	if (ret != CL_SUCCESS) return NULL;
 
-	ret = clBuildProgram(program, 1, &ctx->dev, args, NULL, NULL);
+	ret = clBuildProgram(program[0], 1, &ctx->dev, args, NULL, NULL);
 	if (ret != CL_SUCCESS){
-		clGetProgramBuildInfo(program, ctx->dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
+		clGetProgramBuildInfo(program[0], ctx->dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
 		error = (char*) malloc(size);
-		clGetProgramBuildInfo(program, ctx->dev, CL_PROGRAM_BUILD_LOG, size, error, NULL);
+		clGetProgramBuildInfo(program[0], ctx->dev, CL_PROGRAM_BUILD_LOG, size, error, NULL);
 		printf("%s\nSize: %ld\n", error, size);
 		free(error);
 		
-		printf("Return Code: %d\nKernel: %s\n", ret, ker_name[id]);
+		printf("Return Code: %d\nKernel: %s\n", ret, kernel_name);
 		
-		clReleaseProgram(program);
+		clReleaseProgram(program[0]);
+		program[0] = NULL;
 		free(source);
 		return NULL;
 	}
 	free(source);
 
-	kernel = clCreateKernel(program, ker_name[id], &ret);
+	kernel = clCreateKernel(program[0], kernel_name, &ret);
 	if (ret != CL_SUCCESS){
-		clReleaseProgram(program);
+		clReleaseProgram(program[0]);
+		program[0] = NULL;
 		return NULL;
 	}
 
-	ctx->programs[pos] = program;
+	return kernel;
+}
+
+cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com){
+	uint32_t pos = com*KERNEL_COL + id*10 + dtype;
+	cl_kernel kernel = ctx->kernels[pos];
+	if (kernel != NULL) return kernel;
+
+	char *args;
+	asprintf(&args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
+
+	kernel = compileCustomKernel(ctx, kernels[id], ker_name[id], args, &ctx->programs[pos]);
 	ctx->kernels[pos] = kernel;
 
 	return kernel;
