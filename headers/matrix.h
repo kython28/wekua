@@ -1,5 +1,5 @@
-#ifndef MATRIX_H
-#define MATRIX_H
+#ifndef WEKUA_MATRIX_H
+#define WEKUA_MATRIX_H
 
 #include "wekua.h"
 #include <string.h>

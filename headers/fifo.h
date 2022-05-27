@@ -1,5 +1,5 @@
-#ifndef FIFO_H
-#define FIFO_H
+#ifndef WEKUA_FIFO_H
+#define WEKUA_FIFO_H
 
 #include <stdint.h>
 #include <pthread.h>

@@ -1,5 +1,5 @@
-#ifndef OPTIM_H
-#define OPTIM_H
+#ifndef WEKUA_OPTIM_H
+#define WEKUA_OPTIM_H
 
 #include "network.h"
 

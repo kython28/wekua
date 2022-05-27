@@ -469,13 +469,14 @@ wmatrix wekuaMatrixCopy(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 	b->row = a->row;
 	b->col = a->col;
 	b->size = a->size;
+	b->free = &free_matrix;
 
 	memcpy(b->shape, a->shape, 16);
 	memcpy(b->vl_shape, a->vl_shape, 24);
 	memcpy(b->work_items, a->work_items, 72);
 
 	int ret;
-	a->real = wekuaCreateBuffer(ctx, length, &ret);
+	b->real = wekuaCreateBuffer(ctx, length, &ret);
 	if (ret != CL_SUCCESS){
 		free(b);
 		return NULL;

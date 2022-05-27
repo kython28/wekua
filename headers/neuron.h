@@ -1,5 +1,5 @@
-#ifndef NEURON_H
-#define NEURON_H
+#ifndef WEKUA_NEURON_H
+#define WEKUA_NEURON_H
 
 #include "matrix.h"
 #include "cache.h"

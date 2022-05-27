@@ -1,5 +1,5 @@
-#ifndef ERROR_H
-#define ERROR_H
+#ifndef WEKUA_ERROR_H
+#define WEKUA_ERROR_H
 
 #include "matrix.h"
 

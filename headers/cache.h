@@ -1,5 +1,5 @@
-#ifndef CACHE_H
-#define CACHE_H
+#ifndef WEKUA_CACHE_H
+#define WEKUA_CACHE_H
 
 #include <stdint.h>
 

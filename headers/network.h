@@ -1,5 +1,5 @@
-#ifndef NETWORK_H
-#define NETWORK_H
+#ifndef WEKUA_NETWORK_H
+#define WEKUA_NETWORK_H
 
 #include "neuron.h"
 

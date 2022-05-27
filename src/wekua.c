@@ -1,3 +1,7 @@
+#ifndef __STDC_WANT_LIB_EXT2__
+#define __STDC_WANT_LIB_EXT2__ 1
+#endif
+
 #include "../headers/wekua.h"
 #include "../headers/matrix.h"
 #include "buffer.h"
@@ -123,9 +127,7 @@ void wekuaPlatformFromclPlatform(cl_platform_id platform, wPlatform *plat){
 }
 
 void freeWekuaPlatform(wPlatform *plat, uint32_t nplat){
-	for (uint32_t x=0; x<nplat; x++){
-		free(plat[x].name);
-	}
+	for (uint32_t x=0; x<nplat; x++) free(plat[x].name);
 	free(plat);
 }
 
@@ -179,9 +181,7 @@ void wekuaDeviceFromclDevice(cl_device_id dev, wDevice *wdev){
 }
 
 void freeWekuaDevice(wDevice *dev, uint32_t ndev){
-	if (dev == NULL){
-		return;
-	}
+	if (dev == NULL) return;
 
 	for (uint32_t x=0; x<ndev; x++){
 		free(dev[x].name);
@@ -232,9 +232,8 @@ static void *wekua_matrix_free_worker(void *arg){
 		pthread_mutex_unlock(lock);
 		if (run){
 			obj = wekuaFIFOGet(fifo);
-			if (obj){
-				if (obj->free(obj) != CL_SUCCESS) wekuaFIFOPut(fifo, obj);
-			}else break;
+			if (obj && obj->free(obj) != CL_SUCCESS) wekuaFIFOPut(fifo, obj);
+			else break;
 		}else break;
 	}
 	return NULL;
@@ -390,6 +389,7 @@ void freeWekuaContext(wekuaContext context){
 	pthread_mutex_unlock(data->lock);
 	pthread_join(context->garbage_collector, NULL);
 
+	pthread_mutex_destroy(data->lock);
 	wekuaFreeFIFO(fifo);
 	free(data);
 

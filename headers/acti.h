@@ -1,5 +1,5 @@
-#ifndef ACTI_H
-#define ACTI_H
+#ifndef WEKUA_ACTI_H
+#define WEKUA_ACTI_H
 
 #include "matrix.h"
 
