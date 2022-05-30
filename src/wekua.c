@@ -230,8 +230,9 @@ static void *wekua_matrix_free_worker(void *arg){
 		pthread_mutex_unlock(lock);
 		if (run){
 			obj = wekuaFIFOGet(fifo);
-			if (obj && obj->free(obj) != CL_SUCCESS) wekuaFIFOPut(fifo, obj);
-			else if (wekuaFIFOisEmpty(fifo)) break;
+			if (obj){
+				if (obj->free(obj) != CL_SUCCESS) wekuaFIFOPut(fifo, obj);
+			}else if (wekuaFIFOisEmpty(fifo)) break;
 		}else break;
 	}
 	return NULL;

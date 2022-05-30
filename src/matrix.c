@@ -962,8 +962,6 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 		evn++;
 	}
 
-	wekuaMatrixPrint(b, evn, e);
-
 	kernel = compileKernel(ctx, WEKUA_KERNEL_GAUSS_2, dtype, com);
 
 	dl *= wi[4];
