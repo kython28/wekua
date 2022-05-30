@@ -1,6 +1,7 @@
 #include "../headers/optim.h"
 
 void *get_one(uint8_t dtype, uint32_t dl);
+void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max);
 
 void exchange_ptr(wmatrix a, wmatrix b){
 	void *tmp;

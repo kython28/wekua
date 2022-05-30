@@ -72,7 +72,7 @@ uint8_t saveMatrix(int fd, wmatrix a){
 	r *= c;
 
 	for (uint64_t i=0; i<r; i+=c){
-		if (write(fd, real + i, size) != size){
+		if (write(fd, real + i, size) != (ssize_t) size){
 			ret = 1;
 			break;
 		}
@@ -80,7 +80,7 @@ uint8_t saveMatrix(int fd, wmatrix a){
 
 	if (com){
 		for (uint64_t i=0; i<r; i+=c){
-			if (write(fd, imag + i, size) != size){
+			if (write(fd, imag + i, size) != (ssize_t)size){
 				ret = 1;
 				break;
 			}
@@ -116,7 +116,7 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 	r *= c2;
 
 	for (uint64_t i=0; i<r; i += c2){
-		if (read(fd, real+i, c1) != c1){
+		if (read(fd, real+i, c1) != (ssize_t)c1){
 			wekuaFreeMatrix(a, 0, NULL);
 			a = NULL;
 			goto load_finish;
@@ -125,7 +125,7 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 
 	if (file_h.com){
 		for (uint64_t i=0; i<r; i += c2){
-			if (read(fd, imag+i, c1) != c1){
+			if (read(fd, imag+i, c1) != (ssize_t)c1){
 				wekuaFreeMatrix(a, 0, NULL);
 				a = NULL;
 				break;

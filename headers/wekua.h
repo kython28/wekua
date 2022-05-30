@@ -1,7 +1,7 @@
 #ifndef WEKUA_H
 #define WEKUA_H
 
-#define message(ignore)
+#define CL_TARGET_OPENCL_VERSION 300
 
 #if defined(__APPLE__) || defined(__MACOSX)
 #include <OpenCL/cl.h>
@@ -11,6 +11,8 @@
 
 #include <stdint.h>
 #include "fifo.h"
+
+
 
 #ifdef __cplusplus
 extern "C" {
