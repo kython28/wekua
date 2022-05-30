@@ -75,7 +75,7 @@ int UnmapBufferMatrix(wmatrix a){
 	return ret;
 }
 
-int freeWekuaMatrix(void *ptr){
+static int free_matrix(void *ptr){
 	wmatrix a = ptr;
 	int ret = UnmapBufferMatrix(a);
 	if (a->real != NULL && ret == CL_SUCCESS){
@@ -157,20 +157,6 @@ void wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be){
 	clWaitForEvents(nw, be);
 	wekuaFIFOPut(a->ctx->garbage_queue, a);
 	
-}
-
-static int free_matrix(void *ptr){
-	wmatrix a = ptr;
-
-	int ret = UnmapBufferMatrix(a);
-	if (a->real != NULL && ret == CL_SUCCESS){
-		ret = clReleaseMemObject(a->real);
-	}
-	if (a->imag != NULL && ret == CL_SUCCESS){
-		ret = clReleaseMemObject(a->imag);
-	}
-	if (ret == CL_SUCCESS) free(a);
-	return ret;
 }
 
 wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype){

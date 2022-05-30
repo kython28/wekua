@@ -210,15 +210,13 @@ char *getKernelData(const char *name, long *size){
 
 struct w_matrix_free_arg {
 	uint8_t service;
-	pthread_mutex_t *lock;
+	pthread_mutex_t lock;
 	wfifo fifo;
 };
 
-int UnmapBufferMatrix(wmatrix a);
-
 static void *wekua_matrix_free_worker(void *arg){
 	struct w_matrix_free_arg *data = arg;
-	pthread_mutex_t *lock = data->lock;
+	pthread_mutex_t *lock = &data->lock;
 	wfifo fifo = data->fifo;
 	uint8_t run;
 
@@ -233,7 +231,7 @@ static void *wekua_matrix_free_worker(void *arg){
 		if (run){
 			obj = wekuaFIFOGet(fifo);
 			if (obj && obj->free(obj) != CL_SUCCESS) wekuaFIFOPut(fifo, obj);
-			else break;
+			else if (wekuaFIFOisEmpty(fifo)) break;
 		}else break;
 	}
 	return NULL;
@@ -277,8 +275,7 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors){
 
 	wfifo garbage_queue = wekuaAllocFIFO();
 	struct w_matrix_free_arg *data = calloc(1, sizeof(struct w_matrix_free_arg));
-	data->lock = calloc(1, sizeof(pthread_mutex_t));
-	pthread_mutex_init(data->lock, NULL);
+	pthread_mutex_init(&data->lock, NULL);
 	data->fifo = garbage_queue;
 	data->service = 1;
 	context->garbage_queue = garbage_queue;
@@ -383,35 +380,35 @@ void freeWekuaContext(wekuaContext context){
 	struct w_matrix_free_arg *data = context->garbage_collector_arg;
 
 	wfifo fifo = data->fifo;
-	wekuaFIFOPut(fifo, NULL);
-	pthread_mutex_lock(data->lock);
+	pthread_mutex_lock(&data->lock);
 	data->service = 0;
-	pthread_mutex_unlock(data->lock);
+	pthread_mutex_unlock(&data->lock);
+	wekuaFIFOPut(fifo, NULL);
 	pthread_join(context->garbage_collector, NULL);
 
-	pthread_mutex_destroy(data->lock);
+	pthread_mutex_destroy(&data->lock);
 	wekuaFreeFIFO(fifo);
 	free(data);
 
-	if (context->kernels != NULL){
+	if (context->kernels){
 		for (uint32_t x=0; x<KERNEL_COL*2; x++){
-			if (context->kernels[x] != NULL) clReleaseKernel(context->kernels[x]);
+			if (context->kernels[x]) clReleaseKernel(context->kernels[x]);
 		}
 	}
 
-	if (context->programs != NULL){
+	if (context->programs){
 		for (uint32_t x=0; x<KERNEL_COL*2; x++){
-			if (context->programs[x] != NULL) clReleaseProgram(context->programs[x]);
+			if (context->programs[x]) clReleaseProgram(context->programs[x]);
 		}
 	}
 
-	if (context->command_queue != NULL){
+	if (context->command_queue){
 		clFinish(context->command_queue);
 		clReleaseCommandQueue(context->command_queue);
 	}
 
-	if (context->ctx != NULL) clReleaseContext(context->ctx);
-	if (context->kernels != NULL) free(context->kernels);
-	if (context->programs != NULL) free(context->programs);
+	if (context->ctx) clReleaseContext(context->ctx);
+	if (context->kernels) free(context->kernels);
+	if (context->programs) free(context->programs);
 	free(context);
 }
