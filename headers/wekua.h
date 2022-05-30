@@ -1,6 +1,8 @@
 #ifndef WEKUA_H
 #define WEKUA_H
 
+#define message(ignore)
+
 #if defined(__APPLE__) || defined(__MACOSX)
 #include <OpenCL/cl.h>
 #else
