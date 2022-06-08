@@ -149,7 +149,7 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 #define WEKUA_KERNEL_CROSS_ENTROPY 42
 
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com);
-cl_kernel compileCustomKernel(cl_context ctx, cl_device_id dev, const char *filename, const char *kernel_name, char *args, cl_program *program);
+cl_kernel compileCustomKernel(cl_context ctx, cl_device_id *devs, uint32_t ndev, const char *filename, const char *kernel_name, char *args, cl_program *program);
 
 void freeWekuaContext(wekuaContext context);
 void freeWekuaPlatformContext(wekuaPlatformContext context);

@@ -343,8 +343,11 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 		free(plat_ctx);
 		return NULL;
 	}
-
+	
+	plat_ctx->ctx = ctx;
 	plat_ctx->devs = devs;
+	cl_program *programs = (cl_program*) calloc(2*KERNEL_COL, sizeof(cl_program));
+	cl_kernel *kernels = (cl_kernel*) calloc(2*KERNEL_COL, sizeof(cl_kernel));
 
 	wfifo garbage_queue = wekuaAllocFIFO();
 	struct w_matrix_free_arg *data = calloc(1, sizeof(struct w_matrix_free_arg));
@@ -363,8 +366,8 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 		dctx->ctx = ctx;
 		dctx->command_queue = clCreateCommandQueueWithProperties(ctx, devs[x], NULL, NULL);
 
-		dctx->programs = (cl_program*) calloc(2*KERNEL_COL, sizeof(cl_program));;
-		dctx->kernels = (cl_kernel*) calloc(2*KERNEL_COL, sizeof(cl_kernel));;
+		dctx->programs = programs;
+		dctx->kernels = kernels;
 
 		dctx->dev = devs[x];
 		dctx->local_mem_type = wdevs[x].local_mem_type;
@@ -388,7 +391,7 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 	return plat_ctx;
 }
 
-cl_kernel compileCustomKernel(cl_context ctx, cl_device_id dev, const char *filename, const char *kernel_name, char *args, cl_program *program){
+cl_kernel compileCustomKernel(cl_context ctx, cl_device_id *devs, uint32_t ndev, const char *filename, const char *kernel_name, char *args, cl_program *program){
 	cl_kernel kernel;
 	char *source, *error;
 
@@ -400,19 +403,21 @@ cl_kernel compileCustomKernel(cl_context ctx, cl_device_id dev, const char *file
 	program[0] = clCreateProgramWithSource(ctx, 1, (const char**)&source, &size, &ret);
 	if (ret != CL_SUCCESS) return NULL;
 
-	ret = clBuildProgram(program[0], 1, &dev, args, NULL, NULL);
+	ret = clBuildProgram(program[0], ndev, devs, args, NULL, NULL);
 	if (ret != CL_SUCCESS){
-		clGetProgramBuildInfo(program[0], dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
-		error = (char*) malloc(size);
-		clGetProgramBuildInfo(program[0], dev, CL_PROGRAM_BUILD_LOG, size, error, NULL);
-		printf("%s\nSize: %ld\n", error, size);
-		free(error);
-		
-		printf("Return Code: %d\nKernel: %s\n", ret, kernel_name);
-		
-		clReleaseProgram(program[0]);
-		program[0] = NULL;
-		free(source);
+		for (uint32_t x=0; x<ndev; x++){
+			clGetProgramBuildInfo(program[0], devs[x], CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
+			error = (char*) malloc(size);
+			clGetProgramBuildInfo(program[0], devs[x], CL_PROGRAM_BUILD_LOG, size, error, NULL);
+			printf("%s\nSize: %ld\n", error, size);
+			free(error);
+			
+			printf("%d) Return Code: %d\nKernel: %s\n", x, ret, kernel_name);
+			
+			clReleaseProgram(program[0]);
+			program[0] = NULL;
+			free(source);
+		}
 		
 		return NULL;
 	}
@@ -436,7 +441,7 @@ cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com
 	char *args;
 	asprintf(&args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
 
-	kernel = compileCustomKernel(ctx->ctx, ctx->dev, kernels[id], ker_name[id], args, &ctx->programs[pos]);
+	kernel = compileCustomKernel(ctx->ctx, &ctx->dev, 1, kernels[id], ker_name[id], args, &ctx->programs[pos]);
 	ctx->kernels[pos] = kernel;
 
 	return kernel;
@@ -495,26 +500,23 @@ void freeWekuaPlatformContext(wekuaPlatformContext context){
 	wekuaFreeFIFO(fifo);
 	free(data);
 
-	
+	if (context->kernels){
+		for (uint32_t x=0; x<KERNEL_COL*2; x++){
+			if (context->kernels[x]) clReleaseKernel(context->kernels[x]);
+		}
+		free(context->kernels);
+	}
+
+	if (context->programs){
+		for (uint32_t x=0; x<KERNEL_COL*2; x++){
+			if (context->programs[x]) clReleaseProgram(context->programs[x]);
+		}
+		free(context->programs);
+	}
 
 	uint32_t ndev = context->ndev;
 	wekuaContext *devices_ctx = context->devices_ctx;
 	for (uint32_t x=0; x<ndev; x++){
-		if (devices_ctx[x]->kernels){
-			for (uint32_t i=0; i<KERNEL_COL*2; i++){
-				if (devices_ctx[x]->kernels[i]) clReleaseKernel(devices_ctx[x]->kernels[i]);
-			}
-			free(devices_ctx[x]->kernels);
-		}
-
-		if (devices_ctx[x]->programs){
-			for (uint32_t i=0; i<KERNEL_COL*2; i++){
-				if (devices_ctx[x]->programs[i]) clReleaseProgram(devices_ctx[x]->programs[i]);
-			}
-			free(devices_ctx[x]->programs);
-		}
-
-
 		cl_command_queue cmd = devices_ctx[x]->command_queue;
 
 		clFinish(cmd);
