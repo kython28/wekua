@@ -160,23 +160,22 @@ void wekuaFreeMatrix(wmatrix a, uint32_t nw, cl_event *be){
 }
 
 wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype){
-	if (ctx == NULL || r == 0 || c == 0 || dtype > 9){
-		return NULL;
-	}
+	if (ctx == NULL || r == 0 || c == 0 || dtype > 9) return NULL;
 	wmatrix a = (wmatrix) calloc(1, sizeof(struct _wk_matrix));
-	if (a == NULL){
-		return NULL;
-	}
+	if (a == NULL) return NULL;
 
-	uint64_t max = ctx->max_work_group_size;
-	uint32_t vl = ctx->vector_width[dtype], dl = ctx->dtype_length[dtype];
+	uint64_t max;
+	uint32_t vl, dl;
+
+	max = ctx->max_work_group_size;
+	vl = ctx->vector_width[dtype];
+	dl = ctx->dtype_length[dtype];
 
 	a->ctx = ctx;
 	a->dtype = dtype;
 
 	a->free = &free_matrix;
 
-	
 	a->shape[0] = r;
 	a->shape[1] = c;
 

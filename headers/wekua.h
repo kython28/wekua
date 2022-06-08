@@ -21,7 +21,7 @@ extern "C" {
 typedef struct {
 	cl_platform_id platform; // Platform ID
 	uint8_t *name; // Platform name
-	uint64_t nlen; // Devices numbers
+	uint64_t nlen; // Platform name length
 } wPlatform;
 
 typedef struct {
@@ -37,7 +37,7 @@ typedef struct {
 } wDevice;
 
 uint32_t getPlatforms(wPlatform **platform);
-uint32_t getDevices(wPlatform *platform , wDevice **device, cl_device_type type);
+uint32_t getDevices(wPlatform *platform , wDevice **device, cl_device_type type, cl_device_id **devs);
 
 void wekuaPlatformFromclPlatform(cl_platform_id platform, wPlatform *plat);
 void wekuaDeviceFromclDevice(cl_device_id dev, wDevice *wdev);
@@ -74,6 +74,30 @@ typedef struct _wk_ctx {
 
 wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors);
 wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
+
+typedef struct _wk_platform_ctx {
+	cl_context ctx; // OpenCL Context
+	cl_program *programs; // OpenCL programs
+	cl_kernel *kernels; // OpenCL kernels
+
+	wekuaContext *devices_ctx;
+	cl_device_id *devs;
+	uint32_t ndev;
+
+	// Garbage collector
+	pthread_t garbage_collector;
+	void *garbage_collector_arg;
+	wfifo garbage_queue;
+
+	// Buffer functions
+	void *alloc_buffer_function;
+	cl_mem (*create_new_buffer)(cl_context ctx, void*, uint64_t size, int *ret);
+
+	void *buffer_release_function;
+	void (*release_buffer)(struct _wk_ctx *ctx, cl_mem buffer, int *ret);
+} *wekuaPlatformContext;
+
+wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_type type);
 
 // Kernel list
 #define WEKUA_KERNEL_RANDN 0
@@ -125,9 +149,10 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
 #define WEKUA_KERNEL_CROSS_ENTROPY 42
 
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com);
-cl_kernel compileCustomKernel(wekuaContext ctx, const char *filename, const char *kernel_name, char *args, cl_program *program);
+cl_kernel compileCustomKernel(cl_context ctx, cl_device_id *devs, uint32_t ndev, const char *filename, const char *kernel_name, char *args, cl_program *program);
 
 void freeWekuaContext(wekuaContext context);
+void freeWekuaPlatformContext(wekuaPlatformContext context);
 
 #ifdef __cplusplus
 }

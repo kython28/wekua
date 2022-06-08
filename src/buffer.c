@@ -32,6 +32,17 @@ void getBuffersFunctions(wekuaContext ctx, cl_platform_id platform){
 	ctx->create_new_buffer = functions_ptr[x];
 }
 
+void getBuffersFunctionsForPlatform(wekuaPlatformContext ctx, cl_platform_id platform){
+	uint8_t x = 0;
+	void *ptr = NULL;
+	for (; x < (EXTENSIONS_NUMBER - 1); x++){
+		if ((ptr = clGetExtensionFunctionAddressForPlatform(platform, extensions_name[x]))) break;
+	}
+
+	ctx->alloc_buffer_function = ptr;
+	ctx->create_new_buffer = functions_ptr[x];
+}
+
 cl_mem createNormalBuffer(cl_context ctx, void *func, uint64_t size, int *ret){
 	return clCreateBuffer(ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, size, NULL, ret);
 }
