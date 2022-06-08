@@ -345,8 +345,6 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 	}
 
 	plat_ctx->devs = devs;
-	cl_program *programs = (cl_program*) calloc(2*KERNEL_COL, sizeof(cl_program));
-	cl_kernel *kernels = (cl_kernel*) calloc(2*KERNEL_COL, sizeof(cl_kernel));
 
 	wfifo garbage_queue = wekuaAllocFIFO();
 	struct w_matrix_free_arg *data = calloc(1, sizeof(struct w_matrix_free_arg));
@@ -365,8 +363,8 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 		dctx->ctx = ctx;
 		dctx->command_queue = clCreateCommandQueueWithProperties(ctx, devs[x], NULL, NULL);
 
-		dctx->programs = programs;
-		dctx->kernels = kernels;
+		dctx->programs = (cl_program*) calloc(2*KERNEL_COL, sizeof(cl_program));;
+		dctx->kernels = (cl_kernel*) calloc(2*KERNEL_COL, sizeof(cl_kernel));;
 
 		dctx->dev = devs[x];
 		dctx->local_mem_type = wdevs[x].local_mem_type;
@@ -497,23 +495,26 @@ void freeWekuaPlatformContext(wekuaPlatformContext context){
 	wekuaFreeFIFO(fifo);
 	free(data);
 
-	if (context->kernels){
-		for (uint32_t x=0; x<KERNEL_COL*2; x++){
-			if (context->kernels[x]) clReleaseKernel(context->kernels[x]);
-		}
-		free(context->kernels);
-	}
-
-	if (context->programs){
-		for (uint32_t x=0; x<KERNEL_COL*2; x++){
-			if (context->programs[x]) clReleaseProgram(context->programs[x]);
-		}
-		free(context->programs);
-	}
+	
 
 	uint32_t ndev = context->ndev;
 	wekuaContext *devices_ctx = context->devices_ctx;
 	for (uint32_t x=0; x<ndev; x++){
+		if (devices_ctx[x]->kernels){
+			for (uint32_t i=0; i<KERNEL_COL*2; i++){
+				if (devices_ctx[x]->kernels[i]) clReleaseKernel(devices_ctx[x]->kernels[i]);
+			}
+			free(devices_ctx[x]->kernels);
+		}
+
+		if (devices_ctx[x]->programs){
+			for (uint32_t i=0; i<KERNEL_COL*2; i++){
+				if (devices_ctx[x]->programs[i]) clReleaseProgram(devices_ctx[x]->programs[i]);
+			}
+			free(devices_ctx[x]->programs);
+		}
+
+
 		cl_command_queue cmd = devices_ctx[x]->command_queue;
 
 		clFinish(cmd);
