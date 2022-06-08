@@ -330,8 +330,6 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 	uint32_t ndev = getDevices(platform, &wdevs, type, &devs);
 	if (ndev == 0) return NULL;
 
-	printf("%d\n", ndev);
-
 	wekuaPlatformContext plat_ctx = calloc(1, sizeof(struct _wk_platform_ctx));
 	int ret;
 
