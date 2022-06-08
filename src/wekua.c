@@ -390,7 +390,7 @@ wekuaPlatformContext createWekuaPlatformContext(wPlatform *platform, cl_device_t
 	return plat_ctx;
 }
 
-cl_kernel compileCustomKernel(cl_context ctx, cl_device_id *devs, uint32_t ndev, const char *filename, const char *kernel_name, char *args, cl_program *program){
+cl_kernel compileCustomKernel(cl_context ctx, cl_device_id dev, const char *filename, const char *kernel_name, char *args, cl_program *program){
 	cl_kernel kernel;
 	char *source, *error;
 
@@ -402,21 +402,19 @@ cl_kernel compileCustomKernel(cl_context ctx, cl_device_id *devs, uint32_t ndev,
 	program[0] = clCreateProgramWithSource(ctx, 1, (const char**)&source, &size, &ret);
 	if (ret != CL_SUCCESS) return NULL;
 
-	ret = clBuildProgram(program[0], ndev, devs, args, NULL, NULL);
+	ret = clBuildProgram(program[0], 1, &dev, args, NULL, NULL);
 	if (ret != CL_SUCCESS){
-		for (uint32_t x=0; x<ndev; x++){
-			clGetProgramBuildInfo(program[0], devs[x], CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
-			error = (char*) malloc(size);
-			clGetProgramBuildInfo(program[0], devs[x], CL_PROGRAM_BUILD_LOG, size, error, NULL);
-			printf("%s\nSize: %ld\n", error, size);
-			free(error);
-			
-			printf("%d) Return Code: %d\nKernel: %s\n", x, ret, kernel_name);
-			
-			clReleaseProgram(program[0]);
-			program[0] = NULL;
-			free(source);
-		}
+		clGetProgramBuildInfo(program[0], dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &size);
+		error = (char*) malloc(size);
+		clGetProgramBuildInfo(program[0], dev, CL_PROGRAM_BUILD_LOG, size, error, NULL);
+		printf("%s\nSize: %ld\n", error, size);
+		free(error);
+		
+		printf("Return Code: %d\nKernel: %s\n", ret, kernel_name);
+		
+		clReleaseProgram(program[0]);
+		program[0] = NULL;
+		free(source);
 		
 		return NULL;
 	}
@@ -440,7 +438,7 @@ cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com
 	char *args;
 	asprintf(&args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
 
-	kernel = compileCustomKernel(ctx->ctx, &ctx->dev, 1, kernels[id], ker_name[id], args, &ctx->programs[pos]);
+	kernel = compileCustomKernel(ctx->ctx, ctx->dev, kernels[id], ker_name[id], args, &ctx->programs[pos]);
 	ctx->kernels[pos] = kernel;
 
 	return kernel;
