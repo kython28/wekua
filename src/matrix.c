@@ -607,6 +607,22 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 	else if (rbuf == NULL && ibuf == NULL) return NULL;
 
 	wmatrix a = wekuaAllocMatrix(ctx, r, c, dtype);
+	
+	int ret = wekuaMatrixCopyBuffer(a, rbuf, ibuf, dtype);
+	if (ret != CL_SUCCESS){
+		wekuaFreeMatrix(a, 0, NULL);
+		return NULL;
+	}
+
+	return a;
+}
+
+int wekuaMatrixCopyBuffer(wmatrix a, void *rbuf, void *ibuf, uint8_t dtype){
+	wekuaContext ctx = a->ctx;
+
+	uint64_t r = a->shape[0];
+	uint64_t c = a->shape[1];
+
 	uint64_t length = a->length, buff_ori[3] = {0}, region[3];
 	uint32_t dl = ctx->dtype_length[dtype];
 
@@ -627,7 +643,7 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 	if (ibuf != NULL){
 		if (createComplexMatrix(a)){
 			wekuaFreeMatrix(a, 0, NULL);
-			return NULL;
+			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
 		}
 		clEnqueueWriteBufferRect(
 			ctx->command_queue, a->imag, CL_FALSE, buff_ori,
@@ -641,7 +657,7 @@ wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rb
 	clWaitForEvents(events_num, e);
 	for (uint32_t x=0; x<events_num; x++) clReleaseEvent(e[x]);
 
-	return a;
+	return CL_SUCCESS;
 }
 
 wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype){
