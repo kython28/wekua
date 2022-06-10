@@ -38,7 +38,7 @@ cl_mem createNormalBuffer(cl_context ctx, void *func, uint64_t size, int *ret){
 
 cl_mem createNVIDIABuffer(cl_context ctx, void *func, uint64_t size, int *ret){
 	cl_mem (*clCreateBufferNV)(cl_context,cl_mem_flags, cl_bitfield, size_t, void*, cl_int*) = func;
-	return clCreateBufferNV(ctx, CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR, CL_MEM_PINNED_NV|CL_MEM_LOCATION_HOST_NV, size, NULL, ret);
+	return clCreateBufferNV(ctx, CL_MEM_READ_WRITE, CL_MEM_PINNED_NV, size, NULL, ret);
 }
 
 cl_mem wekuaCreateBuffer(wekuaContext ctx, uint64_t size, int *ret){
