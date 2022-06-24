@@ -1,12 +1,17 @@
 #include "../headers/matrix.h"
+#include <CL/cl.h>
 #include <math.h>
+#include <stdint.h>
+#include <sys/types.h>
 
 wmatrix getUpperLowerBounds(wekuaContext ctx, wmatrix a, uint32_t dl, uint8_t dtype){
-	void *max;
 	wmatrix degree, b, c;
 	uint64_t x, y;
 
-	max = malloc(dl);
+	cl_event event;
+	cl_command_queue cmd = ctx->command_queue;
+
+	char max[sizeof(double)], a_scal[sizeof(double)], b_scal[sizeof(double)];
 
 	b = wekuaMatrixResize(a, 1, a->shape[1]-1, NULL, NULL);
 	degree = wekuaMatrixAbs(b, 0, NULL);
@@ -18,29 +23,38 @@ wmatrix getUpperLowerBounds(wekuaContext ctx, wmatrix a, uint32_t dl, uint8_t dt
 
 	c = wekuaAllocMatrix(ctx, 1, a->shape[1]-1, dtype);
 
-	if (dtype == WEKUA_DTYPE_DOUBLE){
-		((double*)b->raw_real)[1] = 1.0 + ((double*)max)[0]/fabs(((double*)a->raw_real)[a->shape[1]-1]);
-		memcpy(c->raw_real, &((double*)a->raw_real)[1], dl*c->shape[1]);
+	wekuaGetValueFromMatrix(a, 0, a->shape[1]-1, a_scal, NULL, 0, NULL);
+	wekuaGetValueFromMatrix(b, 0, 1, b_scal, NULL, 0, NULL);
+	if (dtype == WEKUA_DTYPE_DOUBLE){		
+		((double*)b_scal)[0] = ((double*)max)[0]/fabs(((double*)a_scal)[0]);
+
 	}else{
-		((float*)b->raw_real)[1] = 1.0 + ((float*)max)[0]/fabsf(((float*)a->raw_real)[a->shape[1]-1]);
-		memcpy(c->raw_real, &((float*)a->raw_real)[1], dl*c->shape[1]);
+		((float*)b_scal)[0] = ((float*)max)[0]/fabs(((float*)a_scal)[0]);
 	}
+
+	wekuaPutValueToMatrix(b, 0, 1, b_scal, NULL, 0, NULL);
+	clEnqueueCopyBuffer(cmd, a->real, c->real, dl, 0, dl*c->shape[1], 0, NULL, &event);
+	clWaitForEvents(1, &event);
+	clReleaseEvent(event);
 
 	wekuaFreeMatrix(degree, 0, NULL);
 	degree = wekuaMatrixAbs(c, 0, NULL);
 	wekuaFreeMatrix(c, 0, NULL);
 
 	wekuaMatrixMax(degree, &y, &x, 0, NULL);
+
 	wekuaGetValueFromMatrix(degree, y, x, max, NULL, 0, NULL);
+	wekuaGetValueFromMatrix(a, 0, 0, a_scal, NULL, 0, NULL);
+	wekuaGetValueFromMatrix(b, 0, 0, b_scal, NULL, 0, NULL);
 
 	if (dtype == WEKUA_DTYPE_DOUBLE){
-		((double*)b->raw_real)[0] = fabs(((double*)a->raw_real)[0])/(fabs(((double*)a->raw_real)[0]) + ((double*)max)[0]);
+		((double*)b_scal)[0] = fabs(((double*)a_scal)[0])/(fabs(((double*)a_scal)[0]) + ((double*)max)[0]);
 	}else{
-		((double*)b->raw_real)[0] = fabsf(((float*)a->raw_real)[0])/(fabsf(((float*)a->raw_real)[0]) + ((float*)max)[0]);
+		((float*)b_scal)[0] = fabsf(((float*)a_scal)[0])/(fabsf(((float*)a_scal)[0]) + ((float*)max)[0]);
 	}
-	
+	wekuaPutValueToMatrix(b, 0, 0, b_scal, NULL, 0, NULL);
+
 	wekuaFreeMatrix(degree, 0, NULL);
-	free(max);
 
 	return b;
 }
@@ -48,24 +62,22 @@ wmatrix getUpperLowerBounds(wekuaContext ctx, wmatrix a, uint32_t dl, uint8_t dt
 wmatrix getRoots(wekuaContext ctx, wmatrix ran, uint64_t degree, uint8_t dtype){
 	wmatrix roots, radius, angle;
 	cl_event e;
-	void *pi2 = malloc(ctx->dtype_length[dtype]);
 
-	if (dtype == WEKUA_DTYPE_DOUBLE){
-		((double*)pi2)[0] = CL_M_PI*2.0;
-		radius = wekuaMatrixRandUniform(ctx, 1, degree, ran->raw_real, NULL, &((double*)ran->raw_real)[1], NULL, dtype);
-	}else{
-		((float*)pi2)[0] = CL_M_PI_F*2.0;
-		radius = wekuaMatrixRandUniform(ctx, 1, degree, ran->raw_real, NULL, &((float*)ran->raw_real)[1], NULL, dtype);
-	}
-	if (radius == NULL){
-		free(pi2);
-		return NULL;
-	}
+	char scal1[sizeof(double)], scal2[sizeof(double)], pi2[sizeof(double)];
+
+	wekuaGetValueFromMatrix(ran, 0, 0, scal1, NULL, 0, NULL);
+	wekuaGetValueFromMatrix(ran, 0, 0, scal2, NULL, 0, NULL);
+
+	
+	if (dtype == WEKUA_DTYPE_DOUBLE) ((double*)pi2)[0] = CL_M_PI*2.0;
+	else ((float*)pi2)[0] = CL_M_PI_F*2.0;
+
+	radius = wekuaMatrixRandUniform(ctx, 1, degree, scal1, NULL, scal2, NULL, dtype);
+	if (radius == NULL) return NULL;
 
 	angle = wekuaMatrixRandUniform(ctx, 1, degree, NULL, NULL, pi2, NULL, dtype);
 	if (angle == NULL){
 		wekuaFreeMatrix(radius, 0, NULL);
-		free(pi2);
 		return NULL;
 	}
 
@@ -76,8 +88,6 @@ wmatrix getRoots(wekuaContext ctx, wmatrix ran, uint64_t degree, uint8_t dtype){
 	clReleaseEvent(e);
 	wekuaFreeMatrix(radius, 0, NULL);
 	wekuaFreeMatrix(angle, 0, NULL);
-
-	free(pi2);
 
 	return roots;
 }

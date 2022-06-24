@@ -564,6 +564,7 @@ int wekuaCopyMatrixRegion(
 	uint64_t w, uint64_t h
 ){
 	if (a == NULL || b == NULL) return CL_INVALID_MEM_OBJECT;
+	if (a->ctx != b->ctx) return CL_INVALID_MEM_OBJECT;
 	if (a_offset_y+h > a->shape[0] || a_offset_x+w > a->shape[1]) return CL_INVALID_ARG_VALUE;
 	if (b_offset_y+h > b->shape[0] || b_offset_x+w > b->shape[1]) return CL_INVALID_ARG_VALUE;
 	if (a->dtype != b->dtype) return CL_INVALID_MEM_OBJECT;
@@ -595,10 +596,22 @@ int wekuaCopyMatrixRegion(
 		}
 	}
 
-	if (ctx == b->ctx){
+	ret = clEnqueueCopyBufferRect(
+		ctx->command_queue,
+		a->real, b->real,
+		src_origin, dst_origin,
+		region, a->col*dl, 0,
+		b->col*dl, 0, 0, NULL, &e
+	);
+	if (ret != CL_SUCCESS) return ret;
+
+	clWaitForEvents(1, &e);
+	clReleaseEvent(e);
+	
+	if (com){
 		ret = clEnqueueCopyBufferRect(
 			ctx->command_queue,
-			a->real, b->real,
+			a->imag, b->imag,
 			src_origin, dst_origin,
 			region, a->col*dl, 0,
 			b->col*dl, 0, 0, NULL, &e
@@ -607,39 +620,6 @@ int wekuaCopyMatrixRegion(
 
 		clWaitForEvents(1, &e);
 		clReleaseEvent(e);
-		
-		if (com){
-			ret = clEnqueueCopyBufferRect(
-				ctx->command_queue,
-				a->imag, b->imag,
-				src_origin, dst_origin,
-				region, a->col*dl, 0,
-				b->col*dl, 0, 0, NULL, &e
-			);
-			if (ret != CL_SUCCESS) return ret;
-
-			clWaitForEvents(1, &e);
-			clReleaseEvent(e);
-		}
-	}else{
-		ret = clEnqueueWriteBufferRect(
-			ctx->command_queue,
-			a->real, CL_TRUE,
-			src_origin, dst_origin,
-			region, a->col*dl, 0,
-			b->col*dl, 0, b->raw_real, 0, NULL, NULL
-		);
-		if (ret != CL_SUCCESS) return ret;
-		if (com){
-			ret = clEnqueueWriteBufferRect(
-				ctx->command_queue,
-				a->imag, CL_TRUE,
-				src_origin, dst_origin,
-				region, a->col*dl, 0,
-				b->col*dl, 0, b->raw_imag, 0, NULL, NULL
-			);
-			if (ret != CL_SUCCESS) return ret;
-		}
 	}
 
 	return ret;

@@ -1,23 +1,27 @@
 #include "../headers/matrix.h"
 #include <stdio.h>
+#include <stdarg.h>
 
 void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be){
 	clWaitForEvents(nw, be);
-	if (a == NULL){
-		return;
-	}else if (real == NULL && imag == NULL){
-		return;
-	}
+	if (a == NULL || (real == NULL && imag == NULL)) return;
 
 	uint64_t len_dtype = a->ctx->dtype_length[a->dtype];
 	uint64_t posi = y*a->col*len_dtype + x*len_dtype;
 
-	if (real != NULL){
-		memcpy(real, &((uint8_t*)a->raw_real)[posi], len_dtype);
+	wekuaContext ctx = a->ctx;
+
+	cl_event e[2];
+	uint32_t nevents = 0;
+
+	if (real){
+		clEnqueueReadBuffer(ctx->command_queue, a->real, CL_FALSE, posi, len_dtype, real, 0, NULL, &e[nevents++]);
 	}
-	if (imag != NULL && a->com){
-		memcpy(imag, &((uint8_t*)a->raw_imag)[posi], len_dtype);
+	if (imag && a->com){
+		clEnqueueReadBuffer(ctx->command_queue, a->imag, CL_FALSE, posi, len_dtype, imag, 0, NULL, &e[nevents++]);
 	}
+	clWaitForEvents(nevents, e);
+	for (uint32_t x=0; x<nevents; x++) clReleaseEvent(e[x]);
 }
 
 void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be){
@@ -31,12 +35,19 @@ void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *
 	uint64_t len_dtype = a->ctx->dtype_length[a->dtype];
 	uint64_t posi = y*a->col*len_dtype + x*len_dtype, zero = 0;
 
-	if (real != NULL){
-		memcpy(&((uint8_t*)a->raw_real)[posi], real, len_dtype);
+	wekuaContext ctx = a->ctx;
+
+	cl_event e[2];
+	uint32_t nevents = 0;
+
+	if (real){
+		clEnqueueWriteBuffer(ctx->command_queue, a->real, CL_FALSE, posi, len_dtype, real, 0, NULL, &e[nevents++]);
 	}
-	if (imag != NULL && a->com){
-		if (memcmp(imag, &zero, len_dtype) != 0) memcpy(&((uint8_t*)a->raw_imag)[posi], imag, len_dtype);
+	if (imag && a->com){
+		clEnqueueWriteBuffer(ctx->command_queue, a->imag, CL_FALSE, posi, len_dtype, imag, 0, NULL, &e[nevents++]);
 	}
+	clWaitForEvents(nevents, e);
+	for (uint32_t x=0; x<nevents; x++) clReleaseEvent(e[x]);
 }
 
 const char dtype_text[][15] = {

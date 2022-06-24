@@ -1,12 +1,14 @@
+#include <CL/cl.h>
+#include <stdint.h>
+
 #include "../headers/matrix.h"
 #include "../headers/network.h"
 #include "../headers/neuron.h"
 
 #include <unistd.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/mman.h>
+
+#define _GNU_SOURCE
 #include <fcntl.h>
 
 struct header {
@@ -17,18 +19,17 @@ struct header {
 	uint8_t com; // Does the matrix use complex elements?
 };
 
-int open_a_file(const char *name, uint8_t w){
+int open_a_file(const char *name, uint8_t create){
 	int fd;
-	if (w){
-		fd = open(name, O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+	if (create){
+		fd = open(name, O_RDWR|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 		if (fd < 0){
-			fd = open(name, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-			if (fd < 0) return -1;
+			fd = open(name, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 		}
 	}else{
 		fd = open(name, O_RDWR);
-		if (fd < 0) return -1;
 	}
+
 	return fd;
 }
 
@@ -38,11 +39,6 @@ uint8_t saveMatrix(int fd, wmatrix a){
 	uint64_t size = 0, r, c;
 	uint8_t dtype = a->dtype, com = a->com;
 	uint32_t dl;
-
-	void *real, *imag;
-
-	real = a->raw_real;
-	imag = a->raw_imag;
 
 	wekuaContext ctx = a->ctx;
 	dl = ctx->dtype_length[dtype];
@@ -57,9 +53,9 @@ uint8_t saveMatrix(int fd, wmatrix a){
 	file_h.r = r;
 	file_h.c = size;
 
-	size *= dl;
+	size *= dl*r;
 
-	file_h.size = size*r;
+	file_h.size = size;
 	file_h.dtype = dtype;
 	file_h.com = com;
 
@@ -68,24 +64,19 @@ uint8_t saveMatrix(int fd, wmatrix a){
 		goto save_finish;
 	}
 
-	c *= dl;
-	r *= c;
+	if (com) size *= 2;
 
-	for (uint64_t i=0; i<r; i+=c){
-		if (write(fd, real + i, size) != (ssize_t) size){
-			ret = 1;
-			break;
-		}
-	}
+	uint64_t current = lseek(fd, 0, SEEK_CUR);
+	posix_fallocate(fd, current, size);
 
-	if (com){
-		for (uint64_t i=0; i<r; i+=c){
-			if (write(fd, imag + i, size) != (ssize_t)size){
-				ret = 1;
-				break;
-			}
-		}
-	}
+	void *addr = mmap(NULL, current+size, PROT_WRITE, MAP_SHARED, fd, 0);
+
+	if (com) wekuaMatrixWritetoBuffer(a, addr + current, addr + current + size/2);
+	else wekuaMatrixWritetoBuffer(a, addr + current, NULL);
+
+	munmap(addr, current+size);
+
+	lseek(fd, 0, SEEK_END);
 
 	save_finish:
 	return ret;
@@ -97,43 +88,22 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 
 	if (read(fd, &file_h, sizeof(struct header)) != sizeof(struct header)) return NULL;
 
-	void *real, *imag;
-	uint64_t c1 = file_h.c, c2, r = file_h.r;
-	uint32_t dl = ctx->dtype_length[file_h.dtype];
+	uint64_t current = lseek(fd, 0, SEEK_CUR);
+
+	void *addr = NULL;
+	uint64_t size = file_h.size;
 
 	if (file_h.com){
-		a = wekuaAllocComplexMatrix(ctx, file_h.r, file_h.c, file_h.dtype);
+		addr = mmap(NULL, current + size*2, PROT_READ, MAP_SHARED, fd, 0);
+		a = wekuaMatrixFromBuffer(ctx, file_h.r, file_h.c, addr + current, addr + current + size, file_h.dtype);
+		size *= 2;
 	}else{
-		a = wekuaAllocMatrix(ctx, file_h.r, file_h.c, file_h.dtype);
+		addr = mmap(NULL, current + size, PROT_READ, MAP_SHARED, fd, 0);
+		a = wekuaMatrixFromBuffer(ctx, file_h.r, file_h.c, addr + current, NULL, file_h.dtype);
 	}
 
-	c2 = a->col;
-	real = a->raw_real;
-	imag = a->raw_imag;
-
-	c1 *= dl;
-	c2 *= dl;
-	r *= c2;
-
-	for (uint64_t i=0; i<r; i += c2){
-		if (read(fd, real+i, c1) != (ssize_t)c1){
-			wekuaFreeMatrix(a, 0, NULL);
-			a = NULL;
-			goto load_finish;
-		}
-	}
-
-	if (file_h.com){
-		for (uint64_t i=0; i<r; i += c2){
-			if (read(fd, imag+i, c1) != (ssize_t)c1){
-				wekuaFreeMatrix(a, 0, NULL);
-				a = NULL;
-				break;
-			}
-		}
-	}
-
-	load_finish:
+	munmap(addr, current + size);
+	lseek(fd, current + size, SEEK_SET);
 	return a;
 }
 

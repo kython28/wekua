@@ -13,13 +13,13 @@ void exchange_ptr(wmatrix a, wmatrix b){
 	a->imag = b->imag;
 	b->imag = tmp;
 
-	tmp = a->raw_real;
-	a->raw_real = b->raw_real;
-	b->raw_real = tmp;
+	// tmp = a->raw_real;
+	// a->raw_real = b->raw_real;
+	// b->raw_real = tmp;
 
-	tmp = a->raw_imag;
-	a->raw_imag = b->raw_imag;
-	b->raw_imag = tmp;
+	// tmp = a->raw_imag;
+	// a->raw_imag = b->raw_imag;
+	// b->raw_imag = tmp;
 }
 
 int mem_set_zero(wmatrix a, cl_mem buf);
