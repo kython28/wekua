@@ -53,6 +53,7 @@ typedef struct _wk_ctx {
 	
 	cl_device_id dev; // OpenCL device
 	cl_device_local_mem_type local_mem_type;
+	cl_mem_flags flags;
 
 	// Garbage collector
 	pthread_t garbage_collector;
@@ -63,17 +64,10 @@ typedef struct _wk_ctx {
 	const uint32_t *dtype_length;
 	uint32_t vector_width[10], compute_units;
 	uint64_t max_work_group_size;
-
-	// Buffer functions
-	void *alloc_buffer_function;
-	cl_mem (*create_new_buffer)(cl_context ctx, void*, uint64_t size, int *ret);
-
-	void *buffer_release_function;
-	void (*release_buffer)(struct _wk_ctx *ctx, cl_mem buffer, int *ret);
 } *wekuaContext;
 
-wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors);
-wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors);
+wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors, uint8_t alloc_host_mem);
+wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors, uint8_t alloc_host_mem);
 
 // Kernel list
 #define WEKUA_KERNEL_RANDN 0

@@ -35,8 +35,8 @@ typedef struct _wk_matrix {
 	cl_mem real; // Real numbers
 	cl_mem imag; // Imaginary numbers
 
-	void *raw_real; // Real numbers array mapped
-	void *raw_imag; // Imaginary numbers array mapped
+	// void *raw_real; // Real numbers array mapped
+	// void *raw_imag; // Imaginary numbers array mapped
 
 	wekuaContext ctx;
 
@@ -70,7 +70,8 @@ wmatrix wekuaMatrixResize(wmatrix a, uint64_t r, uint64_t c, void *alpha, void *
 wmatrix wekuaMatrixConvert(wmatrix a, uint8_t dtype, uint32_t nw, cl_event *be, cl_event *e);
 wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rbuf, void *ibuf, uint8_t dtype);
 
-int wekuaMatrixCopyBuffer(wmatrix a, void *rbuf, void *ibuf, uint8_t dtype);
+int wekuaMatrixCopyBuffer(wmatrix a, void *rbuf, void *ibuf);
+int wekuaMatrixWritetoBuffer(wmatrix a, void *rbuf, void *ibuf);
 
 void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
 void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
