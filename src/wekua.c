@@ -370,6 +370,7 @@ cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com
 
 	kernel = compileCustomKernel(ctx, kernels[id], ker_name[id], args, &ctx->programs[pos]);
 	ctx->kernels[pos] = kernel;
+	free(args);
 
 	return kernel;
 }
