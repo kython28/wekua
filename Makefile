@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -W -g -fPIC -O2
-archives = wekua.o buffer.o matrix.o print.o trig.o blas.o extra.o aberth_root.o linear.o acti.o acti_linear.o acti_sigmoid.o acti_tanh.o acti_relu.o acti_leakyrelu.o werror.o network.o neuron.o optim.o file.o fifo.o
+archives = wekua.o matrix.o print.o trig.o blas.o extra.o aberth_root.o linear.o acti.o acti_linear.o acti_sigmoid.o acti_tanh.o acti_relu.o acti_leakyrelu.o werror.o network.o neuron.o optim.o file.o fifo.o
 
 main: $(archives)
 	$(CC) $(CFLAGS) -shared -lOpenCL -pthread $(archives) -o libwekua.so -lm
