@@ -1,8 +1,5 @@
 #include "../headers/matrix.h"
-#include <CL/cl.h>
 #include <math.h>
-#include <stdint.h>
-#include <sys/types.h>
 
 wmatrix getUpperLowerBounds(wekuaContext ctx, wmatrix a, uint32_t dl, uint8_t dtype){
 	wmatrix degree, b, c;

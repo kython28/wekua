@@ -1,4 +1,4 @@
-#include "../headers//error.h"
+#include "../headers/error.h"
 
 int runLossKernel(wmatrix output, wmatrix output_wanted, void *error_scal, void *errori_scal, werror *err, uint32_t nw, cl_event *be, uint8_t kernel_id){
 	if (output == NULL || output_wanted == NULL) return CL_INVALID_MEM_OBJECT;

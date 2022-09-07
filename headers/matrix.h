@@ -101,10 +101,11 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 );
 
 int wekuaMatrixAdd(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix addition
+int wekuaMatrixAddScalar(wmatrix a, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // Add to every values a scalar -> a_{i} += alpha + beta*j
 int wekuaMatrixSub(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Substration
 int wekuaMatrixDot(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Hadamard product
 int wekuaMatrixDivide(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // a_{i} /= b_{i}
-int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = a_{i}^{exp_r+exp_i*i} or a_{i} = a_{i}^{b_{i}}
+int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = a_{i}^{exp_r+exp_i*j} or a_{i} = a_{i}^{b_{i}}
 int wekuaMatrixLn(wmatrix a, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = ln(a_{i})
 int wekuaMatrixLog(wmatrix a, wmatrix b, void *base_r, void *base_i);
 int wekuaMatrixTrace(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Matrix Trace

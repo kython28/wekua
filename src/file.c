@@ -1,6 +1,3 @@
-#include <CL/cl.h>
-#include <stdint.h>
-
 #include "../headers/matrix.h"
 #include "../headers/network.h"
 #include "../headers/neuron.h"

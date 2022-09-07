@@ -1,5 +1,4 @@
 #include "../headers/matrix.h"
-#include <CL/cl.h>
 #include <math.h>
 
 uint64_t zero = 0;
@@ -1140,6 +1139,36 @@ int wekuaMatrixAdd(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e)
 	else alpha = &cone;
 
 	return wekuaBlasAxpy(b, a, alpha, NULL, nw, be, e);
+}
+
+int wekuaMatrixAddScalar(wmatrix a, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e){
+	if (a == NULL) return CL_INVALID_MEM_OBJECT;
+	else if (alpha == NULL && beta == NULL) return CL_INVALID_ARG_VALUE;
+
+	uint8_t com = a->com;
+
+	if (alpha == NULL) alpha = &zero;
+	if (beta && !com){
+		if (createComplexMatrix(a)) return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+		com = 1;
+	}else{
+		beta = &zero;
+	}
+
+	uint8_t dtype = a->dtype;
+	wekuaContext ctx = a->ctx;
+	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_SCALAR_ADD, dtype, com);
+	if (kernel == NULL) return CL_COMPILE_PROGRAM_FAILURE;
+
+	uint64_t dl = ctx->dtype_length[dtype];
+
+	clSetKernelArg(kernel, 0, sizeof(cl_mem), &a->real);
+	clSetKernelArg(kernel, 1, sizeof(cl_mem), &a->imag);
+	clSetKernelArg(kernel, 2, dl, alpha);
+	clSetKernelArg(kernel, 3, dl, beta);
+	clSetKernelArg(kernel, 4, 8, &a->vl_shape[1]);
+
+	return clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->vl_shape, a->work_items, nw, be, e);
 }
 
 int wekuaMatrixSub(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e){

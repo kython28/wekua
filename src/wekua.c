@@ -10,13 +10,9 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 
-#include <stdint.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 
-#define WEKUA_KERNEL_NUM 47
+#define WEKUA_KERNEL_NUM 48
 #define KERNEL_COL 10*WEKUA_KERNEL_NUM
 
 static const char kernels[WEKUA_KERNEL_NUM][50] = {
@@ -67,6 +63,7 @@ static const char kernels[WEKUA_KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/tanh_dev.cl",
 	"/usr/lib/wekua_kernels/adam.cl",
 	"/usr/lib/wekua_kernels/crossentropy.cl",
+	"/usr/lib/wekua_kernels/scalar_add.cl"
 };
 
 static const char ker_name[WEKUA_KERNEL_NUM][20] = {
@@ -81,7 +78,8 @@ static const char ker_name[WEKUA_KERNEL_NUM][20] = {
 	"sqrt_kernel", "adagrad", "gdm",
 	"rmsprop", "adadelta", "relu", "relu_dev",
 	"leakyrelu", "leakyrelu_dev", "mse",
-	"sigmoid_dev", "tanh_dev", "adam", "crossentropy"
+	"sigmoid_dev", "tanh_dev", "adam", "crossentropy",
+	"scalar_add"
 };
 
 const uint32_t dtype_length[10] = {
