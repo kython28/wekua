@@ -78,11 +78,6 @@ int runLossKernel(wmatrix output, wmatrix output_wanted, void *error_scal, void 
 	return ret;
 }
 
-
 int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error_scal, void *errori_scal, werror *err, uint32_t nw, cl_event *be){
 	return runLossKernel(output, output_wanted, error_scal, errori_scal, err, nw, be, WEKUA_KERNEL_MSE);
-}
-
-int wekuaCrossEntropy(wmatrix output, wmatrix output_wanted, void *error_scal, void *errori_scal, werror *err, uint32_t nw, cl_event *be){
-	return runLossKernel(output, output_wanted, error_scal, errori_scal, err, nw, be, WEKUA_KERNEL_CROSS_ENTROPY);
 }

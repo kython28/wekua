@@ -14,7 +14,6 @@ typedef struct _w_error {
 } *werror;
 
 int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be); // Mean Square Error
-int wekuaCrossEntropy(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be); // Cross Entropy Error
 
 #ifdef __cplusplus
 }
