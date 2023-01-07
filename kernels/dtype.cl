@@ -2,15 +2,15 @@
 
 typedef char wks;
 
-#if width == 1
+#if wk_width == 1
 typedef char wk;
-#elif width == 2
+#elif wk_width == 2
 typedef char2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef char4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef char8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef char16 wk;
 #endif
 
@@ -20,15 +20,15 @@ typedef char16 wk;
 
 typedef uchar wks;
 
-#if width == 1
+#if wk_width == 1
 typedef uchar wk;
-#elif width == 2
+#elif wk_width == 2
 typedef uchar2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef uchar4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef uchar8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef uchar16 wk;
 #endif
 
@@ -38,15 +38,15 @@ typedef uchar16 wk;
 
 typedef short wks;
 
-#if width == 1
+#if wk_width == 1
 typedef short wk;
-#elif width == 2
+#elif wk_width == 2
 typedef short2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef short4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef short8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef short16 wk;
 #endif
 
@@ -56,15 +56,15 @@ typedef short16 wk;
 
 typedef ushort wks;
 
-#if width == 1
+#if wk_width == 1
 typedef ushort wk;
-#elif width == 2
+#elif wk_width == 2
 typedef ushort2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef ushort4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef ushort8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef ushort16 wk;
 #endif
 
@@ -74,15 +74,15 @@ typedef ushort16 wk;
 
 typedef int wks;
 
-#if width == 1
+#if wk_width == 1
 typedef int wk;
-#elif width == 2
+#elif wk_width == 2
 typedef int2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef int4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef int8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef int16 wk;
 #endif
 
@@ -92,15 +92,15 @@ typedef int16 wk;
 
 typedef uint wks;
 
-#if width == 1
+#if wk_width == 1
 typedef uint wk;
-#elif width == 2
+#elif wk_width == 2
 typedef uint2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef uint4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef uint8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef uint16 wk;
 #endif
 
@@ -110,15 +110,15 @@ typedef uint16 wk;
 
 typedef long wks;
 
-#if width == 1
+#if wk_width == 1
 typedef long wk;
-#elif width == 2
+#elif wk_width == 2
 typedef long2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef long4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef long8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef long16 wk;
 #endif
 
@@ -128,15 +128,15 @@ typedef long16 wk;
 
 typedef ulong wks;
 
-#if width == 1
+#if wk_width == 1
 typedef ulong wk;
-#elif width == 2
+#elif wk_width == 2
 typedef ulong2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef ulong4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef ulong8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef ulong16 wk;
 #endif
 
@@ -146,15 +146,15 @@ typedef ulong16 wk;
 
 typedef float wks;
 
-#if width == 1
+#if wk_width == 1
 typedef float wk;
-#elif width == 2
+#elif wk_width == 2
 typedef float2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef float4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef float8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef float16 wk;
 #endif
 
@@ -164,15 +164,15 @@ typedef float16 wk;
 
 typedef double wks;
 
-#if width == 1
+#if wk_width == 1
 typedef double wk;
-#elif width == 2
+#elif wk_width == 2
 typedef double2 wk;
-#elif width == 4
+#elif wk_width == 4
 typedef double4 wk;
-#elif width == 8
+#elif wk_width == 8
 typedef double8 wk;
-#elif width == 16
+#elif wk_width == 16
 typedef double16 wk;
 #endif
 
@@ -180,7 +180,7 @@ typedef double16 wk;
 
 #endif
 
-#if width > 1
+#if wk_width > 1
 
 #if dtype < 9 // PoCL doesn't support _cl_dot with float
 
@@ -188,23 +188,23 @@ wks __attribute__((overloadable)) dot(wk aa, wk bb){
 	wk cc = aa*bb;
 	wks r = cc[0];
 
-	#if width >= 2
+	#if wk_width >= 2
 	r += cc[1];
 	#endif
 
-	#if width >= 4
+	#if wk_width >= 4
 	r += cc[2];
 	r += cc[3];
 	#endif
 
-	#if width >= 8
+	#if wk_width >= 8
 	r += cc[4];
 	r += cc[5];
 	r += cc[6];
 	r += cc[7];
 	#endif
 
-	#if width == 16
+	#if wk_width == 16
 	r += cc[8];
 	r += cc[9];
 	r += cc[10];
@@ -223,23 +223,23 @@ wks __attribute__((overloadable)) dot(wk aa, wk bb){
 wks sum(wk a){
 	wks r = a[0];
 
-	#if width >= 2
+	#if wk_width >= 2
 	r += a[1];
 	#endif
 
-	#if width >= 4
+	#if wk_width >= 4
 	r += a[2];
 	r += a[3];
 	#endif
 
-	#if width >= 8
+	#if wk_width >= 8
 	r += a[4];
 	r += a[5];
 	r += a[6];
 	r += a[7];
 	#endif
 
-	#if width == 16
+	#if wk_width == 16
 	r += a[8];
 	r += a[9];
 	r += a[10];

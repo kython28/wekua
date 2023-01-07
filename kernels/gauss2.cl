@@ -8,12 +8,12 @@ __kernel void gauss2(
 	unsigned long i = get_global_id(0);
 	unsigned long j = i*col + get_global_id(1);
 
-	#if width == 1
+	#if wk_width == 1
 	i += i*col;
 	#else
-	unsigned long mod = i%width;
+	unsigned long mod = i%wk_width;
 
-	i = i*col + (i - mod)/width;
+	i = i*col + (i - mod)/wk_width;
 	#endif
 
 #if com
@@ -21,7 +21,7 @@ __kernel void gauss2(
 	wks cc, dd;
 	aa = ar[j]; bb = ai[j];
 
-	#if width == 1
+	#if wk_width == 1
 	cc = br[i];
 	dd = bi[i];
 	#else
@@ -35,7 +35,7 @@ __kernel void gauss2(
 	ar[j] = aa;
 	ai[j] = bb;
 #else
-	#if width == 1
+	#if wk_width == 1
 	ar[j] /= br[i];
 	#else
 	ar[j] /= br[i][mod];

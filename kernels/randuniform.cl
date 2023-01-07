@@ -5,13 +5,13 @@ __kernel void uniform(__global wk *a, __global wk *b,
 	unsigned long i = get_global_id(0);
 
 #if com
-#if width == 1
+#if wk_width == 1
 		b[i] = ia + (ie-ia)*b[i];
 #else
 		b[i] = (wk)(ia) + (ie-ia)*b[i];
 #endif
 #else
-#if width == 1
+#if wk_width == 1
 	a[i] = ra + (re-ra)*a[i];
 #else
 	a[i] = (wk)(ra) + (re-ra)*a[i];

@@ -8,7 +8,7 @@ __kernel void scal(__global wk *a, __global wk *b,
 	wk aa, bb;
 	aa = a[i]; bb = b[i];
 
-	#if width == 1
+	#if wk_width == 1
 	complex_mul(&aa, &bb, alpha, beta);
 	#else
 	complex_mul(&aa, &bb, (wk)(alpha), (wk)(beta));
