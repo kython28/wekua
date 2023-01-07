@@ -15,7 +15,7 @@ __kernel void sigmoid(__global wk *a, __global wk *b){
 	wk aa, bb, d;
 	bb = b[i];
 
-	#if width == 1
+	#if wk_width == 1
 	d = ONE + c*cos(bb);
 	#else
 	d = (wk)(ONE) + c*cos(bb);
@@ -27,7 +27,7 @@ __kernel void sigmoid(__global wk *a, __global wk *b){
 	a[i] = d;
 	b[i] = aa;
 #else
-	#if width == 1
+	#if wk_width == 1
 	a[i] = ONE/(c+ONE);
 	#else
 	a[i] = (wk)(ONE)/(c+ (wk)(ONE));

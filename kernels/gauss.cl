@@ -7,12 +7,12 @@ void gauss_complex(__global wk *ar, __global wk *ai, __global wk *br, __global w
 
 	wk ee, ff;
 
-	#if width == 1
+	#if wk_width == 1
 	aa = br[k]; aa = bi[k];
 	cc = ar[k]; dd = ai[k];
 	#else
-	unsigned long mod = k%width, addr;
-	addr = (k - mod)/width;
+	unsigned long mod = k%wk_width, addr;
+	addr = (k - mod)/wk_width;
 
 	aa = br[addr][mod]; bb = bi[addr][mod];
 	cc = ar[addr][mod]; dd = ai[addr][mod];
@@ -45,11 +45,11 @@ void gauss_complex(__global wk *ar, __global wk *ai, __global wk *br, __global w
 void gauss_real(__global wk *a, __global wk *b, __global wk *c, __global wk *d, unsigned long k, unsigned char otherm, unsigned long col){
 	wks a_c;
 
-	#if width == 1
+	#if wk_width == 1
 	a_c = b[k]/a[k];
 	#else
-	unsigned long mod = k%width, addr;
-	addr = (k - mod)/width;
+	unsigned long mod = k%wk_width, addr;
+	addr = (k - mod)/wk_width;
 
 	a_c = b[addr][mod]/a[addr][mod];
 	#endif

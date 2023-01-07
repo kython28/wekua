@@ -18,7 +18,7 @@ __kernel void sum_kernel(
 		rb += ai[j];
 	}
 
-	#if width == 1
+	#if wk_width == 1
 	bi[i] = rb;
 	#else
 	bi[i] = sum(rb);
@@ -30,7 +30,7 @@ __kernel void sum_kernel(
 	}
 #endif
 
-	#if width == 1
+	#if wk_width == 1
 	br[i] = ra;
 	#else
 	br[i] = sum(ra);

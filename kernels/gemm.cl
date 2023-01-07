@@ -28,7 +28,7 @@ __kernel void gemm( // Winograd
 
 	wk C11, C12, C21, C22;
 
-	#if width == 1
+	#if wk_width == 1
 	C11 = 0;
 	C12 = 0;
 	C21 = 0;
@@ -43,7 +43,7 @@ __kernel void gemm( // Winograd
 #if com
 	wk C11_i, C12_i, C21_i, C22_i;
 
-	#if width == 1
+	#if wk_width == 1
 	C11_i = 0;
 	C12_i = 0;
 	C21_i = 0;
@@ -146,7 +146,7 @@ __kernel void gemm( // Winograd
 		C22_i += p1_i + m4_i;
 	}
 
-	#if width == 1
+	#if wk_width == 1
 	ci[row_c] = C11_i; ci[row_c + 1] = C12_i;
 	ci[row_c1] = C21_i; ci[row_c1 + 1] = C22_i;
 	#else
@@ -196,7 +196,7 @@ __kernel void gemm( // Winograd
 		C22 += p1 + m4;
 	}
 #endif
-	#if width == 1
+	#if wk_width == 1
 	cr[row_c] = ralpha*C11 + rbeta*cr[row_c];
 	cr[row_c + 1] = ralpha*C12 + rbeta*cr[row_c + 1];
 	cr[row_c1] = ralpha*C21 + rbeta*cr[row_c1];

@@ -363,7 +363,7 @@ cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com
 	if (kernel != NULL) return kernel;
 
 	char *args;
-	asprintf(&args, "-Dwidth=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
+	asprintf(&args, "-Dwk_width=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
 
 	kernel = compileCustomKernel(ctx, kernels[id], ker_name[id], args, &ctx->programs[pos]);
 	ctx->kernels[pos] = kernel;

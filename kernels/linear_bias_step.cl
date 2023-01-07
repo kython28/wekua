@@ -11,7 +11,7 @@ __kernel void linear_bias_step(
 
 	wk C11, C12;
 
-	#if width == 1
+	#if wk_width == 1
 	C11 = 0; C12 = 0;
 	#else
 	C11 = (wk)(0); C12 = (wk)(0);
@@ -22,14 +22,14 @@ __kernel void linear_bias_step(
 		C12 += ar[arow + col + k] + ar[arow + col + k + 1];
 	}
 
-	#if width == 1
+	#if wk_width == 1
 	br[j] = C11; br[j + 1] = C12;
 	#else
 	br[j] = sum(C11); br[j + 1] = sum(C12);
 	#endif
 
 #if com
-	#if width == 1
+	#if wk_width == 1
 	C11 = 0; C12 = 0;
 	#else
 	C11 = (wk)(0); C12 = (wk)(0);
@@ -40,7 +40,7 @@ __kernel void linear_bias_step(
 		C12 += ai[(arow << 1) + k] + ai[(arow << 1) + k + 1];
 	}
 
-	#if width == 1
+	#if wk_width == 1
 	bi[j] = C11; bi[j + 1] = C12;
 	#else
 	bi[j] = sum(C11); bi[j + 1] = sum(C12);

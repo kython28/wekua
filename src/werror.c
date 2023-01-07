@@ -62,8 +62,13 @@ int runLossKernel(wmatrix output, wmatrix output_wanted, void *error_scal, void 
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, output->vl_shape, output->work_items, nw, be, &e);
 	if (ret != CL_SUCCESS) goto wekua_mse_fail;
 
-	ret = wekuaMatrixMean(error, error_scal, errori_scal, 1, &e);
-	if (ret != CL_SUCCESS) clWaitForEvents(1, &e);
+	if (error_scal || errori_scal){
+		ret = wekuaMatrixMean(error, error_scal, errori_scal, 1, &e);
+		if (ret != CL_SUCCESS) clWaitForEvents(1, &e);
+	}else{
+		clWaitForEvents(1, &e);
+	}
+	
 	clReleaseEvent(e);
 
 	wekua_mse_fail:

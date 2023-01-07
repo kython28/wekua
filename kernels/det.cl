@@ -7,12 +7,12 @@ void gauss(__global wk *ar, __global wk *ai, __global wk *br, __global wk *bi, _
 
 	wk ee, ff;
 
-	#if width == 1
+	#if wk_width == 1
 	aa = br[k]; aa = bi[k];
 	cc = ar[k]; dd = ai[k];
 	#else
-	unsigned long mod = k%width, addr;
-	addr = (k - mod)/width;
+	unsigned long mod = k%wk_width, addr;
+	addr = (k - mod)/wk_width;
 
 	aa = br[addr][mod]; bb = bi[addr][mod];
 	cc = ar[addr][mod]; dd = ai[addr][mod];
@@ -26,7 +26,7 @@ void gauss(__global wk *ar, __global wk *ai, __global wk *br, __global wk *bi, _
 	cc = aa; dd = bb;
 	calc_inv_complex_scal(&cc, &dd);
 
-	#if width == 1
+	#if wk_width == 1
 	complex_mul_scal2(&cc, &dd, cr[k], ci[k]);
 
 	cr[k] = cc;
@@ -52,7 +52,7 @@ void gauss(__global wk *ar, __global wk *ai, __global wk *br, __global wk *bi, _
 void gauss(__global wk *a, __global wk *b, __global wk *c, unsigned long k, unsigned long col){
 	wks a_c;
 
-	#if width == 1
+	#if wk_width == 1
 	a_c = b[k]/a[k];
 
 	if (isnan(a_c) || isinf(a_c)) return;
@@ -61,8 +61,8 @@ void gauss(__global wk *a, __global wk *b, __global wk *c, unsigned long k, unsi
 
 	for (unsigned long x=k; x<col; x++)
 	#else
-	unsigned long mod = k%width, addr;
-	addr = (k - mod)/width;
+	unsigned long mod = k%wk_width, addr;
+	addr = (k - mod)/wk_width;
 
 	a_c = b[addr][mod]/a[addr][mod];
 
@@ -95,15 +95,15 @@ __kernel void det(
 		gauss(&ar[i*col], &ar[k*col], &br[i*col], k, col);
 #endif
 	}else if (i == k){
-#if width == 1
+#if wk_width == 1
 		k = k*col + k;
 		br[k] = ar[k];
 #if com
 		bi[k] = ai[k];
 #endif
 #else
-		unsigned long mod = k%width, addr;
-		addr = (k - mod)/width;
+		unsigned long mod = k%wk_width, addr;
+		addr = (k - mod)/wk_width;
 
 		k *= col;
 		k += addr;
