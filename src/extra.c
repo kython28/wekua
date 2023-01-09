@@ -118,7 +118,7 @@ int wekuaMatrixSum(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be)
 	clSetKernelArg(kernel, 2, sizeof(cl_mem), &b->real);
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &b->imag);
 	clSetKernelArg(kernel, 4, 8, &a->vl_shape[1]);
-	
+
 	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 1, NULL, &b->shape[1], &b->work_items[7], 0, NULL, e);
 	if (ret != CL_SUCCESS) goto wekua_matrix_sum;
 	env++;

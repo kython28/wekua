@@ -144,8 +144,7 @@ wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype
 
 	getLWI(&a->vl_shape[2], &a->work_items[8], 1, max);
 
-	int ret;
-
+	int ret = CL_SUCCESS;
 	a->real = clCreateBuffer(ctx->ctx, ctx->flags, a->length, NULL, &ret);
 	if (ret != CL_SUCCESS){
 		free(a);
