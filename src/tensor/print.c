@@ -52,8 +52,8 @@ void wekuaTensorPrint(wtensor tensor, ...){
 
 	uint64_t r = shape[ndim-2];
 	uint64_t c = shape[ndim-1];
-	uint64_t _r = ( (r > 8) ? 8 : r );
-	uint64_t _c = ( (c > 8)? 8 : c );
+	uint64_t _r = ((r > 8) ? 8 : r);
+	uint64_t _c = ((c > 8) ? 8 : c);
 
 	uint8_t v_split = (c > 8) ? 1 : 0;
 	uint8_t h_split = (r > 8) ? 1 : 0;
