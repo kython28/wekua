@@ -49,7 +49,7 @@ int wekuaNetworkBackward(
 	uint32_t nneur = net->nneur;
 	uint32_t x = 0;
 	wneuron *neurons = net->neurons;
-	wneuron neuron = neurons[nneur-1-x];
+	wneuron neuron = neurons[nneur-x-1];
 
 	wmatrix regularization = NULL;
 
@@ -72,9 +72,9 @@ int wekuaNetworkBackward(
 	// wekuaMatrixPrint(regularization, 0 ,0);
 
 	for (; x < (nneur-1); x++){
-		ret = wekuaNeuronBackward(neuron, error[x], cache[nneur-1-x], regularization, &error[x+1]);
+		neuron = neurons[nneur-x-1];
+		ret = wekuaNeuronBackward(neuron, error[x], cache[nneur-x-1], regularization, &error[x+1]);
 		if (ret != CL_SUCCESS) break;
-		neuron = neurons[nneur-1-x];
 
 		if (regularization) {
 			wekuaFreeMatrix(regularization, 0, NULL);
