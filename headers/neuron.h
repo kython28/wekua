@@ -15,7 +15,7 @@ typedef struct _w_neuron {
 	wmatrix *bias; // Neuron bias
 	uint64_t layer; // Layer num
 	uint8_t dtype; // Weight data type
-	wacti acti; // Activation function for the neuron
+	wacti acti; // Neuron activation function
 
 	void *extra_data;
 } *wneuron;
@@ -26,7 +26,7 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 // wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride_w, uint64_t stride_h, uint8_t bias, uint8_t dtype);
 
 wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
-int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err);
+int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regularization, werror *err);
 
 void wekuaFreeNeuronError(werror error);
 void wekuaFreeNeuronCache(wcache cache);

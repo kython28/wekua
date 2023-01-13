@@ -1,4 +1,5 @@
 #include "../headers/network.h"
+#include "regularization.h"
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype){
 	wnetwork net = (wnetwork) calloc(1, sizeof(struct _w_net));
@@ -38,23 +39,57 @@ wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
 	return tmp[d];
 }
 
-int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err){
+int wekuaNetworkBackward(
+	wnetwork net, werror *error, wcache *cache, werror *err,
+	void *alpha, void *beta, uint8_t regularization_type
+){
 	if (net == NULL || error == NULL || cache == NULL) return CL_INVALID_ARG_VALUE;
 
 	int ret = CL_SUCCESS;
 	uint32_t nneur = net->nneur;
 	uint32_t x = 0;
 	wneuron *neurons = net->neurons;
+	wneuron neuron = neurons[nneur-x-1];
+
+	wmatrix regularization = NULL;
+
+	switch (regularization_type) {
+		case WEKUA_L1_REGULARIZATION:
+			regularization = wekuaL1Regularization(
+				neuron->weight[neuron->layer-1],
+				alpha, beta
+			);
+			break;
+		case WEKUA_L2_REGULARIZATION:
+			regularization = wekuaL2Regularization(
+				neuron->weight[neuron->layer-1],
+				alpha, beta
+			);
+			break;
+		default: break;
+	}
+
+	// wekuaMatrixPrint(regularization, 0 ,0);
 
 	for (; x < (nneur-1); x++){
-		ret = wekuaNeuronBackward(neurons[nneur-1-x], error[x], cache[nneur-1-x], &error[x+1]);
+		neuron = neurons[nneur-x-1];
+		ret = wekuaNeuronBackward(neuron, error[x], cache[nneur-x-1], regularization, &error[x+1]);
 		if (ret != CL_SUCCESS) break;
+
+		if (regularization) {
+			wekuaFreeMatrix(regularization, 0, NULL);
+			regularization = NULL;
+		}
 	}
 
 	if (ret != CL_SUCCESS) {
 		for (uint32_t y=1; y < x; y++) wekuaFreeNeuronError(error[y]);
 	}else{
-		ret = wekuaNeuronBackward(neurons[0], error[nneur-1], cache[0], err);
+		ret = wekuaNeuronBackward(neurons[0], error[nneur-1], cache[0], regularization, err);
+		if (regularization) {
+			wekuaFreeMatrix(regularization, 0, NULL);
+			regularization = NULL;
+		}
 	}
 
 	return ret;

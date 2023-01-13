@@ -1,5 +1,5 @@
 #include "../headers/neuron.h"
-
+#include "regularization.h"
 
 // ------------------- HELPERS ------------------- //
 void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max);
@@ -117,7 +117,7 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 	return output;
 }
 
-int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err){
+int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regularization, werror *err){
 	if (neuron == NULL || error == NULL || cache == NULL) return CL_INVALID_ARG_VALUE;
 
 	int ret;
@@ -127,7 +127,8 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err)
 	uint8_t dtype = neuron->dtype;
 
 	wacti acti = neuron->acti;
-	cl_event e;
+	cl_event e[2];
+	uint32_t nevents = 0;
 	
 	wmatrix *cache_data = cache->data;
 	wmatrix dev, *o_err, *weight, tmp;
@@ -151,21 +152,36 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err)
 		dev = wekuaActiGetDev(acti, cache_data[no_err]);
 		if (dev == NULL) break;
 
-		ret = wekuaMatrixDot(tmp, dev, 0, NULL, &e);
+		ret = wekuaMatrixDot(tmp, dev, 0, NULL, e);
 		if (ret != CL_SUCCESS) break;
+		nevents++;
+
+		if (regularization){
+			// wekuaMatrixPrint(regularization, 0, 0);
+			// wekuaMatrixPrint(tmp, 1, e);
+			ret = wekuaAddRegularization(regularization, tmp, 1, e, &e[1]);
+			if (ret != CL_SUCCESS) break;
+
+			// wekuaMatrixPrint(tmp, 1, &e[1]);
+
+			regularization = NULL;
+			nevents++;
+		}
 
 		s = tmp;
 		w = weight[no_err-1];
 
 		tmp = wekuaAllocMatrix(ctx, s->shape[0], w->shape[1], dtype);
-		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 1, &e);
+		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 1, &e[nevents - 1]);
 		if (ret != CL_SUCCESS){
-			wekuaFreeMatrix(dev, 1, &e);
-			clReleaseEvent(e);
+			wekuaFreeMatrix(dev, 1, &e[nevents - 1]);
 			break;
 		}
-		clReleaseEvent(e);
+		clReleaseEvent(e[0]);
+		if (nevents == 2) clReleaseEvent(e[1]);
 		wekuaFreeMatrix(dev, 0, NULL);
+
+		nevents = 0;
 	}
 	free(one);
 
@@ -174,6 +190,11 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, werror *err)
 		err[0]->err = tmp;
 	}else{
 		wekuaFreeMatrix(tmp, 0, NULL);
+
+		if (nevents){
+			clWaitForEvents(nevents, e);
+			for (uint32_t i=0; i<nevents; i++) clReleaseEvent(e[i]);
+		}
 	}
 
 	return ret;

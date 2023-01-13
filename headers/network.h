@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+#define WEKUA_NONE_REGULARIZATION 0
+#define WEKUA_L1_REGULARIZATION 1
+#define WEKUA_L2_REGULARIZATION 2
+
 typedef struct _w_net {
 	wneuron *neurons;
 	uint32_t nneur;
@@ -15,7 +19,10 @@ typedef struct _w_net {
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype);
 wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
-int wekuaNetworkBackward(wnetwork net, werror *error, wcache *cache, werror *err);
+int wekuaNetworkBackward(
+	wnetwork net, werror *error, wcache *cache, werror *err,
+	void *alpha, void *beta, uint8_t regularization_type
+);
 
 uint8_t saveWekuaNetwork(const char *name, wnetwork net);
 uint8_t loadWekuaNetwork(const char *name, wnetwork net, wekuaContext ctx);
@@ -23,7 +30,6 @@ uint8_t loadWekuaNetwork(const char *name, wnetwork net, wekuaContext ctx);
 void wekuaFreeNetCache(wnetwork net, wcache *cache);
 void wekuaFreeNetError(wnetwork net, werror *error);
 void wekuaFreeNetwork(wnetwork net, uint32_t nw, cl_event *be);
-
 
 #ifdef __cplusplus
 }

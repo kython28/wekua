@@ -12,7 +12,7 @@
 
 #include <fcntl.h>
 
-#define WEKUA_KERNEL_NUM 47
+#define WEKUA_KERNEL_NUM 49
 #define KERNEL_COL 10*WEKUA_KERNEL_NUM
 
 static const char kernels[WEKUA_KERNEL_NUM][50] = {
@@ -62,7 +62,9 @@ static const char kernels[WEKUA_KERNEL_NUM][50] = {
 	"/usr/lib/wekua_kernels/sigmoid_dev.cl",
 	"/usr/lib/wekua_kernels/tanh_dev.cl",
 	"/usr/lib/wekua_kernels/adam.cl",
-	"/usr/lib/wekua_kernels/scalar_add.cl"
+	"/usr/lib/wekua_kernels/scalar_add.cl",
+	"/usr/lib/wekua_kernels/l1_regu.cl",
+	"/usr/lib/wekua_kernels/regularization.cl"
 };
 
 static const char ker_name[WEKUA_KERNEL_NUM][20] = {
@@ -78,7 +80,7 @@ static const char ker_name[WEKUA_KERNEL_NUM][20] = {
 	"rmsprop", "adadelta", "relu", "relu_dev",
 	"leakyrelu", "leakyrelu_dev", "mse",
 	"sigmoid_dev", "tanh_dev", "adam",
-	"scalar_add"
+	"scalar_add", "l1regu", "regularization"
 };
 
 const uint32_t dtype_length[10] = {
