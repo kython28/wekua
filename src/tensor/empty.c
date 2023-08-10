@@ -1,6 +1,11 @@
 #include "tensor.h"
 #include <string.h>
 
+#define CREATE_AN_SIMPLE_ARRAY(name, type) \
+	type *name = (type *)calloc(ndim, sizeof(type)); \
+	if (!name) goto wekuaTensorEmpty_fail; \
+	tensor->name = name; \
+
 static int release_tensor(wtensor tensor){
 	if (!tensor) return 0;
 
@@ -22,14 +27,13 @@ wtensor wekuaTensorEmpty(wekuaContext ctx, uint8_t dtype, uint8_t com, uint32_t 
     tensor->dtype = dtype;
 	tensor->ctx = ctx;
     tensor->ndim = ndim;
+	tensor->free = &release_tensor;
+	tensor->com = com;
 
-	uint64_t *shape = calloc(ndim, sizeof(uint64_t));
-	if (!shape) goto wekuaTensorEmpty_fail;
-	tensor->shape = shape;
-
-	uint64_t *vl_shape = calloc(ndim, sizeof(uint64_t));
-	if (!vl_shape) goto wekuaTensorEmpty_fail;
-	tensor->vl_shape = vl_shape;
+	CREATE_AN_SIMPLE_ARRAY(shape, uint64_t)
+	CREATE_AN_SIMPLE_ARRAY(vl_shape, uint64_t)
+	CREATE_AN_SIMPLE_ARRAY(strides, uint64_t)
+	CREATE_AN_SIMPLE_ARRAY(vl_strides, uint64_t)
 
 	va_list args;
 	va_start(args, ndim);
@@ -48,6 +52,7 @@ wtensor wekuaTensorEmpty(wekuaContext ctx, uint8_t dtype, uint8_t com, uint32_t 
 	uint64_t dl = (uint64_t) ctx->dtype_length[dtype];
 	uint64_t max = ctx->device.max_work_group_size;
 	uint64_t columns = shape[ndim-1];
+
 	uint64_t vl_nelements = nelements/columns;
 	uint64_t size = nelements*dl;
 
@@ -56,6 +61,7 @@ wtensor wekuaTensorEmpty(wekuaContext ctx, uint8_t dtype, uint8_t com, uint32_t 
 
 	vl_shape[ndim-1] = columns;
 	vl_nelements *= columns;
+	if (com) vl_nelements *= 2;
 
 	tensor->nelements = vl_nelements * vl;
 	tensor->vl_nelements = vl_nelements;

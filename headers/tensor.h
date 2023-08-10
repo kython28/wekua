@@ -31,7 +31,10 @@ typedef struct _w_tensor {
 	uint64_t *vl_shape; // Shape in Vector format
 
 	uint64_t nelements; // Total number of elements in the tensor
-	uint64_t vl_nelements; // Total number of elements in the tensor
+	uint64_t vl_nelements; // Total number of vectors in the tensor
+	
+	uint64_t *strides;
+	uint64_t *vl_strides;
 
 	uint8_t com; // Does the matrix use complex elements?
 	uint8_t dtype;
@@ -46,7 +49,7 @@ typedef struct _w_tensor {
 	uint64_t *work_items;
 } *wtensor;
 
-void wekuaMatrixPrint(wtensor tensor, ...);
+void wekuaTensorPrint(wtensor tensor, uint32_t nw, cl_event *events);
 
 // Complex numbers utils
 int wekuaTensorEnableComplexNumbers(wtensor tensor, uint32_t nw, cl_event *be);

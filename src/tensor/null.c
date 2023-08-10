@@ -9,7 +9,7 @@ int wekuaTensorNull(wtensor tensor, uint32_t nw, cl_event *be, cl_event *e){
 	int ret = clEnqueueFillBuffer(
 		ctx->command_queue,
 		tensor->buffer,
-		&zero, ctx->dtype_length[tensor->dtype],
+		&zero, sizeof(uint64_t),
 		0, tensor->size,
 		nw, be, e
 	);
