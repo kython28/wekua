@@ -146,14 +146,17 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regu
 	uint64_t no_err = neuron->layer;
 	
 	error->no_err = no_err;
-	o_err = (wmatrix*) calloc(no_err, sizeof(wmatrix));
-	error->o_err = o_err;
+	o_err = error->o_err;
+	if (!o_err){
+		o_err = (wmatrix*) calloc(no_err, sizeof(wmatrix));
+		error->o_err = o_err;
+	}
 	
 	tmp = error->err;
 	wmatrix s, w;
 
 	for (; no_err>0; no_err--){
-		o_err[no_err-1] = tmp;
+		if (!o_err[no_err-1]) o_err[no_err-1] = tmp;
 
 		dev = wekuaActiGetDev(acti, cache_data[no_err]);
 		if (dev == NULL) break;
@@ -173,7 +176,16 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regu
 		s = tmp;
 		w = weight[no_err-1];
 
-		tmp = wekuaAllocMatrix(ctx, s->shape[0], w->shape[1], dtype);
+		if (no_err > 1 && o_err[no_err-2]){
+			tmp = o_err[no_err-2];
+		}else{
+			if (err && err[0]){
+				tmp = err[0]->err;
+			}else{
+				tmp = wekuaAllocMatrix(ctx, s->shape[0], w->shape[1], dtype);
+			}
+		}
+
 		ret = wekuaBlasGemm(one, NULL, 0, s, 0, w, NULL, NULL, tmp, 1, &e[nevents - 1]);
 		if (ret != CL_SUCCESS){
 			wekuaFreeMatrix(dev, 1, &e[nevents - 1]);
@@ -187,9 +199,11 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regu
 	}
 	free(one);
 
-	if (ret == CL_SUCCESS && err != NULL){
-		err[0] = (werror) calloc(1, sizeof(struct _w_error));
-		err[0]->err = tmp;
+	if (ret == CL_SUCCESS && err){
+		if (!err[0]){
+			err[0] = (werror) calloc(1, sizeof(struct _w_error));
+			err[0]->err = tmp;
+		}
 	}else{
 		wekuaFreeMatrix(tmp, 0, NULL);
 
