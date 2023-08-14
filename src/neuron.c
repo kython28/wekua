@@ -55,17 +55,24 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 	cl_command_queue cmd = ctx->command_queue;
 
 	if (cache){
-		cache[0] = (wcache) calloc(1, sizeof(struct _w_cache));
-		if (cache[0] == NULL) return NULL;
+		if (!cache[0]){
+			cache[0] = (wcache) calloc(1, sizeof(struct _w_cache));
+			if (cache[0] == NULL) return NULL;
 
-		cache[0]->ndata = layer+1;
-		data_cache = (wmatrix*) calloc(layer+1, sizeof(wmatrix));
-		if (data_cache == NULL){
-			free(cache[0]);
-			return NULL;
+			cache[0]->ndata = layer+1;
+			data_cache = (wmatrix*) calloc(layer+1, sizeof(wmatrix));
+			if (data_cache == NULL){
+				free(cache[0]);
+				return NULL;
+			}
+			cache[0]->data = data_cache;
+			data_cache[0] = input;
+		}else{
+			data_cache = cache[0]->data;
+			if (data_cache[0]->shape[0] != input->shape[0]) return NULL;
+
+			data_cache[0] = input;
 		}
-		cache[0]->data = data_cache;
-		data_cache[0] = input;
 	}
 
 	wmatrix output = NULL, in = input;
@@ -74,9 +81,16 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 	if (one == NULL) goto wekua_rli_fail;
 
 	clWaitForEvents(nw, be);
-	for (uint64_t x=0; x<layer; x++){ 
-		output = wekuaAllocMatrix(ctx, in->shape[0], weight[x]->shape[0], dtype);
-		if (output == NULL) goto wekua_rli_fail;
+	for (uint64_t x=0; x<layer; x++){
+		if (cache){
+			output = data_cache[x+1];
+			if (!output){
+				output = wekuaAllocMatrix(ctx, in->shape[0], weight[x]->shape[0], dtype);
+				if (output == NULL) goto wekua_rli_fail;
+
+				data_cache[x+1] = output;
+			}
+		}
 
 		ret = wekuaBlasGemm(one, NULL, 0, in, 1, weight[x], NULL, NULL, output, 0, NULL);
 		if (ret != CL_SUCCESS) goto wekua_rli_fail;
@@ -91,9 +105,7 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 
 		runWekuaActi(acti, output, 0, NULL);
 
-		if (cache) data_cache[x+1] = output;
-		else if (in != input) wekuaFreeMatrix(in, 0, NULL);
-
+		if (!cache && in != input) wekuaFreeMatrix(in, 0, NULL);
 		in = output;
 	}
 
@@ -103,13 +115,7 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 	wekuaFreeMatrix(output, 0, NULL);
 	output = NULL;
 
-	if (cache){
-		for (uint64_t x=1; x<=layer; x++){
-			wekuaFreeMatrix(data_cache[x], 0, NULL);
-		}
-		free(data_cache);
-		free(cache[0]);
-	}else if (in != input) wekuaFreeMatrix(in, 0, NULL);
+	if (in != input) wekuaFreeMatrix(in, 0, NULL);
 
 	wekua_rli_success:
 	if (one) free(one);
@@ -157,12 +163,8 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regu
 		nevents++;
 
 		if (regularization){
-			// wekuaMatrixPrint(regularization, 0, 0);
-			// wekuaMatrixPrint(tmp, 1, e);
 			ret = wekuaAddRegularization(regularization, tmp, 1, e, &e[1]);
 			if (ret != CL_SUCCESS) break;
-
-			// wekuaMatrixPrint(tmp, 1, &e[1]);
 
 			regularization = NULL;
 			nevents++;

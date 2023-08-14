@@ -3,8 +3,7 @@
 wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t deep, uint8_t bias, wacti acti, uint8_t dtype){
 	if (input == 0 || output == 0 || deep == 0 || acti == NULL || dtype < WEKUA_DTYPE_FLOAT || dtype > WEKUA_DTYPE_DOUBLE) return NULL;
 
-	wmatrix tmp, *weight = NULL, *bias_w = NULL;
-	cl_event e;
+	wmatrix *weight = NULL, *bias_w = NULL;
 
 	wneuron neur = (wneuron) calloc(1, sizeof(struct _w_neuron));
 	if (neur == NULL) return NULL;
