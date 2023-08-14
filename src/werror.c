@@ -19,7 +19,7 @@ int runLossKernel(wmatrix output, wmatrix output_wanted, void *error_scal, void 
 		}
 	}
 
-	if (err != NULL){
+	if (err){
 		dev = 1;
 		if (!err[0]){
 			err[0] = (werror) calloc(1, sizeof(struct _w_error));

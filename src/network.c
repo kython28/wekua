@@ -71,8 +71,6 @@ int wekuaNetworkBackward(
 		default: break;
 	}
 
-	// wekuaMatrixPrint(regularization, 0 ,0);
-
 	for (; x < (nneur-1); x++){
 		neuron = neurons[nneur-x-1];
 		ret = wekuaNeuronBackward(neuron, error[x], cache[nneur-x-1], regularization, &error[x+1]);
