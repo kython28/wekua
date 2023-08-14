@@ -52,8 +52,8 @@ typedef struct _w_tensor {
 void wekuaTensorPrint(wtensor tensor, uint32_t nw, cl_event *events);
 
 // Complex numbers utils
-int wekuaTensorEnableComplexNumbers(wtensor tensor, uint32_t nw, cl_event *be);
-int wekuaTensorDisableComplexNumbers(wtensor, uint32_t nw, cl_event *be);
+int wekuaTensorEnableComplexNumbers(wtensor tensor, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaTensorDisableComplexNumbers(wtensor, uint32_t nw, cl_event *be, cl_event *e);
 
 // Basic utils
 

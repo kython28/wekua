@@ -54,7 +54,6 @@ wtensor wekuaTensorEmpty(wekuaContext ctx, uint8_t dtype, uint8_t com, uint32_t 
 	uint64_t columns = shape[ndim-1];
 
 	uint64_t vl_nelements = nelements/columns;
-	uint64_t size = nelements*dl;
 
 	if (columns%vl) columns += vl - columns%vl;
 	columns /= vl;
@@ -63,8 +62,19 @@ wtensor wekuaTensorEmpty(wekuaContext ctx, uint8_t dtype, uint8_t com, uint32_t 
 	vl_nelements *= columns;
 	if (com) vl_nelements *= 2;
 
-	tensor->nelements = vl_nelements * vl;
+	uint64_t size = nelements * dl;
+
+	int ret = CL_SUCCESS;
+	cl_mem buffer = clCreateBuffer(ctx->ctx, ctx->mem_flags, size, NULL, &ret);
+	if (ret != CL_SUCCESS) goto wekuaTensorEmpty_fail;
+
+
+	nelements = vl_nelements * vl;
+	tensor->nelements = nelements;
 	tensor->vl_nelements = vl_nelements;
+
+	tensor->buffer = buffer;
+	tensor->size = size;
 
 	uint64_t *work_items = (uint64_t*) calloc(ndim*4 + 2, sizeof(uint64_t));
 	get_local_work_items(vl_shape, work_items, ndim, max);
@@ -76,13 +86,6 @@ wtensor wekuaTensorEmpty(wekuaContext ctx, uint8_t dtype, uint8_t com, uint32_t 
 		get_local_work_items(shape + i, work_items + 3*ndim + i, 1, max);
 	}
 	tensor->work_items = work_items;
-
-	int ret = CL_SUCCESS;
-	cl_mem buffer = clCreateBuffer(ctx->ctx, ctx->mem_flags, size, NULL, &ret);
-	if (ret != CL_SUCCESS) goto wekuaTensorEmpty_fail;
-
-	tensor->buffer = buffer;
-	tensor->size = size;
 
 	goto wekuaTensorEmpty_success;
 	wekuaTensorEmpty_fail:

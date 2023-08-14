@@ -79,8 +79,6 @@ void freeWekuaContext(wekuaContext context);
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t com);
 cl_kernel compileCustomKernel(wekuaContext ctx, const char *filename, const char *kernel_name, char *args, cl_program *program);
 
-void get_local_work_items(uint64_t *x, uint64_t *y, uint64_t ndim, uint64_t max);
-
 #ifdef __cplusplus
 }
 #endif

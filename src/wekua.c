@@ -1,7 +1,6 @@
 #include "../headers/wekua.h"
 
 #include <string.h>
-#include <math.h>
 
 #define WEKUA_OPENCL_GET_ATTR_SIZE(func, obj, attr, ptr, error_label) \
 	ret = func(obj, attr, 0, NULL, ptr); \
@@ -301,19 +300,4 @@ void freeWekuaContext(wekuaContext context){
 	if (context->device.device) freeWekuaDevice(&context->device);
 	if (context->ctx) clReleaseContext(context->ctx);
 	free(context);
-}
-
-void get_local_work_items(uint64_t *x, uint64_t *y, uint64_t ndim, uint64_t max){
-	uint64_t c = (uint64_t)(pow(1.0*max, 1.0/ndim));
-	uint64_t a, b;
-	for (uint32_t j=0; j<ndim; j++){
-		a = x[j];
-		if (a < c){
-			y[j] = a;
-			continue;
-		}
-		b = c;
-		while (a%b != 0) b--;
-		x[j] = a; y[j] = b;
-	}
 }
