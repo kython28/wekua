@@ -14,13 +14,15 @@ wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype){
 wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache){
 	if (net == NULL || input == NULL) return NULL;
 
-	wmatrix output = NULL, tmp[2] = {NULL, NULL};
+	wmatrix tmp[2] = {NULL, NULL};
 	uint8_t d = 0;
 	uint32_t nneur = net->nneur;
 	wneuron *neurons = net->neurons;
 
 	if (cache != NULL){
-		cache[0] = (wcache*) calloc(nneur, sizeof(wcache));
+		if (!cache[0]){
+			cache[0] = (wcache*) calloc(nneur, sizeof(wcache));
+		}
 
 		tmp[d] = runWekuaNeuron(neurons[0], input, &cache[0][0], 0, NULL);
 		for (uint32_t x=1; x<nneur; x++){

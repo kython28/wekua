@@ -21,18 +21,26 @@ int runLossKernel(wmatrix output, wmatrix output_wanted, void *error_scal, void 
 
 	if (err != NULL){
 		dev = 1;
-		err[0] = (werror) calloc(1, sizeof(struct _w_error));
-		if (com){
-			dev_m = wekuaAllocComplexMatrix(ctx, output->shape[0], output->shape[1], dtype);
-		}else{
-			dev_m = wekuaAllocMatrix(ctx, output->shape[0], output->shape[1], dtype);
-		}
-		if (dev_m == NULL){
-			free(err[0]);
-			return CL_MEM_OBJECT_ALLOCATION_FAILURE;
-		}
+		if (!err[0]){
+			err[0] = (werror) calloc(1, sizeof(struct _w_error));
+			if (com){
+				dev_m = wekuaAllocComplexMatrix(ctx, output->shape[0], output->shape[1], dtype);
+			}else{
+				dev_m = wekuaAllocMatrix(ctx, output->shape[0], output->shape[1], dtype);
+			}
+			if (dev_m == NULL){
+				free(err[0]);
+				return CL_MEM_OBJECT_ALLOCATION_FAILURE;
+			}
 
-		err[0]->err = dev_m;
+			err[0]->err = dev_m;
+		}else{
+			if (memcmp(err[0]->err->shape, output->shape, 2*sizeof(uint64_t))){
+				return CL_INVALID_MEM_OBJECT;
+			}
+
+			dev_m = err[0]->err;
+		}
 		
 		dev_r = &dev_m->real;
 		dev_i = &dev_m->imag;
