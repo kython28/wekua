@@ -578,11 +578,11 @@ int wekuaCopyMatrixRegion(
 	uint64_t region[3];
 	uint64_t src_origin[3], dst_origin[3];
 
-	src_origin[0] = a_offset_x;
+	src_origin[0] = a_offset_x*dl;
 	src_origin[1] = a_offset_y;
 	src_origin[2] = 0;
 
-	dst_origin[0] = b_offset_x;
+	dst_origin[0] = b_offset_x*dl;
 	dst_origin[1] = b_offset_y;
 	dst_origin[2] = 0;
 
