@@ -106,6 +106,8 @@ void wekuaFreeNeuron(wneuron neur, uint32_t nw, cl_event *be){
 		wekuaFreeMatrix(w[i], 0, NULL);
 		if (b != NULL) wekuaFreeMatrix(b[i], 0, NULL);
 	}
+	free(w);
+	free(b);
 	free(neur);
 }
 
@@ -115,6 +117,7 @@ void wekuaFreeNetwork(wnetwork net, uint32_t nw, cl_event *be){
 	uint32_t nneur = net->nneur;
 	wneuron *neurons = net->neurons;
 	for (uint32_t i = 0; i < nneur; i++) wekuaFreeNeuron(neurons[i], 0, NULL);
+	free(neurons);
 	free(net);
 }
 
