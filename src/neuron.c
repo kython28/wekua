@@ -220,6 +220,8 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regu
 }
 
 void wekuaFreeNeuronError(werror err){
+	if (!err) return;
+
 	uint64_t no_err = err->no_err;
 	wmatrix *o_errors = err->o_err;
 	for (uint64_t x=0; x<no_err; x++) wekuaFreeMatrix(o_errors[x], 0, NULL);
