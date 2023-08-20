@@ -126,19 +126,6 @@ switch (dtype) { \
 		} \
 	} \
 
-// static const char formats[][6] = {
-// 	"5u",
-// 	"7u",
-// 	"12u",
-// 	"22lu",
-// 	"5i",
-// 	"7i",
-// 	"12i",
-// 	"22li",
-// 	"14.5e",
-// 	"14.5e"
-// };
-
 static const char dtype_text[][15] = {
 	"uint8", "complex_uint8",
 	"uint16", "complex_uint16",
