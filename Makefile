@@ -1,24 +1,34 @@
 CC = gcc
-CFLAGS = -W -Wall -g -fPIC -O2
-archives = wekua.o tensor.o
+
+ifeq ($(CC), gcc)
+	CFLAGS = -W -Werror -Wall -Wextra -pedantic -Wno-pointer-arith -fPIC
+else ifeq ($(CC), clang)
+	CFLAGS = -W -Werror -Wall -Wextra -pedantic -Wno-gnu-pointer-arith -fPIC
+endif
+
+archives = wekua.o utils.o
 modules = tensor
 
-main: $(modules) $(archives)
-	$(CC) $(CFLAGS) -shared -lOpenCL -pthread $(archives) -o libwekua.so -lm
+ifeq ($(MODE), debug)
+	DEBUG_FLAGS = -O0 -g -fsanitize=address -fno-omit-frame-pointer
+else ifeq ($(MODE), debug-nvidia)
+	DEBUG_FLAGS = -O0 -g -fsanitize=address -fsanitize-recover=address
+else
+	DEBUG_FLAGS = -O2
+endif
 
-debug: $(modules) $(archives)
-	$(CC) $(CFLAGS) -shared -fsanitize=address -fsanitize-recover=address -lOpenCL -pthread $(archives) -o libwekua.so -lm
+export CC
+export CFLAGS
+export DEBUG_FLAGS
+
+main: $(modules) $(archives)
+	$(CC) $(CFLAGS) -shared $(DEBUG_FLAGS) -lOpenCL -pthread build/*.o -o libwekua.so -lm
 
 %.o: src/%.c
-	$(CC) -c $(CFLAGS) $< -o $@
+	$(CC) -c $(CFLAGS) $(DEBUG_FLAGS) $< -o build/$@
 
-tensor:
-	$(make) -C src/tensor
-	cp src/tensor/tensor.o tensor.o
-
-tensor_debug:
-	$(make) -C src/tensor debug
-	cp src/tensor/tensor.o tensor.o
+$(modules):
+	$(MAKE) -C src/$@
 
 install:
 	cp libwekua.so /usr/lib/
@@ -37,4 +47,4 @@ uninstall:
 	rm -rf /usr/lib/wekua_kernels
 
 clean:
-	rm -rf $(archives)
+	rm -rf build/*.o

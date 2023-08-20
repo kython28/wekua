@@ -9,7 +9,7 @@
 #include <CL/cl.h>
 #endif
 
-#include "utils/fifo.h"
+#include "utils.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -61,13 +61,6 @@ typedef struct _wk_ctx {
 	// Some informations
 	const uint32_t *dtype_length;
 	cl_mem_flags mem_flags;
-
-	// Process
-	pthread_t memory_allocator[2];
-	pthread_t memory_destroyer[2];
-
-	wfifo memory_allocator_queue;
-	wfifo memory_destroyer_queue;
 } *wekuaContext;
 
 wekuaContext createWekuaContext(wdevice device, uint8_t use_vectors, uint8_t alloc_host_mem);

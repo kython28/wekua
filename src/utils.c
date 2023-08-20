@@ -1,4 +1,4 @@
-#include "../headers/tensor.h"
+#include "../headers/utils.h"
 #include <math.h>
 
 void get_local_work_items(uint64_t *global_work_items, uint64_t *local_work_items, uint64_t ndim, uint64_t max){
@@ -12,5 +12,12 @@ void get_local_work_items(uint64_t *global_work_items, uint64_t *local_work_item
 		register uint64_t l_work_items = maximum_items_per_dimension;
 		while (g_work_items%l_work_items) l_work_items--;
 		local_work_items[j] = l_work_items;
+	}
+}
+
+void wait_for_and_release_cl_events(cl_event *events, const uint32_t n_events){
+	clWaitForEvents(n_events, events);
+	for (uint32_t i=0; i<n_events; i++) {
+		clReleaseEvent(events[i]);
 	}
 }

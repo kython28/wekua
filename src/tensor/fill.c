@@ -1,7 +1,7 @@
 #include "tensor.h"
 #include <string.h>
 
-static struct tensor_fill_event_args {
+struct tensor_fill_event_args {
 	void *pattern;
 	cl_event to_complex_event;
 };
@@ -34,17 +34,17 @@ int wekuaFillTensor(
 	struct tensor_fill_event_args *args = NULL;
 	args->pattern = pattern;
 
-	uint8_t com = tensor->com;
-	if (!com && imag){
-		args = calloc(1, sizeof(struct tensor_fill_event_args));
-		fill_be = &args->to_complex_event;
-		fill_nw = 1;
-		if (wekuaTensorEnableComplexNumbers(tensor, nw, be, fill_be) != CL_SUCCESS){
-			free(pattern);
-			free(args);
-			return CL_OUT_OF_RESOURCES;
-		}
-	}
+	// uint8_t com = tensor->com;
+	// if (!com && imag){
+	// 	args = calloc(1, sizeof(struct tensor_fill_event_args));
+	// 	fill_be = &args->to_complex_event;
+	// 	fill_nw = 1;
+	// 	if (wekuaTensorEnableComplexNumbers(tensor, nw, be, fill_be) != CL_SUCCESS){
+	// 		free(pattern);
+	// 		free(args);
+	// 		return CL_OUT_OF_RESOURCES;
+	// 	}
+	// }
 
 	for (uint64_t x=0; x<vl; x++){
 		if (real) memcpy(pattern + x*dl, real, dl);

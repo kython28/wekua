@@ -3,7 +3,6 @@
 
 #include "../../headers/tensor.h"
 #include "../../headers/utils.h"
-#include <stdarg.h>
 
 typedef struct _w_tensor_common_kernels {
 	void (*release_cl_kernels)(struct _w_kernel*);

@@ -1,5 +1,7 @@
 #include "../headers/wekua.h"
 
+#include <stdio.h>
+
 #include <string.h>
 
 #define WEKUA_OPENCL_GET_ATTR_SIZE(func, obj, attr, ptr, error_label) \
@@ -136,7 +138,7 @@ wdevice wekuaDeviceFromclDevice(cl_device_id dev){
 	WEKUA_OPENCL_GET_DEVICE_INFO(dev, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(uint64_t), &wdev->max_work_group_size, wekuaDeviceFromclDevice_error)
 	WEKUA_OPENCL_GET_DEVICE_INFO(dev, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(uint64_t), &wdev->max_global_size, wekuaDeviceFromclDevice_error)
 	WEKUA_OPENCL_GET_DEVICE_INFO(dev, CL_DEVICE_LOCAL_MEM_TYPE, sizeof(cl_device_local_mem_type), &wdev->local_mem_type, wekuaDeviceFromclDevice_error)
-	WEKUA_OPENCL_GET_DEVICE_INFO(dev, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(uint64_t), &wdev->max_work_item_dimensions, wekuaDeviceFromclDevice_error)
+	// WEKUA_OPENCL_GET_DEVICE_INFO(dev, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(uint64_t), &wdev->max_work_item_dimensions, wekuaDeviceFromclDevice_error)
 
 	WEKUA_OPENCL_GET_DEVICE_INFO(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, sizeof(uint32_t), wdev->vectors_size, wekuaDeviceFromclDevice_error)
 	WEKUA_OPENCL_GET_DEVICE_INFO(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, sizeof(uint32_t), wdev->vectors_size + 1, wekuaDeviceFromclDevice_error)
@@ -287,7 +289,7 @@ void freeWekuaContext(wekuaContext context){
 		wkernel *kernels = context->kernels;
 		for (uint32_t x=0; x<KERNEL_COL; x++){
 			wkernel k = kernels[x];
-			k->release_cl_kernels(k);
+			if (k) k->release_cl_kernels(k);
 		}
 		free(context->kernels);
 	}
