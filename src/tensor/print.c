@@ -113,15 +113,16 @@ switch (dtype) { \
 				for (; x<limit_c; x++){ \
 					label_name \
 				} \
-				if (c > 8) printf(" ... "); \
-				x = MIN((c - x), limit_c); \
+				if (c > 8) printf("%10s", "..."); \
+				x = MAX((c - x), limit_c); \
 				for (; x<c; x++){ \
 					label_name \
 				} \
 				printf("\n"); \
 			} \
-			if (r > 8) printf("%s ... \n", padding); \
-			limit_r = MIN((r - y), limit_r); \
+			if (r > 8 && !i) printf("%s%10s\n", padding, "..."); \
+			y = MAX((r - y), limit_r); \
+			limit_r = r; \
 		} \
 	} \
 
@@ -164,7 +165,7 @@ static void get_data_from_device(
 		cache_offset[0] += len;
 		if (c > 4){
 			uint64_t offset = c - 4;
-			len = MAX(offset, 4) * dtype_length * (com + 1);
+			len = MIN(offset, 4) * dtype_length * (com + 1);
 			ret = clEnqueueReadBuffer(cmd, buf, CL_FALSE, buf_offset + offset*(1 + com), len, cache + cache_offset[0], 0, NULL, &events[nevents[0]++]);
 			assert(ret == CL_SUCCESS);
 
@@ -219,7 +220,7 @@ static void print_tensor(
 	wtensor tensor, char *padding, const uint64_t ndim, uint64_t *shape, const uint64_t *strides,
 	const uint64_t offset, void *cache
 ){
-	printf("%s[", padding);
+	printf("%s[\n", padding);
 
 	padding -= 2;
 
@@ -231,15 +232,16 @@ static void print_tensor(
 		
 		for (; x < y; x++){
 			print_tensor(tensor, padding, ndim - 1, shape + 1, strides + 1, offset + x * stride, cache);
+			printf("\n");
 		}
 
-		if (len > 6) printf("%s...\n", padding);
+		if (len > 6) printf("%s%10s\n", padding, "...");
 		if (y == 3) y = MAX((len - 3), x);
 
 		for (; x<len; x++){
 			print_tensor(tensor, padding, ndim - 1, shape + 1, strides + 1, offset + x * stride, cache);
+			printf("\n");
 		}
-		printf("\n");
 	}else{
 		print_matrix(tensor, padding, ndim, shape, (ndim == 1) ? 1 : stride, offset, cache);
 	}
@@ -253,21 +255,26 @@ void wekuaTensorPrint(wtensor tensor, uint32_t nw, cl_event *events){
 	const uint64_t ndim = tensor->ndim;
 	const uint64_t padding_size = ndim*2 + 1;
 	char *padding = (char*) calloc(padding_size, sizeof(char));
+	
+	for (uint64_t i=0; i<padding_size; i++) padding[i] = ' ';
 	padding[padding_size - 1] = 0;
 
 	const uint8_t dtype = tensor->dtype;
 	const uint8_t com = tensor->com;
+	uint64_t *shape = tensor->shape;
 
 	void *cache = calloc(64*(com + 1), tensor->ctx->dtype_length[dtype]);
 
 	int ret = clWaitForEvents(nw, events);
-	assert(ret == CL_SUCCESS);
+	assert(ret == CL_SUCCESS || ret == CL_INVALID_VALUE);
 
 	printf("wtensor(\n");
 
-	print_tensor(tensor, padding, ndim, tensor->shape, tensor->strides, 0, cache);
+	print_tensor(tensor, padding + padding_size - 1, ndim, shape, tensor->strides, 0, cache);
 
-	printf(", dtype=%s)\n", dtype_text[2*dtype + com]);
+	printf(", shape=(%lu", shape[0]);
+	for (uint64_t x=1; x<ndim; x++) printf(",%lu", shape[x]);
+	printf("), dtype=%s)\n", dtype_text[2*dtype + com]);
 
 	free(cache);
 	free(padding);
