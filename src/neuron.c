@@ -226,7 +226,6 @@ void wekuaFreeNeuronError(werror err){
 	wmatrix *o_errors = err->o_err;
 	for (uint64_t x=0; x<no_err; x++) wekuaFreeMatrix(o_errors[x], 0, NULL);
 
-	wekuaFreeMatrix(err->err, 0, NULL);
 	free(o_errors);
 	free(err);
 }
