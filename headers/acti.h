@@ -18,6 +18,7 @@ wacti wekuaActiLinear(); // -> x
 wacti wekuaActiTanh(); // -> wekuaMatrixTanh(x)
 wacti wekuaActiSigmoid(); // -> 1/(1 + e^(-x))
 wacti wekuaActiReLU(); // -> max(0, x)
+wacti wekuaActiSoftmax(); // -> softmax(x) (Note: No complex values allowed)
 wacti wekuaActiLeakyReLU(wekuaContext ctx, void *alpha, void *alphai, uint8_t dtype); // -> max(alpha*x, x) & (0.0 < alpha < 1.0)
 // wacti wekuaActiELU(); // -> alpha*(e^x - 1)
 

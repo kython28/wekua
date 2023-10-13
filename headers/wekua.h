@@ -119,6 +119,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors, ui
 #define WEKUA_KERNEL_SCALAR_ADD 46
 #define WEKUA_KERNEL_L1_REGULARIZATION 47
 #define WEKUA_KERNEL_REGULARIZATION 48
+#define WEKUA_KERNEL_SOFTMAX 49
 
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com);
 cl_kernel compileCustomKernel(wekuaContext ctx, const char *filename, const char *kernel_name, char *args, cl_program *program);
