@@ -82,7 +82,12 @@ pub fn create_multiple(
     var cmd_created: u32 = 0;
     const command_queues: []wCommandQueue = try allocator.alloc(wCommandQueue, devices.len);
     errdefer {
-        if (cmd_created > 0) release_multiple(allocator, command_queues[0..cmd_created]);
+        if (cmd_created > 0) {
+            for (command_queues[0..cmd_created]) |cmd| {
+                release(cmd);
+            }
+        }
+        allocator.free(command_queues);
     }
 
     for (devices, command_queues) |device, *wcmd| {
