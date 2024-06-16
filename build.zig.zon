@@ -6,7 +6,7 @@
     .dependencies = .{
         .@"zig-opencl" = .{
             .url = "zig-opencl",
-            .hash = "1220651c8939646b90d1108467b062cd416cab9b14e6e99db5b24d2d2bf25b300aa5",
+            .hash = "12204038392483cee4aec656276e2efa83e6ae1502489f71d0e24ceec4527580c110",
         },
     },
 

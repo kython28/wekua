@@ -4,9 +4,7 @@ const command_queue = @import("command_queue.zig");
 
 const _wcontext = struct {
     allocator: std.mem.Allocator,
-
-    ctx: cl.context.cl_context = undefined,
-
+    ctx: cl.context.cl_context,
     command_queues: []command_queue.wCommandQueue
 };
 
@@ -58,6 +56,10 @@ pub fn create_from_cl_context(
     context.allocator = allocator;
     context.ctx = cl_ctx;
     context.command_queues = try command_queue.create_multiple(allocator, cl_ctx, devices);
+    // context.command_queues_status = comptime blk: {
+    //     const max_value: u64 = @intCast(std.math.pow(u65, 2, 64) - 1);
+    //     break :blk max_value;
+    // };
 
     return context;
 }

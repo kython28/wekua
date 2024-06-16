@@ -1,19 +1,13 @@
 const std = @import("std");
 const cl = @import("opencl");
 
-pub const wKernels = enum (u16) {
-    Random = 0,
-    RandRange = 1,
-};
-
-const total_number_of_kernels: u16 = @intCast(@typeInfo(wKernels).Enum.fields.len * 3);
+const kernel = @import("kernel.zig");
 
 const _w_command_queue = struct {
     allocator: std.mem.Allocator,
     cmd: cl.command_queue.cl_command_queue,
 
-    programs: [total_number_of_kernels]?cl.program.cl_program = .{null} ** total_number_of_kernels,
-    kernels: [total_number_of_kernels]?cl.kernel.cl_kernel = .{null} ** total_number_of_kernels,
+    kernels: [kernel.total_number_of_kernels]?kernel.wKernel,
 
     local_mem_type: cl.device.cl_device_local_mem_type,
     compute_units: u32,
@@ -69,9 +63,10 @@ pub fn create(
     const new_wcmd = try allocator.create(_w_command_queue);
     errdefer allocator.destroy(new_wcmd);
 
-    new_wcmd.cmd = cmd;
-    try get_device_info(new_wcmd, device);
     new_wcmd.allocator = allocator;
+    new_wcmd.cmd = cmd;
+    @memset(&new_wcmd.kernels, null);
+    try get_device_info(new_wcmd, device);
 
     return new_wcmd;
 }
