@@ -3,7 +3,7 @@ const cl = @import("opencl");
 const command_queue = @import("command_queue.zig");
 
 const _wcontext = struct {
-    allocator: std.mem.Allocator,
+    allocator: *const std.mem.Allocator,
     ctx: cl.context.cl_context,
     command_queues: []command_queue.wCommandQueue
 };
@@ -11,7 +11,7 @@ const _wcontext = struct {
 pub const wContext = *_wcontext;
 
 pub fn create(
-    allocator: std.mem.Allocator,
+    allocator: *const std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     devices: []cl.device.cl_device_id
 ) !wContext {
@@ -23,7 +23,7 @@ pub fn create(
 }
 
 pub fn create_from_device_type(
-    allocator: std.mem.Allocator,
+    allocator: *const std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     device_type: cl.device.enums.device_type
 ) !wContext {
@@ -35,7 +35,7 @@ pub fn create_from_device_type(
 }
 
 pub fn create_from_cl_context(
-    allocator: std.mem.Allocator,
+    allocator: *const std.mem.Allocator,
     cl_ctx: cl.context.cl_context
 ) !wContext {
     const context: wContext = try allocator.create(_wcontext);

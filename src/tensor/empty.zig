@@ -4,6 +4,7 @@ const cl = @import("opencl");
 const wContext = @import("../core/context.zig").wContext;
 const work_items = @import("../utils/work_items.zig");
 const linked_list = @import("../utils/linked_list.zig");
+const w_event = @import("event.zig");
 
 pub const wTensorDtype = enum (u8) {
     int8 = 0,
@@ -19,12 +20,12 @@ pub const wTensorDtype = enum (u8) {
     uint64 = 7,
 
     float32 = 8,
-    double64 = 9
+    float64 = 9
 };
 
 pub const wCreateTensorConfig = struct {
     dtype: wTensorDtype,
-    cl_mem_flags: cl.buffer.enums.mem_flags = cl.buffer.enums.mem_flags.read_write,
+    cl_mem_flags: cl.buffer.cl_mem_flags = @intFromEnum(cl.buffer.enums.mem_flags.read_write),
     host_ptr: ?*anyopaque = null,
     is_complex: bool = false,
     vectors_enabled: bool = true
@@ -51,13 +52,13 @@ const _w_tensor = struct {
     work_items_like_matrix: [][2]u64,
     work_items_like_matrix_without_vectors: [][2]u64,
 
-    command_queues_sync: u64,
+    mutex: *std.Thread.Mutex,
     events: linked_list.wLinkedList
 };
 
 pub const wTensor = *_w_tensor;
 
-fn get_dtype_size(dtype: wTensorDtype) usize {
+pub fn get_dtype_size(dtype: wTensorDtype) usize {
     return switch (dtype) {
         .int8 => @sizeOf(i8),
         .uint8 => @sizeOf(u8),
@@ -68,12 +69,11 @@ fn get_dtype_size(dtype: wTensorDtype) usize {
         .int64 => @sizeOf(i64),
         .uint64 => @sizeOf(u64),
         .float32 => @sizeOf(f32),
-        .float64 => @sizeOf(f64),
-        else => unreachable
+        .float64 => @sizeOf(f64)
     };
 }
 
-pub fn empty(context: wContext, shape: []u64, config: wCreateTensorConfig) !wTensor {
+pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig) !wTensor {
     const allocator = context.allocator;
     const command_queues = context.command_queues;
 
@@ -82,10 +82,11 @@ pub fn empty(context: wContext, shape: []u64, config: wCreateTensorConfig) !wTen
 
     tensor.context = context;
     tensor.events = try linked_list.create(allocator);
-    tensor.command_queues_sync = comptime blk: {
-        const max_u64: u65 = std.math.pow(u65, 2, 64) - 1;
-        break :blk @as(u64, @intCast(max_u64));
-    };
+    const mutex = try allocator.create(std.Thread.Mutex);
+    errdefer allocator.destroy(mutex);
+
+    mutex.* = std.Thread.Mutex{};
+    tensor.mutex = mutex;
 
     tensor.shape = try allocator.alloc(u64, shape.len);
     errdefer allocator.free(tensor.shape);
@@ -138,7 +139,7 @@ pub fn empty(context: wContext, shape: []u64, config: wCreateTensorConfig) !wTen
 
     tensor.work_item_for_all_elements = work_item_for_all_elements;
     tensor.work_items_like_matrix = work_items_like_matrix;
-    tensor.work_item_for_all_elements = work_item_for_all_elements;
+    tensor.work_items_like_matrix_without_vectors = work_items_like_matrix_without_vectors;
 
     for (
         command_queues, work_item_for_all_elements,
@@ -160,7 +161,7 @@ pub fn empty(context: wContext, shape: []u64, config: wCreateTensorConfig) !wTen
 
         try work_items.get(
             &[2]u64{rows, col_pitch},
-            @as([*]u64, @ptrCast(wm))[0..1],
+            wm,
             cmd.max_work_group_size
         );
     }
@@ -170,4 +171,34 @@ pub fn empty(context: wContext, shape: []u64, config: wCreateTensorConfig) !wTen
 
     tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
     return tensor;
+}
+
+pub fn release(tensor: wTensor) void {
+    const allocator = tensor.context.allocator;
+
+    const events = tensor.events;
+    const last_event = w_event.acquire_tensor(tensor);
+
+    events.first = null;
+    if (last_event) |event| {
+        cl.event.wait(event) catch unreachable;
+
+        const last_node = events.last.?;
+        w_event.release_tensor_event(@alignCast(@ptrCast(last_node.data.?)));
+        allocator.destroy(last_node);
+
+        events.last = null;
+    }
+
+    linked_list.release(events) catch unreachable;
+    cl.buffer.release(tensor.buffer) catch unreachable;
+    tensor.mutex.unlock();
+
+    allocator.free(tensor.shape);
+    allocator.free(tensor.vl_shape);
+    allocator.free(tensor.work_item_for_all_elements);
+    allocator.free(tensor.work_items_like_matrix);
+    allocator.free(tensor.work_items_like_matrix_without_vectors);
+    allocator.destroy(tensor.mutex);
+    allocator.destroy(tensor);
 }
