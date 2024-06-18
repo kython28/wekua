@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("tests/wekua.zig"),
         .target = target,
         .optimize = optimize,
+        .error_tracing = true
     });
     lib_unit_tests.root_module.addImport("wekua", wekua_module);
     lib_unit_tests.root_module.addImport("opencl", opencl_module);

@@ -89,6 +89,10 @@ fn get_device_info(allocator: *const std.mem.Allocator, cmd: wCommandQueue, devi
     try cl.device.get_info(
         device, device_info_enum.max_work_group_size, @sizeOf(u64), &cmd.max_work_group_size, null
     );
+
+    try cl.device.get_info(
+        device, device_info_enum.max_on_device_events, @sizeOf(u32), &cmd.max_number_of_events, null
+    );
 }
 
 pub fn create(
@@ -105,6 +109,7 @@ pub fn create(
     new_wcmd.allocator = allocator;
     new_wcmd.ctx = cl_ctx;
     new_wcmd.cmd = cmd;
+    new_wcmd.current_number_of_events = 0;
 
     const mutex = try allocator.create(std.Thread.Mutex);
     mutex.* = std.Thread.Mutex{};
@@ -184,7 +189,6 @@ pub fn dec_event_counter(command_queue: wCommandQueue) !void {
         return errors.CommandQueueEventsCounterAlreadyInZero;
     }
     command_queue.current_number_of_events -= 1;
-
     cond.signal();
 }
 
