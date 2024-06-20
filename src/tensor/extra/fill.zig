@@ -58,15 +58,12 @@ pub fn fill(
         @memset(pattern[dtype_size..], 0);
     }
 
-    const prev_event = w_event.acquire_tensor(tensor);
-    // defer tensor.mutex.unlock();
-    defer {
-        _ = std.c.pthread_mutex_unlock(tensor.mutex);
-    }
+    const prev_event = w_event.acquire_tensor(tensor, .write);
+    defer tensor.mutex.unlock();
 
     var events_to_wait: ?[]const cl.event.cl_event = null;
-    if (prev_event) |e| {
-        events_to_wait = @as([*]const cl.event.cl_event, @ptrCast(&e))[0..1];
+    if (prev_event != null) {
+        events_to_wait = @as([*]const cl.event.cl_event, @ptrCast(&prev_event.?))[0..1];
     }
 
     var new_event: cl.event.cl_event = undefined;
@@ -84,5 +81,5 @@ pub fn fill(
     errdefer allocator.destroy(resources);
     resources.pattern = pattern;
 
-    try w_event.register_new_event(command_queue, tensor, &fill_callback, resources, new_event, .write, true);
+    try w_event.register_new_event(command_queue, tensor, &fill_callback, resources, new_event, .write);
 }

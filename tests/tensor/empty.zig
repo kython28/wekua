@@ -8,7 +8,7 @@ test "create and release" {
     const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
-    const tensor = try wekua.tensor.empty(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.dtypes.wTensorDtype.float32});
+    const tensor = try wekua.tensor.empty(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.float32});
 
     wekua.tensor.release(tensor);
 
@@ -31,7 +31,7 @@ test "create and fail" {
         defer wekua.context.release(context);
 
         const tensor = wekua.tensor.empty(context, &[_]u64{100, 20, 100}, .{
-            .dtype = wekua.tensor.dtypes.wTensorDtype.uint32
+            .dtype = wekua.tensor.wTensorDtype.uint32
         }) catch |err| switch (err) {
             error.OutOfMemory => return,
             else => return err

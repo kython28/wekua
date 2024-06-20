@@ -13,10 +13,8 @@ const wContext = @import("../core/context.zig").wContext;
 pub fn alloc(context: wContext, shape: []const u64, config: wCreateTensorConfig) !wTensor {
     const tensor = try w_empty.empty(context, shape, config);
 
-    _ = w_event.acquire_tensor(tensor);
-    defer {
-        _ = std.c.pthread_mutex_unlock(tensor.mutex);
-    }
+    _ = w_event.acquire_tensor(tensor, .write);
+    defer tensor.mutex.unlock();
 
     const zero: u64 = 0;
     const command_queue = context.command_queues[0];
@@ -29,7 +27,7 @@ pub fn alloc(context: wContext, shape: []const u64, config: wCreateTensorConfig)
         &new_event
     );
 
-    try w_event.register_new_event(command_queue, tensor, null, null, new_event, .write, true);
+    try w_event.register_new_event(command_queue, tensor, null, null, new_event, .write);
 
     return tensor;
 }

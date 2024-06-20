@@ -3,8 +3,11 @@ const cl = @import("opencl");
 
 const kernel = @import("kernel.zig");
 
+const wMutex = @import("../utils/mutex.zig").wMutex;
+const wCondition = @import("../utils/condition.zig").wCondition;
+
 pub const errors = error {
-    CommandQueueEventsCounterAlreadyInZero
+    CommandQueueEventsCounterLessThanDec
 };
 
 const _w_command_queue = struct {
@@ -25,8 +28,8 @@ const _w_command_queue = struct {
 
     max_number_of_events: u32,
     current_number_of_events: u32,
-    mutex: *std.Thread.Mutex,
-    condition: *std.Thread.Condition
+    mutex: *wMutex,
+    condition: *wCondition
 };
 
 pub const wCommandQueue = *_w_command_queue;
@@ -111,15 +114,21 @@ pub fn create(
     new_wcmd.cmd = cmd;
     new_wcmd.current_number_of_events = 0;
 
-    const mutex = try allocator.create(std.Thread.Mutex);
-    mutex.* = std.Thread.Mutex{};
+    const mutex = try allocator.create(wMutex);
+    mutex.* = wMutex{};
     new_wcmd.mutex = mutex;
-    errdefer allocator.destroy(mutex);
+    errdefer {
+        mutex.destroy();
+        allocator.destroy(mutex);
+    }
 
-    const condition = try allocator.create(std.Thread.Condition);
-    condition.* = std.Thread.Condition{};
+    const condition = try allocator.create(wCondition);
+    condition.* = wCondition{};
     new_wcmd.condition = condition;
-    errdefer allocator.destroy(condition);
+    errdefer {
+        condition.destroy();
+        allocator.destroy(condition);
+    }
 
     new_wcmd.current_number_of_events = 0;
 
@@ -163,7 +172,7 @@ pub fn wait_for_command_queue(command_queue: wCommandQueue) void {
     }
 }
 
-pub fn inc_event_counter(command_queue: wCommandQueue) void {
+pub fn inc_event_counter(command_queue: wCommandQueue, inc: u32, wait: bool) bool {
     const mutex = command_queue.mutex;
     const cond = command_queue.condition;
 
@@ -171,24 +180,32 @@ pub fn inc_event_counter(command_queue: wCommandQueue) void {
     defer mutex.unlock();
 
     const max_number_of_events = command_queue.max_number_of_events;
-    while (command_queue.current_number_of_events == max_number_of_events){
-        cond.wait(mutex);
+    if (wait) {
+        while (command_queue.current_number_of_events == max_number_of_events){
+            cond.wait(mutex);
+        }
+    }else{
+        if (command_queue.current_number_of_events == max_number_of_events) {
+            return false;
+        }
     }
 
-    command_queue.current_number_of_events += 1;
+    command_queue.current_number_of_events += inc;
+    return true;
 }
 
-pub fn dec_event_counter(command_queue: wCommandQueue) !void {
+pub fn dec_event_counter(command_queue: wCommandQueue, dec: u32) !void {
     const mutex = command_queue.mutex;
     const cond = command_queue.condition;
 
     mutex.lock();
     defer mutex.unlock();
 
-    if (command_queue.current_number_of_events == 0) {
-        return errors.CommandQueueEventsCounterAlreadyInZero;
+    if (command_queue.current_number_of_events < dec) {
+        return errors.CommandQueueEventsCounterLessThanDec;
     }
-    command_queue.current_number_of_events -= 1;
+
+    command_queue.current_number_of_events -= dec;
     cond.signal();
 }
 
@@ -198,6 +215,7 @@ pub fn release(command_queue: wCommandQueue) void {
     cl.command_queue.release(command_queue.cmd) catch unreachable;
     const allocator = command_queue.allocator;
 
+    command_queue.mutex.destroy();
     allocator.destroy(command_queue.mutex);
     allocator.destroy(command_queue.condition);
     allocator.free(command_queue.device_name);

@@ -6,6 +6,9 @@ const work_items = @import("../utils/work_items.zig");
 const linked_list = @import("../utils/linked_list.zig");
 const w_event = @import("utils/event.zig");
 
+const wMutex = @import("../utils/mutex.zig").wMutex;
+const wCondition = @import("../utils/condition.zig").wCondition;
+
 const dtypes = @import("utils/dtypes.zig");
 const wTensor = dtypes.wTensor;
 const wCreateTensorConfig = dtypes.wCreateTensorConfig;
@@ -19,11 +22,21 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     tensor.context = context;
     tensor.events = try linked_list.create(allocator);
-    const mutex = try allocator.create(std.c.pthread_mutex_t);
-    errdefer allocator.destroy(mutex);
-
-    mutex.* = std.c.PTHREAD_MUTEX_INITIALIZER;
+    const mutex = try allocator.create(wMutex);
+    mutex.* = wMutex{};
+    errdefer {
+        mutex.destroy();
+        allocator.destroy(mutex);
+    }
     tensor.mutex = mutex;
+
+    const condition = try allocator.create(wCondition);
+    condition.* = wCondition{};
+    errdefer {
+        condition.destroy();
+        allocator.destroy(condition);
+    }
+    tensor.condition = condition;
 
     tensor.shape = try allocator.alloc(u64, shape.len);
     errdefer allocator.free(tensor.shape);
@@ -115,17 +128,32 @@ pub fn release(tensor: wTensor) void {
 
     const events = tensor.events;
     events.first = null;
+
+    tensor.mutex.lock();
     if (events.last) |last_node| {
         const tensor_event: w_event.wTensorEvent = @alignCast(@ptrCast(last_node.data.?));
-        cl.event.wait(tensor_event.event) catch unreachable;
+        switch (tensor_event.event_type) {
+            .write => {
+                if (tensor_event.events_finalized != 1){
+                    tensor.condition.wait(tensor.mutex);
+                }
+            },
+            .read => {
+                if (tensor_event.events_finalized != tensor_event.read_events.?.items.len) {
+                    tensor.condition.wait(tensor.mutex);
+                }
+            }
+        }
         w_event.release_tensor_event(tensor_event);
         allocator.destroy(last_node);
-
         events.last = null;
     }
+    tensor.mutex.unlock();
 
     linked_list.release(events) catch unreachable;
     cl.buffer.release(tensor.buffer) catch unreachable;
+    tensor.mutex.destroy();
+    tensor.condition.destroy();
 
     allocator.free(tensor.shape);
     allocator.free(tensor.vl_shape);
@@ -133,5 +161,6 @@ pub fn release(tensor: wTensor) void {
     allocator.free(tensor.work_items_like_matrix);
     allocator.free(tensor.work_items_like_matrix_without_vectors);
     allocator.destroy(tensor.mutex);
+    allocator.destroy(tensor.condition);
     allocator.destroy(tensor);
 }
