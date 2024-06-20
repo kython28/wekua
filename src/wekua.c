@@ -236,7 +236,7 @@ static void *wekua_matrix_free_worker(void *arg){
 	return NULL;
 }
 
-wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors, uint8_t alloc_host_mem){
+wekuaContext createWekuaContextsFromOpenCLContext(cl_context ctx, wDevice *dev, uint8_t use_vectors, uint8_t alloc_host_mem){
 	if (dev == NULL){
 		return NULL;
 	}else if (dev->max_work_item_dimensions < 3) return NULL;
@@ -246,11 +246,7 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors, uint8_t alloc
 	wekuaContext context = (wekuaContext) calloc(1, sizeof(struct _wk_ctx));
 	if (context == NULL) return NULL;
 
-	context->ctx = clCreateContext(NULL, 1, &dev->device, NULL, NULL, &ret);
-	if (ret != CL_SUCCESS){
-		free(context);
-		return NULL;
-	}
+	context->ctx = ctx;
 
 	context->command_queue = clCreateCommandQueueWithProperties(context->ctx, dev->device, NULL, NULL);
 
@@ -272,7 +268,6 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors, uint8_t alloc
 	context->local_mem_type = dev->local_mem_type;
 	if (alloc_host_mem) context->flags = CL_MEM_READ_WRITE|CL_MEM_ALLOC_HOST_PTR;
 	else context->flags = CL_MEM_READ_WRITE;
-	// context->local_mem_type = 0;
 
 	wfifo garbage_queue = wekuaAllocFIFO();
 	struct w_matrix_free_arg *data = calloc(1, sizeof(struct w_matrix_free_arg));
@@ -283,6 +278,20 @@ wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors, uint8_t alloc
 	context->garbage_collector_arg = data;
 	pthread_create(&context->garbage_collector, NULL, &wekua_matrix_free_worker, data);
 
+	return context;
+}
+
+wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors, uint8_t alloc_host_mem){
+	if (dev == NULL){
+		return NULL;
+	}else if (dev->max_work_item_dimensions < 3) return NULL;
+
+	int ret;
+	cl_context ctx = clCreateContext(NULL, 1, &dev->device, NULL, NULL, &ret);
+	if (ret != CL_SUCCESS){
+		return NULL;
+	}
+	wekuaContext context = createWekuaContextsFromOpenCLContext(ctx, dev, use_vectors, alloc_host_mem);
 	return context;
 }
 
