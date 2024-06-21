@@ -4,19 +4,19 @@ const std = @import("std");
 
 const allocator = std.testing.allocator;
 
-test "create and release" {
+fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
     const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.float32});
+    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
     wekua.tensor.release(tensor);
 }
 
-test "create, check and release" {
+fn create_check_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
     const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
+    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
     defer wekua.tensor.release(tensor);
 
     const w_cmd = ctx.command_queues[0];
@@ -57,5 +57,28 @@ test "create, check and release" {
     for (map) |elem| {
         try std.testing.expectEqual(0, elem);
     }
+
+}
+
+test "create and release" {
+    try create_and_release(.{
+        .dtype = .float32
+    });
+
+    try create_and_release(.{
+        .dtype = .float32,
+        .is_complex = true
+    });
+}
+
+test "create, check and release" {
+    try create_check_and_release(.{
+        .dtype = .uint64
+    });
+
+    try create_check_and_release(.{
+        .dtype = .uint64,
+        .is_complex = true
+    });
 }
 

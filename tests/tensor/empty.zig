@@ -4,14 +4,33 @@ const std = @import("std");
 
 const allocator = std.testing.allocator;
 
-test "create and release" {
+fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
     const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
-    const tensor = try wekua.tensor.empty(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.float32});
+    const tensor = try wekua.tensor.empty(ctx, &[_]u64{20, 10}, config);
+    defer wekua.tensor.release(tensor);
 
-    wekua.tensor.release(tensor);
+    if (config.is_complex) {
+        try std.testing.expect(tensor.is_complex);
+        try std.testing.expect(!tensor.vectors_enabled);
+        try std.testing.expect(tensor.number_of_elements == 2*20*10);
+        try std.testing.expect(tensor.col_pitch == tensor.col_pitch_for_vectors);
+    }else{
+        try std.testing.expect(!tensor.is_complex);
+        try std.testing.expect(tensor.vectors_enabled);
+    }
+}
 
+test "create and release" {
+    try create_and_release(.{
+        .dtype = .float32
+    });
+
+    try create_and_release(.{
+        .dtype = .float32,
+        .is_complex = true
+    });
 }
 
 test "create and fail" {

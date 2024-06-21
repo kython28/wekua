@@ -23,6 +23,23 @@ pub const wTensorDtype = enum (u8) {
     float64 = 9
 };
 
+pub const wScalar = union(wTensorDtype) {
+    int8: i8,
+    uint8: u8,
+
+    int16: i16,
+    uint16: u16,
+
+    int32: i32,
+    uint32: u32,
+
+    int64: i64,
+    uint64: u64,
+
+    float32: f32,
+    float64: f64
+};
+
 pub const wCreateTensorConfig = struct {
     dtype: wTensorDtype,
     cl_mem_flags: cl.buffer.cl_mem_flags = @intFromEnum(cl.buffer.enums.mem_flags.read_write),

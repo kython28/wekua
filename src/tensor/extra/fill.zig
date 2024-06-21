@@ -10,6 +10,8 @@ const w_errors = @import("../utils/errors.zig");
 
 const dtypes = @import("../utils/dtypes.zig");
 const wTensor = dtypes.wTensor;
+const wTensorDtype = dtypes.wTensorDtype;
+const wScalar = dtypes.wScalar;
 
 const fill_resources = struct {
     pattern: []u8
@@ -23,16 +25,17 @@ fn fill_callback(allocator: *const std.mem.Allocator, user_data: ?*anyopaque) vo
 
 pub fn fill(
     command_queue: wCommandQueue, tensor: wTensor,
-    real_scalar: ?*const anyopaque, imag_scalar: ?*const anyopaque
+    real_scalar: ?wScalar, imag_scalar: ?wScalar
 ) !void {
     const allocator = command_queue.allocator;
     const dtype = tensor.dtype;
+
 
     const dtype_size = dtypes.get_dtype_size(dtype);
     var pattern_size: usize = dtype_size;
     if (imag_scalar) |_| {
         if (!tensor.is_complex) {
-            return w_errors.errros.TensorIsnotComplex;
+            return w_errors.errors.TensorIsnotComplex;
         }
         pattern_size += dtype_size;
     }
@@ -41,18 +44,26 @@ pub fn fill(
     errdefer allocator.free(pattern);
 
     if (real_scalar) |scalar| {
+        if (dtype != @as(wTensorDtype, scalar)) {
+            return w_errors.errors.InvalidScalarDtype;
+        }
+
         @memcpy(
-            pattern,
-            @as([*]const u8, @ptrCast(scalar))[0..dtype_size]
+            pattern[0..dtype_size],
+            @as([*]const u8, @ptrCast(&scalar))[0..dtype_size]
         );
     }else{
         @memset(pattern[0..dtype_size], 0);
     }
 
     if (imag_scalar) |scalar| {
+        if (dtype != @as(wTensorDtype, scalar)) {
+            return w_errors.errors.InvalidScalarDtype;
+        }
+
         @memcpy(
             pattern[dtype_size..pattern_size],
-            @as([*]const u8, @ptrCast(scalar))[0..dtype_size]
+            @as([*]const u8, @ptrCast(&scalar))[0..dtype_size]
         );
     }else{
         @memset(pattern[dtype_size..], 0);

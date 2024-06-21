@@ -65,7 +65,9 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     const last_element_index = shape.len - 1;
     var col_pitch: u64 = shape[last_element_index];
-    col_pitch += vector_width - @mod(col_pitch, vector_width);
+    if (vectors_enabled and vector_width > 1) {
+        col_pitch += vector_width - @mod(col_pitch, vector_width);
+    }
     if (is_complex) col_pitch *= 2;
     const col_pitch_for_vectors = col_pitch / vector_width;
     tensor.col_pitch = col_pitch;

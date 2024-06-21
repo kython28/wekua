@@ -1,3 +1,5 @@
-pub const errros = error {
-    TensorIsnotComplex
+pub const errors = error {
+    TensorIsnotComplex,
+    InvalidScalarDtype,
+    UnsupportedDataType,
 };
