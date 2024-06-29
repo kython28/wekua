@@ -6,14 +6,11 @@ const kernel = @import("kernel.zig");
 const wMutex = @import("../utils/mutex.zig").wMutex;
 const wCondition = @import("../utils/condition.zig").wCondition;
 
-pub const errors = error {
-    CommandQueueEventsCounterLessThanDec
-};
-
 const _w_command_queue = struct {
     allocator: *const std.mem.Allocator,
     ctx: cl.context.cl_context,
     cmd: cl.command_queue.cl_command_queue,
+    device: cl.device.cl_device_id,
 
     device_name: []u8,
     device_vendor_id: u32,
@@ -25,11 +22,6 @@ const _w_command_queue = struct {
     compute_units: u32,
     vector_widths: [10]u32,
     max_work_group_size: u64,
-
-    max_number_of_events: u32,
-    current_number_of_events: u32,
-    mutex: *wMutex,
-    condition: *wCondition
 };
 
 pub const wCommandQueue = *_w_command_queue;
@@ -92,10 +84,6 @@ fn get_device_info(allocator: *const std.mem.Allocator, cmd: wCommandQueue, devi
     try cl.device.get_info(
         device, device_info_enum.max_work_group_size, @sizeOf(u64), &cmd.max_work_group_size, null
     );
-
-    try cl.device.get_info(
-        device, device_info_enum.max_on_device_events, @sizeOf(u32), &cmd.max_number_of_events, null
-    );
 }
 
 pub fn create(
@@ -112,25 +100,7 @@ pub fn create(
     new_wcmd.allocator = allocator;
     new_wcmd.ctx = cl_ctx;
     new_wcmd.cmd = cmd;
-    new_wcmd.current_number_of_events = 0;
-
-    const mutex = try allocator.create(wMutex);
-    mutex.* = wMutex{};
-    new_wcmd.mutex = mutex;
-    errdefer {
-        mutex.destroy();
-        allocator.destroy(mutex);
-    }
-
-    const condition = try allocator.create(wCondition);
-    condition.* = wCondition{};
-    new_wcmd.condition = condition;
-    errdefer {
-        condition.destroy();
-        allocator.destroy(condition);
-    }
-
-    new_wcmd.current_number_of_events = 0;
+    new_wcmd.device = device;
 
     @memset(&new_wcmd.kernels, null);
     try get_device_info(allocator, new_wcmd, device);
@@ -160,64 +130,10 @@ pub fn create_multiple(
     return command_queues;
 }
 
-pub fn wait_for_command_queue(command_queue: wCommandQueue) void {
-    const mutex = command_queue.mutex;
-    const cond = command_queue.condition;
-
-    mutex.lock();
-    defer mutex.unlock();
-
-    while (command_queue.current_number_of_events > 0){
-        cond.wait(mutex);
-    }
-}
-
-pub fn inc_event_counter(command_queue: wCommandQueue, inc: u32, wait: bool) bool {
-    const mutex = command_queue.mutex;
-    const cond = command_queue.condition;
-
-    mutex.lock();
-    defer mutex.unlock();
-
-    const max_number_of_events = command_queue.max_number_of_events;
-    if (wait) {
-        while (command_queue.current_number_of_events == max_number_of_events){
-            cond.wait(mutex);
-        }
-    }else{
-        if (command_queue.current_number_of_events == max_number_of_events) {
-            return false;
-        }
-    }
-
-    command_queue.current_number_of_events += inc;
-    return true;
-}
-
-pub fn dec_event_counter(command_queue: wCommandQueue, dec: u32) !void {
-    const mutex = command_queue.mutex;
-    const cond = command_queue.condition;
-
-    mutex.lock();
-    defer mutex.unlock();
-
-    if (command_queue.current_number_of_events < dec) {
-        return errors.CommandQueueEventsCounterLessThanDec;
-    }
-
-    command_queue.current_number_of_events -= dec;
-    cond.signal();
-}
-
 pub fn release(command_queue: wCommandQueue) void {
-    wait_for_command_queue(command_queue);
-
     cl.command_queue.release(command_queue.cmd) catch unreachable;
     const allocator = command_queue.allocator;
 
-    command_queue.mutex.destroy();
-    allocator.destroy(command_queue.mutex);
-    allocator.destroy(command_queue.condition);
     allocator.free(command_queue.device_name);
     allocator.destroy(command_queue);
 }

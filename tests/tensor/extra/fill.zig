@@ -13,7 +13,7 @@ fn check_elements(
 ) !void {
     const cmd = w_cmd.cmd;
 
-    const event_to_wait = wekua.tensor.event.acquire_tensor(tensor, .read);
+    const events_to_wait = wekua.tensor.event.acquire_tensor(tensor, .read);
     const custom_event = cl.event.create_user_event(ctx.ctx) catch |err| {
         tensor.mutex.unlock();
         return err;
@@ -26,8 +26,8 @@ fn check_elements(
     };
     tensor.mutex.unlock();
 
-    if (event_to_wait) |e| {
-        try cl.event.wait(e);
+    if (events_to_wait) |e| {
+        try cl.event.wait_for_many(e);
     }
 
     var event_to_map: cl.event.cl_event = undefined;

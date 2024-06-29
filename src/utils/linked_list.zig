@@ -17,7 +17,9 @@ pub const errors = error {
 const _w_linked_list = struct {
     allocator: *const std.mem.Allocator,
     first: ?wLinkedListNode,
-    last: ?wLinkedListNode
+    last: ?wLinkedListNode,
+
+    len: usize
 };
 
 pub const wLinkedList = *_w_linked_list;
@@ -27,6 +29,7 @@ pub fn create(allocator: *const std.mem.Allocator) !wLinkedList {
     linked_list.allocator = allocator;
     linked_list.first = null;
     linked_list.last = null;
+    linked_list.len = 0;
 
     return linked_list;
 }
@@ -47,6 +50,8 @@ pub fn append(linked_list: wLinkedList, data: ?*anyopaque) !void {
     if (linked_list.first == null) {
         linked_list.first = new_node;
     }
+
+    linked_list.len += 1;
 }
 
 pub fn appendleft(linked_list: wLinkedList, data: ?*anyopaque) !void {
@@ -64,6 +69,7 @@ pub fn appendleft(linked_list: wLinkedList, data: ?*anyopaque) !void {
     if (linked_list.last == null) {
         linked_list.last = new_node;
     }
+    linked_list.len += 1;
 }
 
 pub fn pop(linked_list: wLinkedList) !?*anyopaque {
@@ -79,6 +85,7 @@ pub fn pop(linked_list: wLinkedList) !?*anyopaque {
 
     const data = last_node.data;
     linked_list.allocator.destroy(last_node);
+    linked_list.len -= 1;
     return data;
 }
 
@@ -95,11 +102,12 @@ pub fn popleft(linked_list: wLinkedList) !?*anyopaque {
 
     const data = first_node.data;
     linked_list.allocator.destroy(first_node);
+    linked_list.len -= 1;
     return data;
 }
 
 pub fn is_empty(linked_list: wLinkedList) bool {
-    return (linked_list.first == null);
+    return (linked_list.len == 0);
 }
 
 pub fn release(linked_list: wLinkedList) !void {

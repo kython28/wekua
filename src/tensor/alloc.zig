@@ -13,7 +13,7 @@ const wContext = @import("../core/context.zig").wContext;
 pub fn alloc(context: wContext, shape: []const u64, config: wCreateTensorConfig) !wTensor {
     const tensor = try w_empty.empty(context, shape, config);
 
-    _ = w_event.acquire_tensor(tensor, .write);
+    const prev_events = w_event.acquire_tensor(tensor, .write);
     defer tensor.mutex.unlock();
 
     const zero: u64 = 0;
@@ -23,7 +23,7 @@ pub fn alloc(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     var new_event: cl.event.cl_event = undefined;
     try cl.buffer.fill(
         cmd, tensor.buffer, &zero, @sizeOf(u64),
-        0, tensor.size, null,
+        0, tensor.size, prev_events,
         &new_event
     );
 

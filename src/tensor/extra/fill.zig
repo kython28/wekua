@@ -69,18 +69,13 @@ pub fn fill(
         @memset(pattern[dtype_size..], 0);
     }
 
-    const prev_event = w_event.acquire_tensor(tensor, .write);
+    const prev_events = w_event.acquire_tensor(tensor, .write);
     defer tensor.mutex.unlock();
-
-    var events_to_wait: ?[]const cl.event.cl_event = null;
-    if (prev_event != null) {
-        events_to_wait = @as([*]const cl.event.cl_event, @ptrCast(&prev_event.?))[0..1];
-    }
 
     var new_event: cl.event.cl_event = undefined;
     try cl.buffer.fill(
         command_queue.cmd, tensor.buffer, pattern.ptr, pattern_size,
-        0, tensor.size, events_to_wait,
+        0, tensor.size, prev_events,
         &new_event
     );
     errdefer {

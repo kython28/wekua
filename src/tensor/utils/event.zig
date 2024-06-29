@@ -22,14 +22,16 @@ const _w_tensor_event = struct {
     ctx_queue: *wQueue,
     allocator: *const std.mem.Allocator,
     command_queue: wCommandQueue,
+
     read_events: ?*clEventArray,
     write_event: ?cl.event.cl_event,
-    event: cl.event.cl_event,
 
     mutex: *wMutex,
     condition: *wCondition,
     event_type: wTensorEventType,
     events_finalized: usize,
+
+    finalized: bool,
 
     callback: ?*const event_callback,
     user_data: ?*anyopaque
@@ -37,26 +39,31 @@ const _w_tensor_event = struct {
 
 pub const wTensorEvent = *_w_tensor_event;
 
-pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?cl.event.cl_event {
+pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]cl.event.cl_event {
     const mutex = tensor.mutex; 
     mutex.lock();
     errdefer mutex.unlock();
 
-    const events = tensor.events;
-    var node = events.last;
-    var event: ?cl.event.cl_event = null;
+    const tensor_events = tensor.events;
+    var node = tensor_events.last;
 
     if (node == null) return null;
 
     var tensor_event: wTensorEvent = @alignCast(@ptrCast(node.?.data));
-    if (event_type == .write) return tensor_event.event.?;
+    if (event_type == .write) {
+        return switch (tensor_event.event_type) {
+            .read => tensor_event.read_events.?.items,
+            .write => @as([*]cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1]
+        };
+    }
 
+    var event: ?[]cl.event.cl_event = null;
     loop: while (node != null) {
         tensor_event = @alignCast(@ptrCast(node.?.data.?));
         switch (tensor_event.event_type) {
             .read => node = node.?.prev,
             .write => {
-                event = tensor_event.event;
+                event = @as([*]cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1];
                 break :loop;
             }
         }
@@ -88,6 +95,7 @@ fn create_new_tensor_event(
     tensor_event.allocator = allocator;
     tensor_event.command_queue = command_queue;
     tensor_event.events_finalized = 0;
+    tensor_event.finalized = false;
     tensor_event.event_type = event_type;
     
     tensor_event.user_data = user_data;
@@ -102,15 +110,6 @@ fn create_new_tensor_event(
         _ = linked_list.pop(events) catch unreachable;
     }
 
-    while (!command_queue_m.inc_event_counter(command_queue, 2, false)) {
-        tensor.condition.wait(tensor.mutex);
-    }
-    errdefer command_queue_m.dec_event_counter(command_queue, 2) catch unreachable;
-
-    const new_event: cl.event.cl_event = try cl.event.create_user_event(command_queue.ctx);
-    errdefer cl.event.release(new_event) catch unreachable;
-    tensor_event.event = new_event;
-
     switch (event_type) {
         .read => {
             const read_events_array: *clEventArray = try allocator.create(clEventArray);
@@ -120,7 +119,6 @@ fn create_new_tensor_event(
                 allocator.destroy(read_events_array);
             }
             try read_events_array.append(event);
-            try cl.event.set_callback(event, .complete, &tensor_event_callback, events.last);
             
             tensor_event.read_events = read_events_array;
             tensor_event.write_event = null;
@@ -128,33 +126,27 @@ fn create_new_tensor_event(
         .write => {
             tensor_event.read_events = null;
             tensor_event.write_event = event;
-            try cl.event.set_callback(event, .complete, &tensor_event_callback, events.last);
         }
     }
+    try cl.event.set_callback(event, .complete, &tensor_event_callback, events.last);
 }
 
-pub fn release_tensor_event(tensor_event: wTensorEvent) void {
-    const command_queue = tensor_event.command_queue;
+pub fn release_tensor_event(tensor_event: wTensorEvent) !void {
     const allocator = tensor_event.allocator;
     switch (tensor_event.event_type) {
         .read => {
             const read_events = tensor_event.read_events.?;
             for (read_events.items) |event| {
-                cl.event.release(event) catch unreachable;
-                command_queue_m.dec_event_counter(command_queue, 1) catch unreachable;
+                try cl.event.release(event);
             }
 
             read_events.deinit();
             allocator.destroy(read_events);
         },
         .write => {
-            cl.event.release(tensor_event.write_event.?) catch unreachable;
-            command_queue_m.dec_event_counter(command_queue, 1) catch unreachable;
+            try cl.event.release(tensor_event.write_event.?);
         },
     }
-
-    cl.event.release(tensor_event.event) catch unreachable;
-    command_queue_m.dec_event_counter(command_queue, 1) catch unreachable;
 
     allocator.destroy(tensor_event);
 }
@@ -178,11 +170,8 @@ pub fn register_new_event(
             .read => {
                 const read_events = te.read_events.?;
                 const total_read_events = read_events.items.len;
-                if (te.events_finalized < total_read_events and total_read_events < (command_queue.max_number_of_events/2)) {
+                if (te.events_finalized < total_read_events and total_read_events < 256) {
                     try read_events.append(event);
-                    while (!command_queue_m.inc_event_counter(command_queue, 1, false)) {
-                        tensor.condition.wait(tensor.mutex);
-                    }
                     return;
                 }
             },

@@ -22,7 +22,7 @@ fn create_check_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
     const w_cmd = ctx.command_queues[0];
     const cmd = w_cmd.cmd;
 
-    const event_to_wait = wekua.tensor.event.acquire_tensor(tensor, .read);
+    const events_to_wait = wekua.tensor.event.acquire_tensor(tensor, .read);
     const custom_event = cl.event.create_user_event(ctx.ctx) catch |err| {
         tensor.mutex.unlock();
         return err;
@@ -35,8 +35,8 @@ fn create_check_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
     };
     tensor.mutex.unlock();
 
-    if (event_to_wait) |e| {
-        try cl.event.wait(e);
+    if (events_to_wait) |e| {
+        try cl.event.wait_for_many(e);
     }
 
     var event_to_map: cl.event.cl_event = undefined;

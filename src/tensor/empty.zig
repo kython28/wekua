@@ -134,19 +134,10 @@ pub fn release(tensor: wTensor) void {
     tensor.mutex.lock();
     if (events.last) |last_node| {
         const tensor_event: w_event.wTensorEvent = @alignCast(@ptrCast(last_node.data.?));
-        switch (tensor_event.event_type) {
-            .write => {
-                if (tensor_event.events_finalized != 1){
-                    tensor.condition.wait(tensor.mutex);
-                }
-            },
-            .read => {
-                if (tensor_event.events_finalized != tensor_event.read_events.?.items.len) {
-                    tensor.condition.wait(tensor.mutex);
-                }
-            }
+        while (!tensor_event.finalized) {
+            tensor_event.condition.wait(tensor.mutex);
         }
-        w_event.release_tensor_event(tensor_event);
+        w_event.release_tensor_event(tensor_event) catch unreachable;
         allocator.destroy(last_node);
         events.last = null;
     }
