@@ -3,8 +3,6 @@ const cl = @import("opencl");
 
 const wContext = @import("../../core/context.zig").wContext;
 const linked_list = @import("../../utils/linked_list.zig");
-const wMutex = @import("../../utils/mutex.zig").wMutex;
-const wCondition = @import("../../utils/condition.zig").wCondition;
 
 pub const wTensorDtype = enum (u8) {
     int8 = 0,
@@ -69,8 +67,8 @@ pub const _w_tensor = struct {
     work_items_like_matrix: [][2]u64,
     work_items_like_matrix_without_vectors: [][2]u64,
 
-    mutex: *wMutex,
-    condition: *wCondition,
+    mutex: std.Thread.Mutex,
+    condition: std.Thread.Condition,
     events: linked_list.wLinkedList
 };
 

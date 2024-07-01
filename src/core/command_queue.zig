@@ -3,9 +3,6 @@ const cl = @import("opencl");
 
 const kernel = @import("kernel.zig");
 
-const wMutex = @import("../utils/mutex.zig").wMutex;
-const wCondition = @import("../utils/condition.zig").wCondition;
-
 const _w_command_queue = struct {
     allocator: *const std.mem.Allocator,
     ctx: cl.context.cl_context,

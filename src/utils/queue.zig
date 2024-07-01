@@ -1,20 +1,18 @@
 const std = @import("std");
 
-const wMutex = @import("mutex.zig").wMutex;
-const wCondition = @import("condition.zig").wCondition;
 const linked_list = @import("linked_list.zig");
 const wLinkedList = linked_list.wLinkedList;
 
 pub const wQueue = struct {
-    mutex: wMutex,
-    cond: wCondition,
+    mutex: std.Thread.Mutex,
+    cond: std.Thread.Condition,
     queue: wLinkedList,
 
     pub fn init(allocator: *const std.mem.Allocator) !wQueue {
         return wQueue{
-            .mutex = wMutex{},
+            .mutex = std.Thread.Mutex{},
             .queue = try linked_list.create(allocator),
-            .cond = wCondition{}
+            .cond = std.Thread.Condition{}
         };
     }
 

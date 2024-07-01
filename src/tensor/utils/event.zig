@@ -6,8 +6,6 @@ const wTensor = @import("dtypes.zig").wTensor;
 const command_queue_m = @import("../../core/command_queue.zig");
 const wCommandQueue = command_queue_m.wCommandQueue;
 
-const wMutex = @import("../../utils/mutex.zig").wMutex;
-const wCondition = @import("../../utils/condition.zig").wCondition;
 const wQueue = @import("../../utils/queue.zig").wQueue;
 
 const clEventArray = std.ArrayList(cl.event.cl_event);
@@ -26,8 +24,8 @@ const _w_tensor_event = struct {
     read_events: ?*clEventArray,
     write_event: ?cl.event.cl_event,
 
-    mutex: *wMutex,
-    condition: *wCondition,
+    mutex: *std.Thread.Mutex,
+    condition: *std.Thread.Condition,
     event_type: wTensorEventType,
     events_finalized: usize,
 
@@ -40,7 +38,7 @@ const _w_tensor_event = struct {
 pub const wTensorEvent = *_w_tensor_event;
 
 pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]cl.event.cl_event {
-    const mutex = tensor.mutex; 
+    const mutex = &tensor.mutex; 
     mutex.lock();
     errdefer mutex.unlock();
 
@@ -101,8 +99,8 @@ fn create_new_tensor_event(
     tensor_event.user_data = user_data;
     tensor_event.callback = callback;
 
-    tensor_event.mutex = tensor.mutex;
-    tensor_event.condition = tensor.condition;
+    tensor_event.mutex = &tensor.mutex;
+    tensor_event.condition = &tensor.condition;
     tensor_event.ctx_queue = tensor.context.queue;
 
     try linked_list.append(events, tensor_event);

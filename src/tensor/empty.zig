@@ -6,9 +6,6 @@ const work_items = @import("../utils/work_items.zig");
 const linked_list = @import("../utils/linked_list.zig");
 const w_event = @import("utils/event.zig");
 
-const wMutex = @import("../utils/mutex.zig").wMutex;
-const wCondition = @import("../utils/condition.zig").wCondition;
-
 const dtypes = @import("utils/dtypes.zig");
 const wTensor = dtypes.wTensor;
 const wCreateTensorConfig = dtypes.wCreateTensorConfig;
@@ -22,21 +19,8 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     tensor.context = context;
     tensor.events = try linked_list.create(allocator);
-    const mutex = try allocator.create(wMutex);
-    mutex.* = wMutex{};
-    errdefer {
-        mutex.destroy();
-        allocator.destroy(mutex);
-    }
-    tensor.mutex = mutex;
-
-    const condition = try allocator.create(wCondition);
-    condition.* = wCondition{};
-    errdefer {
-        condition.destroy();
-        allocator.destroy(condition);
-    }
-    tensor.condition = condition;
+    tensor.mutex = std.Thread.Mutex{};
+    tensor.condition = std.Thread.Condition{};
 
     tensor.shape = try allocator.alloc(u64, shape.len);
     errdefer allocator.free(tensor.shape);
@@ -135,7 +119,7 @@ pub fn release(tensor: wTensor) void {
     if (events.last) |last_node| {
         const tensor_event: w_event.wTensorEvent = @alignCast(@ptrCast(last_node.data.?));
         while (!tensor_event.finalized) {
-            tensor_event.condition.wait(tensor.mutex);
+            tensor_event.condition.wait(&tensor.mutex);
         }
         w_event.release_tensor_event(tensor_event) catch unreachable;
         allocator.destroy(last_node);
@@ -145,15 +129,11 @@ pub fn release(tensor: wTensor) void {
 
     linked_list.release(events) catch unreachable;
     cl.buffer.release(tensor.buffer) catch unreachable;
-    tensor.mutex.destroy();
-    tensor.condition.destroy();
 
     allocator.free(tensor.shape);
     allocator.free(tensor.vl_shape);
     allocator.free(tensor.work_item_for_all_elements);
     allocator.free(tensor.work_items_like_matrix);
     allocator.free(tensor.work_items_like_matrix_without_vectors);
-    allocator.destroy(tensor.mutex);
-    allocator.destroy(tensor.condition);
     allocator.destroy(tensor);
 }
