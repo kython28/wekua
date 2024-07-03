@@ -9,6 +9,8 @@ const wCommandQueue = command_queue_m.wCommandQueue;
 const wQueue = @import("../../utils/queue.zig").wQueue;
 
 const clEventArray = std.ArrayList(cl.event.cl_event);
+const UserCallbacksArray = std.ArrayList(*const event_callback);
+const UserDataForCallbacksArray = std.ArrayList(?*anyopaque);
 pub const event_callback = fn (allocator: *const std.mem.Allocator, user_data: ?*anyopaque) void;
 
 pub const wTensorEventType = enum {
@@ -31,8 +33,8 @@ const _w_tensor_event = struct {
 
     finalized: bool,
 
-    callback: ?*const event_callback,
-    user_data: ?*anyopaque
+    callbacks: *UserCallbacksArray,
+    user_datas: *UserDataForCallbacksArray
 };
 
 pub const wTensorEvent = *_w_tensor_event;
@@ -96,8 +98,32 @@ fn create_new_tensor_event(
     tensor_event.finalized = false;
     tensor_event.event_type = event_type;
     
-    tensor_event.user_data = user_data;
-    tensor_event.callback = callback;
+    const callbacks = try allocator.create(UserCallbacksArray);
+    errdefer allocator.destroy(callbacks);
+    callbacks.* = UserCallbacksArray.init(allocator.*);
+
+    const user_datas = try allocator.create(UserDataForCallbacksArray);
+    errdefer allocator.destroy(user_datas);
+    user_datas.* = UserDataForCallbacksArray.init(allocator.*);
+    errdefer {
+        callbacks.deinit();
+        user_datas.deinit();
+    }
+
+    tensor_event.callbacks = callbacks;
+    tensor_event.user_datas = user_datas;
+
+    if (callback) |v| {
+        try callbacks.append(v);
+        errdefer {
+            _ = callbacks.pop();
+        }
+        try user_datas.append(user_data);
+    }
+    errdefer {
+        _ = callbacks.pop();
+        _ = user_datas.pop();
+    }
 
     tensor_event.mutex = &tensor.mutex;
     tensor_event.condition = &tensor.condition;
@@ -146,6 +172,10 @@ pub fn release_tensor_event(tensor_event: wTensorEvent) !void {
         },
     }
 
+    tensor_event.callbacks.deinit();
+    tensor_event.user_datas.deinit();
+    allocator.destroy(tensor_event.callbacks);
+    allocator.destroy(tensor_event.user_datas);
     allocator.destroy(tensor_event);
 }
 
@@ -170,6 +200,13 @@ pub fn register_new_event(
                 const total_read_events = read_events.items.len;
                 if (te.events_finalized < total_read_events and total_read_events < 256) {
                     try read_events.append(event);
+                    errdefer {
+                        _ = read_events.pop();
+                    }
+                    if (callback) |v| {
+                        try te.callbacks.append(v);
+                        try te.user_datas.append(user_data);
+                    }
                     return;
                 }
             },

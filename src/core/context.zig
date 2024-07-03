@@ -34,8 +34,10 @@ fn release_previous_event(node: linked_list.wLinkedListNode, tensor_event: wTens
         node.prev = null;
     }
 
-    if (tensor_event.callback) |callback| {
-        callback(allocator, tensor_event.user_data);
+    if (tensor_event.callbacks.items.len > 0) {
+        for (tensor_event.callbacks.items, tensor_event.user_datas.items) |c, d| {
+            c(allocator, d);
+        }
     }
     tensor_event.finalized = true;
     t_event_condition.broadcast();

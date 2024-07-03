@@ -38,6 +38,21 @@ pub const wScalar = union(wTensorDtype) {
     float64: f64
 };
 
+pub fn initialize_scalar(dtype: wTensorDtype, init_value: anytype) wScalar {
+    return switch (dtype) {
+        .int8 => .{.int8 = init_value},
+        .uint8 => .{.uint8 = init_value},
+        .int16 => .{.int16 = init_value},
+        .uint16 => .{.uint16 = init_value},
+        .int32 => .{.int32 = init_value},
+        .uint32 => .{.uint32 = init_value},
+        .int64 => .{.int64 = init_value},
+        .uint64 => .{.uint64 = init_value},
+        .float32 => .{.float32 = init_value},
+        .float64 => .{.float64 = init_value}
+    };
+}
+
 pub const wCreateTensorConfig = struct {
     dtype: wTensorDtype,
     cl_mem_flags: cl.buffer.cl_mem_flags = @intFromEnum(cl.buffer.enums.mem_flags.read_write),
