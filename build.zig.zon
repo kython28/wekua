@@ -1,0 +1,32 @@
+.{
+    .name = "wekua",
+    .version = "1.0.0",
+    .minimum_zig_version = "0.13.0",
+
+    .dependencies = .{
+        .@"zig-opencl" = .{
+            .url = "zig-opencl",
+            .hash = "1220444ac1480e8684eac9c80dd2698242a4daecd7ae3615b5b0d802572a8e876c0d",
+        },
+    },
+
+    // Specifies the set of files and directories that are included in this package.
+    // Only files and directories listed here are included in the `hash` that
+    // is computed for this package.
+    // Paths are relative to the build root. Use the empty string (`""`) to refer to
+    // the build root itself.
+    // A directory listed here means that all files within, recursively, are included.
+    .paths = .{
+        // This makes *all* files, recursively, included in this package. It is generally
+        // better to explicitly list the files and directories instead, to insure that
+        // fetching from tarballs, file system paths, and version control all result
+        // in the same contents hash.
+        "",
+        // For example...
+        //"build.zig",
+        //"build.zig.zon",
+        //"src",
+        //"LICENSE",
+        //"README.md",
+    },
+}

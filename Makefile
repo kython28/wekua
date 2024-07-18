@@ -5,7 +5,7 @@ archives = wekua.o matrix.o print.o trig.o blas.o extra.o aberth_root.o linear.o
 main: $(archives)
 	$(CC) $(CFLAGS) -shared -lOpenCL -pthread $(archives) -o libwekua.so -lm
 
-%.o: src/%.c
+%.o: old_src/%.c
 	$(CC) -c $(CFLAGS) $< -o $@
 
 install:
@@ -13,7 +13,7 @@ install:
 	rm -rf /usr/include/wekua
 	cp -r headers /usr/include/wekua
 	rm -rf /usr/lib/wekua_kernels/
-	cp -r kernels/ /usr/lib/wekua_kernels/
+	cp -r old_kernels/ /usr/lib/wekua_kernels/
 	chmod 755 /usr/lib/wekua_kernels
 	chmod 644 /usr/lib/wekua_kernels/*
 	chmod 755 /usr/include/wekua
