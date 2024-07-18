@@ -68,6 +68,7 @@ typedef struct _wk_ctx {
 
 wekuaContext createWekuaContext(wDevice *dev, uint8_t use_vectors, uint8_t alloc_host_mem);
 wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors, uint8_t alloc_host_mem);
+wekuaContext createWekuaContextsFromOpenCLContext(cl_context ctx, wDevice *dev, uint8_t use_vectors, uint8_t alloc_host_mem);
 
 // Kernel list
 #define WEKUA_KERNEL_RANDN 0
