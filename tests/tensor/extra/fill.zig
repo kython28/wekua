@@ -46,8 +46,8 @@ fn check_elements(
 
     try cl.event.wait(event_to_map);
     if (tensor.is_complex){
-        const rows = tensor.shape[0];
-        for (0..rows) |i| {
+        const n_elements = tensor.number_of_elements/2;
+        for (0..n_elements) |i| {
             try std.testing.expectEqual(expect_value_real, map[i*2]);
             try std.testing.expectEqual(expect_value_imag, map[i*2 + 1]);
         }

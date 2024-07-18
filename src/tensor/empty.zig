@@ -4,7 +4,9 @@ const cl = @import("opencl");
 const wContext = @import("../core/context.zig").wContext;
 const work_items = @import("../utils/work_items.zig");
 const linked_list = @import("../utils/linked_list.zig");
+
 const w_event = @import("utils/event.zig");
+const w_errors = @import("utils/errors.zig");
 
 const dtypes = @import("utils/dtypes.zig");
 const wTensor = dtypes.wTensor;
@@ -24,7 +26,11 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     tensor.shape = try allocator.alloc(u64, shape.len);
     errdefer allocator.free(tensor.shape);
-    @memcpy(tensor.shape, shape);
+    for (tensor.shape, shape) |*d, s| {
+        if (s == 0) return w_errors.errors.InvalidValue;
+
+        d.* = s;
+    }
 
     const dtype = config.dtype;
     const is_complex = config.is_complex;

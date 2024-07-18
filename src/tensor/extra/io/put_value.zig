@@ -12,28 +12,19 @@ const wTensor = dtypes.wTensor;
 const wScalar = dtypes.wScalar;
 const wTensorDtype = dtypes.wTensorDtype;
 
-fn get_value_callback(_: *const std.mem.Allocator, user_data: ?*anyopaque) void {
-    const cond: *std.Thread.Condition = @alignCast(@ptrCast(user_data.?));
-    cond.signal();
+const put_value_resources = struct {
+    pattern: []u8
+};
+
+fn put_value_callback(allocator: *const std.mem.Allocator, user_data: ?*anyopaque) void {
+    const resources: *put_value_resources = @alignCast(@ptrCast(user_data.?));
+    allocator.free(resources.pattern);
+    allocator.destroy(resources);
 }
 
-fn write_value_to_scalar(pattern: []u8, scalar: *wScalar, dtype: wTensorDtype) void {
-    const tensor_dtype_fields = @typeInfo(wTensorDtype).Enum.fields;
-    scalar.* = blk: inline for (tensor_dtype_fields) |field| {
-        if (@field(wTensorDtype, field.name) == dtype) {
-            var new_scalar: wScalar = dtypes.initialize_scalar(dtype, undefined);
-            @memcpy(
-                @as([*]u8, @ptrCast(&@field(new_scalar, field.name)))[0..pattern.len],
-                pattern
-            );
-            break :blk new_scalar;
-        }
-    }else{ unreachable; };
-}
-
-pub fn get_value(
+pub fn put_value(
     command_queue: wCommandQueue, tensor: wTensor, coor: []const u64,
-    real_scalar: ?*wScalar, imag_scalar: ?*wScalar
+    real_scalar: ?wScalar, imag_scalar: ?wScalar
 ) !void {
     const is_complex = tensor.is_complex;
     if (coor.len != tensor.shape.len) {
@@ -56,7 +47,33 @@ pub fn get_value(
     }
 
     const pattern: []u8 = try allocator.alloc(u8, pattern_size);
-    defer allocator.free(pattern);
+    errdefer allocator.free(pattern);
+
+    if (real_scalar) |scalar| {
+        if (dtype != @as(wTensorDtype, scalar)) {
+            return w_errors.errors.InvalidScalarDtype;
+        }
+
+        @memcpy(
+            pattern[0..dtype_size],
+            @as([*]const u8, @ptrCast(&scalar))[0..dtype_size]
+        );
+    }else{
+        @memset(pattern[0..dtype_size], 0);
+    }
+
+    if (imag_scalar) |scalar| {
+        if (dtype != @as(wTensorDtype, scalar)) {
+            return w_errors.errors.InvalidScalarDtype;
+        }
+
+        @memcpy(
+            pattern[dtype_size..pattern_size],
+            @as([*]const u8, @ptrCast(&scalar))[0..dtype_size]
+        );
+    }else{
+        @memset(pattern[dtype_size..], 0);
+    }
 
     const shape = tensor.shape;
 
@@ -71,30 +88,22 @@ pub fn get_value(
     offset += coor[last_index] * (1 + @as(usize, @intCast(@intFromBool(is_complex))));
     offset *= dtype_size;
 
-    const prev_events = w_event.acquire_tensor(tensor, .read);
-    const tensor_mutex = &tensor.mutex;
-    errdefer tensor_mutex.unlock();
+    const prev_events = w_event.acquire_tensor(tensor, .write);
+    defer tensor.mutex.unlock();
 
     var new_event: cl.event.cl_event = undefined;
-    try cl.buffer.read(
-        command_queue.cmd, tensor.buffer, false, offset, pattern_size,
-        pattern.ptr, prev_events, &new_event
+    try cl.buffer.write(
+        command_queue.cmd, tensor.buffer, false, offset, pattern_size, pattern.ptr, prev_events,
+        &new_event
     );
     errdefer {
         cl.event.wait(new_event) catch unreachable;
         cl.event.release(new_event) catch unreachable;
     }
 
-    var cond = std.Thread.Condition{};
-    try w_event.register_new_event(command_queue, tensor, &get_value_callback, &cond, new_event, .read);
-    cond.wait(tensor_mutex);
-    tensor_mutex.unlock();
+    const resources: *put_value_resources = try allocator.create(put_value_resources);
+    errdefer allocator.destroy(resources);
+    resources.pattern = pattern;
 
-    if (real_scalar) |scalar| {
-        write_value_to_scalar(pattern[0..dtype_size], scalar, dtype);
-    }
-
-    if (imag_scalar) |scalar| {
-        write_value_to_scalar(pattern[dtype_size..pattern_size], scalar, dtype);
-    }
+    try w_event.register_new_event(command_queue, tensor, &put_value_callback, resources, new_event, .write);
 }
