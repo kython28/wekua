@@ -170,3 +170,35 @@ test "fill complex, put complex random value and get" {
     try std.testing.expectEqual(real_scalar.int64, new_real_scalar.int64);
     try std.testing.expectEqual(imag_scalar.int64, new_imag_scalar.int64);
 }
+
+test "create random buffer, write to tensor and read" {
+    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    defer wekua.context.release(ctx);
+
+    const randprg = std.crypto.random;
+    const tensor = try create_random_tensor(ctx, false, randprg, null, null);
+    defer wekua.tensor.release(tensor);
+
+    const buf1: []i64 = try allocator.alloc(i64, tensor.number_of_elements);
+    defer allocator.free(buf1);
+
+    const buf2: []i64 = try allocator.alloc(i64, tensor.number_of_elements);
+    defer allocator.free(buf2);
+
+    for (buf1) |*element| {
+        element.* = randprg.intRangeAtMost(i64, -1000, 1000);
+    }
+
+    const w_cmd = ctx.command_queues[0];
+    try wekua.tensor.io.read_from_buffer(
+        w_cmd, tensor, @as([*]u8, @ptrCast(buf1.ptr))[0..(buf1.len * @sizeOf(i64))]
+    );
+
+    try wekua.tensor.io.write_to_buffer(
+        w_cmd, tensor, @as([*]u8, @ptrCast(buf2.ptr))[0..(buf2.len * @sizeOf(i64))]
+    );
+
+    for (buf1, buf2) |e1, e2| {
+        try std.testing.expectEqual(e1, e2);
+    }
+}

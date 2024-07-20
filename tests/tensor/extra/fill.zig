@@ -193,4 +193,11 @@ test "fill complex multiple times and check2" {
     try wekua.tensor.extra.fill(w_cmd, tensor, scalar, imag);
 
     try check_elements(ctx, w_cmd, tensor, scalar.uint64, imag.uint64);
+
+    const value: usize = @intFromBool(tensor.is_complex) * 10 + switch(tensor.dtype) {
+        .uint64 => 20,
+        else => unreachable
+    };
+    try std.testing.expectEqual(30, value);
+
 }

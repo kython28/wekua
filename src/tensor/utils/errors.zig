@@ -4,4 +4,5 @@ pub const errors = error {
     InvalidScalarDtype,
     UnsupportedDataType,
     InvalidCoordinates,
+    InvalidBuffer
 };

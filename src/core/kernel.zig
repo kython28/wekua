@@ -95,7 +95,7 @@ pub fn compile_kernel(
     }
 }
 
-pub fn get_kernel_from_id(command_queue: wCommandQueue, comptime kernel_id: wKernelsID) !wKernel {
+pub fn get_kernel_from_id(command_queue: wCommandQueue, kernel_id: wKernelsID) !wKernel {
     var kernel = command_queue.kernels[@intFromEnum(kernel_id)];
     if (kernel) |v| {
         return v;
@@ -107,17 +107,20 @@ pub fn get_kernel_from_id(command_queue: wCommandQueue, comptime kernel_id: wKer
     return kernel;
 }
 
-pub fn get_only_float_kernel(command_queue: wCommandQueue, comptime kernel_id: wKernelsID) !wKernel {
+pub fn get_kernel(
+    command_queue: wCommandQueue, kernel_id: wKernelsID, number_of_cl_kernels: usize
+) !wKernel {
     const kernel = try get_kernel_from_id(command_queue, kernel_id);
 
     if (kernel.kernels == null) {
         const allocator = command_queue.allocator;
 
-        const kernels = try allocator.alloc(?cl.kernel.cl_kernel, 2);
+        // It is 4 because: float32, float64, complex_float32 and complex_float64
+        const kernels = try allocator.alloc(?cl.kernel.cl_kernel, number_of_cl_kernels);
         errdefer allocator.free(kernels);
         @memset(kernels, null);
 
-        const programs = try allocator.alloc(?cl.program.cl_program, 2);
+        const programs = try allocator.alloc(?cl.program.cl_program, number_of_cl_kernels);
         @memset(programs, null);
 
         kernel.kernels = kernels;
