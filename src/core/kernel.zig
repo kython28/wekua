@@ -115,7 +115,6 @@ pub fn get_kernel(
     if (kernel.kernels == null) {
         const allocator = command_queue.allocator;
 
-        // It is 4 because: float32, float64, complex_float32 and complex_float64
         const kernels = try allocator.alloc(?cl.kernel.cl_kernel, number_of_cl_kernels);
         errdefer allocator.free(kernels);
         @memset(kernels, null);
