@@ -86,7 +86,9 @@ pub fn get_value(
     }
 
     var cond = std.Thread.Condition{};
-    try w_event.register_new_event(command_queue, tensor, &get_value_callback, &cond, new_event, .read);
+    try w_event.register_new_event(
+        command_queue, tensor, &get_value_callback, &cond, new_event, .read
+    );
     cond.wait(tensor_mutex);
     tensor_mutex.unlock();
 

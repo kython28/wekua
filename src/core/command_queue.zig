@@ -14,6 +14,7 @@ const _w_command_queue = struct {
     device_type: cl.device.enums.device_type,
 
     kernels: [kernel.total_number_of_kernels]?kernel.wKernel,
+    headers: kernel.wKernel,
 
     local_mem_type: cl.device.cl_device_local_mem_type,
     compute_units: u32,
@@ -99,6 +100,16 @@ pub fn create(
     new_wcmd.cmd = cmd;
     new_wcmd.device = device;
 
+    const headers = try allocator.create(kernel._w_kernel);
+    errdefer allocator.destroy(headers);
+    headers.kernels = null;
+
+    headers.programs = try allocator.alloc(?cl.program.cl_program, kernel.total_number_of_headers);
+    @memset(headers.programs.?, null);
+    errdefer allocator.free(headers.programs.?);
+
+    new_wcmd.headers = headers;
+
     @memset(&new_wcmd.kernels, null);
     try get_device_info(allocator, new_wcmd, device);
 
@@ -130,6 +141,37 @@ pub fn create_multiple(
 pub fn release(command_queue: wCommandQueue) void {
     cl.command_queue.release(command_queue.cmd) catch unreachable;
     const allocator = command_queue.allocator;
+
+    const kernels = command_queue.kernels;
+    for (kernels) |w_kernel| {
+        if (w_kernel) |v| {
+            if (v.kernels) |cl_kernels| {
+                for (cl_kernels) |cl_kernel| {
+                    if (cl_kernel) |clk| {
+                        cl.kernel.release(clk) catch unreachable;
+                    }
+                }
+                allocator.free(cl_kernels);
+            }
+
+            if (v.programs) |cl_programs| {
+                for (cl_programs) |cl_program| {
+                    if (cl_program) |clp| {
+                        cl.program.release(clp) catch unreachable;
+                    }
+                }
+                allocator.free(cl_programs);
+            }
+
+            allocator.destroy(v);
+        }
+    }
+
+    for (command_queue.headers.programs.?) |program| {
+        if (program) |v| cl.program.release(v) catch unreachable;
+    }
+    allocator.free(command_queue.headers.programs.?);
+    allocator.destroy(command_queue.headers);
 
     allocator.free(command_queue.device_name);
     allocator.destroy(command_queue);
