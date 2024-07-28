@@ -1,3 +1,7 @@
+#ifndef com
+#define com 0
+#endif
+
 #ifndef dtype
 #define dtype 9
 #endif

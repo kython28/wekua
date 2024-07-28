@@ -36,7 +36,7 @@ pub fn read_from_buffer(command_queue: wCommandQueue, tensor: wTensor, buffer: [
 
     const buff_origin: [3]usize = .{0, 0, 0};
     const region: [3]usize = .{c*dtype_size, r, 1};
-    const buf_row_pitch = tensor.col_pitch * dtype_size;
+    const buf_row_pitch = tensor.row_pitch * dtype_size;
     const host_row_pitch = c * dtype_size;
 
     const prev_events = w_event.acquire_tensor(tensor, .write);

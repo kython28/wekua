@@ -9,9 +9,28 @@
 #endif
 
 __kernel void random(
-	__global random_wks *random_numbers,
-	__global wks *numbers
+	__global random_wks *random_numbers, __global wks *numbers,
+	ulong row_pitch, ulong col
 ) {
-	ulong i = get_global_id(0);
-	numbers[i] = random_numbers[i]/RAND_BASE;
+	const ulong i = get_global_id(0);
+	const ulong j = get_global_id(1);
+
+#if com == 1
+	const ulong index = i*row_pitch + j*2;
+
+	if (j >= col) {
+		numbers[index] = 0.0;
+		numbers[index + 1] = 0.0;
+	}else{
+		numbers[index] = random_numbers[index]/RAND_BASE;
+		numbers[index + 1] = random_numbers[index + 1]/RAND_BASE;
+	}
+#else
+	const ulong index = i*row_pitch + j;
+	if (j >= col) {
+		numbers[index] = 0.0;
+	}else{
+		numbers[index] = random_numbers[index]/RAND_BASE;
+	}
+#endif
 }

@@ -20,6 +20,7 @@ const _w_command_queue = struct {
     compute_units: u32,
     vector_widths: [10]u32,
     max_work_group_size: u64,
+    wekua_id: usize
 };
 
 pub const wCommandQueue = *_w_command_queue;
@@ -99,6 +100,7 @@ pub fn create(
     new_wcmd.ctx = cl_ctx;
     new_wcmd.cmd = cmd;
     new_wcmd.device = device;
+    new_wcmd.wekua_id = 0;
 
     const headers = try allocator.create(kernel._w_kernel);
     errdefer allocator.destroy(headers);
@@ -130,8 +132,9 @@ pub fn create_multiple(
         allocator.free(command_queues);
     }
 
-    for (devices, command_queues) |device, *wcmd| {
+    for (devices, command_queues, 0..) |device, *wcmd, index| {
         wcmd.* = try create(allocator, cl_ctx, device);
+        wcmd.*.wekua_id = index;
         cmd_created += 1;
     }
 

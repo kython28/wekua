@@ -15,7 +15,7 @@ fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
         try std.testing.expect(tensor.is_complex);
         try std.testing.expect(!tensor.vectors_enabled);
         try std.testing.expect(tensor.number_of_elements == 2*20*10);
-        try std.testing.expect(tensor.col_pitch == tensor.col_pitch_for_vectors);
+        try std.testing.expect(tensor.row_pitch == tensor.row_pitch_for_vectors);
     }else{
         try std.testing.expect(!tensor.is_complex);
         try std.testing.expect(tensor.vectors_enabled);

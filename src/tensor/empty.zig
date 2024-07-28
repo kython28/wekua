@@ -54,20 +54,20 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     @memcpy(vl_shape, shape);
 
     const last_element_index = shape.len - 1;
-    var col_pitch: u64 = shape[last_element_index];
+    var row_pitch: u64 = shape[last_element_index];
     if (vectors_enabled and vector_width > 1) {
-        col_pitch += vector_width - @mod(col_pitch, vector_width);
+        row_pitch += vector_width - @mod(row_pitch, vector_width);
     }
-    if (is_complex) col_pitch *= 2;
-    const col_pitch_for_vectors = col_pitch / vector_width;
-    tensor.col_pitch = col_pitch;
-    tensor.col_pitch_for_vectors = col_pitch_for_vectors;
+    if (is_complex) row_pitch *= 2;
+    const row_pitch_for_vectors = row_pitch / vector_width;
+    tensor.row_pitch = row_pitch;
+    tensor.row_pitch_for_vectors = row_pitch_for_vectors;
 
-    vl_shape[last_element_index] = col_pitch_for_vectors;
+    vl_shape[last_element_index] = row_pitch_for_vectors;
 
     var number_of_elements: u64 = 1;
     for (shape[0..last_element_index]) |e| number_of_elements *= e;
-    number_of_elements *= col_pitch;
+    number_of_elements *= row_pitch;
     tensor.number_of_elements = number_of_elements;
 
     const work_item_for_all_elements: []u64 = try allocator.alloc(u64, command_queues.len);
@@ -94,15 +94,15 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
             cmd.max_work_group_size
         );
 
-        const rows = number_of_elements / col_pitch;
+        const rows = number_of_elements / row_pitch;
         try work_items.get(
-            &[2]u64{rows, col_pitch_for_vectors},
+            &[2]u64{rows, row_pitch_for_vectors},
             wmv,
             cmd.max_work_group_size
         );
 
         try work_items.get(
-            &[2]u64{rows, col_pitch},
+            &[2]u64{rows, row_pitch},
             wm,
             cmd.max_work_group_size
         );
