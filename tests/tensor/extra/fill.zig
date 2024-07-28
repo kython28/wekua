@@ -59,7 +59,7 @@ fn check_elements(
 }
 
 test "try to fill with exceptions" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
@@ -77,7 +77,7 @@ test "try to fill with exceptions" {
 }
 
 test "fill and check" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
@@ -91,7 +91,7 @@ test "fill and check" {
 }
 
 test "fill multiple times and check" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
@@ -109,7 +109,7 @@ test "fill multiple times and check" {
 }
 
 test "fill multiple times and check2" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
@@ -128,7 +128,7 @@ test "fill multiple times and check2" {
 }
 
 test "fill complex and check" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const config: wekua.tensor.wCreateTensorConfig = .{
@@ -147,7 +147,7 @@ test "fill complex and check" {
 }
 
 test "fill complex multiple times and check" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const config: wekua.tensor.wCreateTensorConfig = .{
@@ -171,7 +171,7 @@ test "fill complex multiple times and check" {
 }
 
 test "fill complex multiple times and check2" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const config: wekua.tensor.wCreateTensorConfig = .{

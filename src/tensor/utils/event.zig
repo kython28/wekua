@@ -100,11 +100,11 @@ fn create_new_tensor_event(
     
     const callbacks = try allocator.create(UserCallbacksArray);
     errdefer allocator.destroy(callbacks);
-    callbacks.* = UserCallbacksArray.init(allocator.*);
+    callbacks.* = UserCallbacksArray.init(allocator);
 
     const user_datas = try allocator.create(UserDataForCallbacksArray);
     errdefer allocator.destroy(user_datas);
-    user_datas.* = UserDataForCallbacksArray.init(allocator.*);
+    user_datas.* = UserDataForCallbacksArray.init(allocator);
     errdefer {
         callbacks.deinit();
         user_datas.deinit();
@@ -137,7 +137,7 @@ fn create_new_tensor_event(
     switch (event_type) {
         .read => {
             const read_events_array: *clEventArray = try allocator.create(clEventArray);
-            read_events_array.* = clEventArray.init(allocator.*);
+            read_events_array.* = clEventArray.init(allocator);
             errdefer {
                 read_events_array.deinit();
                 allocator.destroy(read_events_array);

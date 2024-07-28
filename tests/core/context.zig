@@ -6,7 +6,7 @@ const wekua = @import("wekua");
 test "create" {
     const ally = std.testing.allocator;
 
-    const ctx = wekua.context.create_from_device_type(&ally, null, cl.device.enums.device_type.all);
+    const ctx = wekua.context.create_from_device_type(ally, null, cl.device.enums.device_type.all);
     if (ctx) |v| {
         wekua.context.release(v);
     }else |err| {
@@ -24,7 +24,7 @@ test "create_with_fail" {
         const ally = failing_allocator.allocator();
 
         _ = wekua.context.create_from_device_type(
-            &ally, null, cl.device.enums.device_type.all
+            ally, null, cl.device.enums.device_type.all
         ) catch |err| switch (err) {
             error.OutOfMemory => return,
             else => return err

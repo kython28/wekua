@@ -43,7 +43,7 @@ fn compile_header(
     const content: []const u8 = header_content; // Don't ask, this just work and i don't know why
     const new_header_prg = try cl.program.create_with_source(
         command_queue.ctx, @as([*]const []const u8, @ptrCast(&content))[0..1],
-        command_queue.allocator.*
+        command_queue.allocator
     );
 
     headers.programs.?[index] = new_header_prg;
@@ -77,7 +77,7 @@ pub fn compile_kernel(
     const allocator = command_queue.allocator;
     const new_program = try cl.program.create_with_source(
         cl_ctx, @as([*]const []const u8, @ptrCast(&content))[0..1],
-        allocator.*
+        allocator
     );
     defer cl.program.release(new_program) catch unreachable;
 
@@ -87,7 +87,7 @@ pub fn compile_kernel(
     const vector_width = if (options.vectors_enabled and !options.is_complex) command_queue.vector_widths[@intFromEnum(dtype)] else 1;
     if (options.extra_args) |v| {
         args = try std.fmt.allocPrint(
-            allocator.*, "-Dwk_width={d} -Ddtype={d} -Dmem_type={d} -Dcom={d} {s}",
+            allocator, "-Dwk_width={d} -Ddtype={d} -Dmem_type={d} -Dcom={d} {s}",
             .{
                 vector_width,
                 @intFromEnum(dtype),
@@ -98,7 +98,7 @@ pub fn compile_kernel(
         );
     }else{
         args = try std.fmt.allocPrint(
-            allocator.*, "-Dwk_width={d} -Ddtype={d} -Dmem_type={d} -Dcom={d}",
+            allocator, "-Dwk_width={d} -Ddtype={d} -Dmem_type={d} -Dcom={d}",
             .{
                 vector_width,
                 @intFromEnum(dtype),
@@ -114,7 +114,7 @@ pub fn compile_kernel(
 
     const devices: []const cl.device.cl_device_id = @as([*]const cl.device.cl_device_id, @ptrCast(&command_queue.device))[0..1];
     cl.program.compile(
-        allocator.*, new_program, devices, args,
+        allocator, new_program, devices, args,
         // null,
         // null, null, null
         @as([*]const cl.program.cl_program, @ptrCast(&header_prg))[0..1],

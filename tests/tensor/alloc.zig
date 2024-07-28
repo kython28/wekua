@@ -5,7 +5,7 @@ const std = @import("std");
 const allocator = std.testing.allocator;
 
 fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
@@ -13,7 +13,7 @@ fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
 }
 
 fn create_check_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);

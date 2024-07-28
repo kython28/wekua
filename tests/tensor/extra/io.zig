@@ -30,7 +30,7 @@ fn create_random_tensor(
 }
 
 test "fill and get random value" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const randprg = std.crypto.random;
@@ -52,7 +52,7 @@ test "fill and get random value" {
 }
 
 test "fill and get random complex value" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const randprg = std.crypto.random;
@@ -73,7 +73,7 @@ test "fill and get random complex value" {
 }
 
 test "fill complex and get random value" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const randprg = std.crypto.random;
@@ -96,7 +96,7 @@ test "fill complex and get random value" {
 }
 
 test "fill complex and get random complex value" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const randprg = std.crypto.random;
@@ -122,7 +122,7 @@ test "fill complex and get random complex value" {
 }
 
 test "fill, put random value and get" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const randprg = std.crypto.random;
@@ -145,7 +145,7 @@ test "fill, put random value and get" {
 }
 
 test "fill complex, put complex random value and get" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const randprg = std.crypto.random;
@@ -172,7 +172,7 @@ test "fill complex, put complex random value and get" {
 }
 
 test "create random buffer, write to tensor and read" {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const randprg = std.crypto.random;

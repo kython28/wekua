@@ -6,7 +6,7 @@ const std = @import("std");
 const test_allocator = std.testing.allocator;
 
 test "create and release" {
-    const list: linked_list.wLinkedList = try linked_list.create(&test_allocator);
+    const list: linked_list.wLinkedList = try linked_list.create(test_allocator);
 
     try std.testing.expect(list.first == null);
     try std.testing.expect(list.last == null);
@@ -15,7 +15,7 @@ test "create and release" {
 }
 
 test "append" {
-    const list = try linked_list.create(&test_allocator);
+    const list = try linked_list.create(test_allocator);
 
     const elements = [_]usize{10, 20, 100, 10, 10, 20};
     for (elements) |elem| {
@@ -43,7 +43,7 @@ test "append" {
 }
 
 test "appendleft" {
-    const list = try linked_list.create(&test_allocator);
+    const list = try linked_list.create(test_allocator);
 
     const elements = [_]usize{10, 20, 100, 10, 10, 20};
     for (elements) |elem| {
@@ -71,7 +71,7 @@ test "appendleft" {
 }
 
 test "pop and popleft" {
-    const list = try linked_list.create(&test_allocator);
+    const list = try linked_list.create(test_allocator);
 
     try std.testing.expectError(linked_list.errors.LinkedListEmpty, linked_list.pop(list));
     try std.testing.expectError(linked_list.errors.LinkedListEmpty, linked_list.popleft(list));
@@ -101,7 +101,7 @@ test "pop and popleft" {
 }
 
 test "is_empty" {
-    const list = try linked_list.create(&test_allocator);
+    const list = try linked_list.create(test_allocator);
 
     try std.testing.expect(linked_list.is_empty(list));
 

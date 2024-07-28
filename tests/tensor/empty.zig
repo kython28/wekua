@@ -5,7 +5,7 @@ const std = @import("std");
 const allocator = std.testing.allocator;
 
 fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
-    const ctx = try wekua.context.create_from_device_type(&allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const tensor = try wekua.tensor.empty(ctx, &[_]u64{20, 10}, config);
@@ -42,7 +42,7 @@ test "create and fail" {
         const ally = failing_allocator.allocator();
 
         const context = wekua.context.create_from_device_type(
-            &ally, null, cl.device.enums.device_type.all
+            ally, null, cl.device.enums.device_type.all
         ) catch |err| switch (err) {
             error.OutOfMemory => return,
             else => return err
