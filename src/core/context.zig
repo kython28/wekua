@@ -9,7 +9,7 @@ const wTensorEvent = w_tensor_event.wTensorEvent;
 const wQueue = @import("../utils/queue.zig").wQueue;
 
 const _wcontext = struct {
-    allocator: *const std.mem.Allocator,
+    allocator: std.mem.Allocator,
     ctx: cl.context.cl_context,
     command_queues: []command_queue.wCommandQueue,
 
@@ -108,7 +108,7 @@ fn deal_with_old_tensor_events(pending_events: linked_list.wLinkedList) !void {
     }
 }
 
-fn context_events_worker(allocator: *const std.mem.Allocator, queue: *wQueue) void {
+fn context_events_worker(allocator: std.mem.Allocator, queue: *wQueue) void {
     const pending_events: linked_list.wLinkedList = linked_list.create(allocator) catch unreachable;
     defer linked_list.release(pending_events) catch unreachable;
 
@@ -125,7 +125,7 @@ fn context_events_worker(allocator: *const std.mem.Allocator, queue: *wQueue) vo
 }
 
 pub fn create(
-    allocator: *const std.mem.Allocator,
+    allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     devices: []cl.device.cl_device_id
 ) !wContext {
@@ -137,7 +137,7 @@ pub fn create(
 }
 
 pub fn create_from_device_type(
-    allocator: *const std.mem.Allocator,
+    allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     device_type: cl.device.enums.device_type
 ) !wContext {
@@ -149,7 +149,7 @@ pub fn create_from_device_type(
 }
 
 pub fn create_from_cl_context(
-    allocator: *const std.mem.Allocator,
+    allocator: std.mem.Allocator,
     cl_ctx: cl.context.cl_context
 ) !wContext {
     const context: wContext = try allocator.create(_wcontext);

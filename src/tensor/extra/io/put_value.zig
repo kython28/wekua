@@ -16,7 +16,7 @@ const put_value_resources = struct {
     pattern: []u8
 };
 
-fn put_value_callback(allocator: *const std.mem.Allocator, user_data: ?*anyopaque) void {
+fn put_value_callback(allocator: std.mem.Allocator, user_data: ?*anyopaque) void {
     const resources: *put_value_resources = @alignCast(@ptrCast(user_data.?));
     allocator.free(resources.pattern);
     allocator.destroy(resources);

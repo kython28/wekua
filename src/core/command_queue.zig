@@ -4,7 +4,7 @@ const cl = @import("opencl");
 const kernel = @import("kernel.zig");
 
 const _w_command_queue = struct {
-    allocator: *const std.mem.Allocator,
+    allocator: std.mem.Allocator,
     ctx: cl.context.cl_context,
     cmd: cl.command_queue.cl_command_queue,
     device: cl.device.cl_device_id,
@@ -24,7 +24,7 @@ const _w_command_queue = struct {
 
 pub const wCommandQueue = *_w_command_queue;
 
-fn get_device_info(allocator: *const std.mem.Allocator, cmd: wCommandQueue, device: cl.device.cl_device_id) !void {
+fn get_device_info(allocator: std.mem.Allocator, cmd: wCommandQueue, device: cl.device.cl_device_id) !void {
     const device_info_enum = cl.device.enums.device_info;
 
     var device_name_size: usize = undefined;
@@ -85,7 +85,7 @@ fn get_device_info(allocator: *const std.mem.Allocator, cmd: wCommandQueue, devi
 }
 
 pub fn create(
-    allocator: *const std.mem.Allocator, cl_ctx: cl.context.cl_context, device: cl.device.cl_device_id
+    allocator: std.mem.Allocator, cl_ctx: cl.context.cl_context, device: cl.device.cl_device_id
 ) !wCommandQueue {
     const cmd: cl.command_queue.cl_command_queue = try cl.command_queue.create(
         cl_ctx, device, 0
@@ -117,7 +117,7 @@ pub fn create(
 }
 
 pub fn create_multiple(
-    allocator: *const std.mem.Allocator, cl_ctx: cl.context.cl_context, devices: []cl.device.cl_device_id
+    allocator: std.mem.Allocator, cl_ctx: cl.context.cl_context, devices: []cl.device.cl_device_id
 ) ![]wCommandQueue {
     var cmd_created: u32 = 0;
     const command_queues: []wCommandQueue = try allocator.alloc(wCommandQueue, devices.len);
@@ -177,7 +177,7 @@ pub fn release(command_queue: wCommandQueue) void {
     allocator.destroy(command_queue);
 }
 
-pub fn release_multiple(allocator: *const std.mem.Allocator, command_queues: []wCommandQueue) void {
+pub fn release_multiple(allocator: std.mem.Allocator, command_queues: []wCommandQueue) void {
     for (command_queues) |cmd| {
         release(cmd);
     }

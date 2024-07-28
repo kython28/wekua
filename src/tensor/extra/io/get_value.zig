@@ -12,7 +12,7 @@ const wTensor = dtypes.wTensor;
 const wScalar = dtypes.wScalar;
 const wTensorDtype = dtypes.wTensorDtype;
 
-fn get_value_callback(_: *const std.mem.Allocator, user_data: ?*anyopaque) void {
+fn get_value_callback(_: std.mem.Allocator, user_data: ?*anyopaque) void {
     const cond: *std.Thread.Condition = @alignCast(@ptrCast(user_data.?));
     cond.signal();
 }

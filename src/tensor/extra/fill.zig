@@ -16,7 +16,7 @@ const fill_resources = struct {
     pattern: []u8
 };
 
-fn fill_callback(allocator: *const std.mem.Allocator, user_data: ?*anyopaque) void {
+fn fill_callback(allocator: std.mem.Allocator, user_data: ?*anyopaque) void {
     const resources: *fill_resources = @alignCast(@ptrCast(user_data.?));
     allocator.free(resources.pattern);
     allocator.destroy(resources);

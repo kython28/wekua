@@ -11,7 +11,7 @@ const wQueue = @import("../../utils/queue.zig").wQueue;
 const clEventArray = std.ArrayList(cl.event.cl_event);
 const UserCallbacksArray = std.ArrayList(*const event_callback);
 const UserDataForCallbacksArray = std.ArrayList(?*anyopaque);
-pub const event_callback = fn (allocator: *const std.mem.Allocator, user_data: ?*anyopaque) void;
+pub const event_callback = fn (allocator: std.mem.Allocator, user_data: ?*anyopaque) void;
 
 pub const wTensorEventType = enum {
     write,
@@ -20,7 +20,7 @@ pub const wTensorEventType = enum {
 
 const _w_tensor_event = struct {
     ctx_queue: *wQueue,
-    allocator: *const std.mem.Allocator,
+    allocator: std.mem.Allocator,
     command_queue: wCommandQueue,
 
     read_events: ?*clEventArray,

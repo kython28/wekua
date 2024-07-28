@@ -15,7 +15,7 @@ pub const errors = error {
 };
 
 const _w_linked_list = struct {
-    allocator: *const std.mem.Allocator,
+    allocator: std.mem.Allocator,
     first: ?wLinkedListNode,
     last: ?wLinkedListNode,
 
@@ -24,7 +24,7 @@ const _w_linked_list = struct {
 
 pub const wLinkedList = *_w_linked_list;
 
-pub fn create(allocator: *const std.mem.Allocator) !wLinkedList {
+pub fn create(allocator: std.mem.Allocator) !wLinkedList {
     const linked_list = try allocator.create(_w_linked_list);
     linked_list.allocator = allocator;
     linked_list.first = null;

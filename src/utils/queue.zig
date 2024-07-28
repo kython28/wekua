@@ -8,7 +8,7 @@ pub const wQueue = struct {
     cond: std.Thread.Condition,
     queue: wLinkedList,
 
-    pub fn init(allocator: *const std.mem.Allocator) !wQueue {
+    pub fn init(allocator: std.mem.Allocator) !wQueue {
         return wQueue{
             .mutex = std.Thread.Mutex{},
             .queue = try linked_list.create(allocator),
