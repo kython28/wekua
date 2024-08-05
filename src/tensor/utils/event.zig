@@ -1,7 +1,7 @@
 const std = @import("std");
 const cl = @import("opencl");
 
-const linked_list = @import("../../utils/linked_list.zig");
+const wLinkedList = @import("../../utils/linked_list.zig");
 const wTensor = @import("dtypes.zig").wTensor;
 const command_queue_m = @import("../../core/command_queue.zig");
 const wCommandQueue = command_queue_m.wCommandQueue;
@@ -76,7 +76,7 @@ fn tensor_event_callback(_: cl.event.cl_event, event_command_status: i32, user_d
     const event_status: cl.event.enums.execution_status = @enumFromInt(event_command_status);
     if (event_status != .complete) unreachable;
 
-    const node: linked_list.wLinkedListNode = @alignCast(@ptrCast(user_data.?));
+    const node: wLinkedList.Node = @alignCast(@ptrCast(user_data.?));
     const tensor_event: wTensorEvent = @alignCast(@ptrCast(node.data.?));
 
     tensor_event.ctx_queue.put(node) catch unreachable;
@@ -85,7 +85,7 @@ fn tensor_event_callback(_: cl.event.cl_event, event_command_status: i32, user_d
 fn create_new_tensor_event(
     command_queue: wCommandQueue, tensor: wTensor,
     callback: ?*const event_callback, user_data: ?*anyopaque,
-    events: linked_list.wLinkedList, event: cl.event.cl_event,
+    events: *wLinkedList, event: cl.event.cl_event,
     event_type: wTensorEventType
 ) !void {
     const allocator = command_queue.allocator;
@@ -127,11 +127,11 @@ fn create_new_tensor_event(
 
     tensor_event.mutex = &tensor.mutex;
     tensor_event.condition = &tensor.condition;
-    tensor_event.ctx_queue = tensor.context.queue;
+    tensor_event.ctx_queue = &tensor.context.queue;
 
-    try linked_list.append(events, tensor_event);
+    try events.append(tensor_event);
     errdefer {
-        _ = linked_list.pop(events) catch unreachable;
+        _ = events.pop() catch unreachable;
     }
 
     switch (event_type) {
@@ -184,10 +184,12 @@ pub fn register_new_event(
     callback: ?*const event_callback, user_data: ?*anyopaque,
     event: cl.event.cl_event, event_type: wTensorEventType
 ) !void {
-    const events = tensor.events;
+    const events = &tensor.events;
 
     if (event_type == .write) {
-        try create_new_tensor_event(command_queue, tensor, callback, user_data, events, event, event_type);
+        try create_new_tensor_event(
+            command_queue, tensor, callback, user_data, events, event, event_type
+        );
         return;
     }
 
@@ -213,5 +215,7 @@ pub fn register_new_event(
             .write => {}
         }
     }
-    try create_new_tensor_event(command_queue, tensor, callback, user_data, events, event, event_type);
+    try create_new_tensor_event(
+        command_queue, tensor, callback, user_data, events, event, event_type
+    );
 }

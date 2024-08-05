@@ -3,7 +3,7 @@ const cl = @import("opencl");
 
 const wContext = @import("../core/context.zig").wContext;
 const work_items = @import("../utils/work_items.zig");
-const linked_list = @import("../utils/linked_list.zig");
+const wLinkedList = @import("../utils/linked_list.zig");
 
 const w_event = @import("utils/event.zig");
 const w_errors = @import("utils/errors.zig");
@@ -20,7 +20,7 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     errdefer allocator.destroy(tensor);
 
     tensor.context = context;
-    tensor.events = try linked_list.create(allocator);
+    tensor.events = wLinkedList.init(allocator);
     tensor.mutex = std.Thread.Mutex{};
     tensor.condition = std.Thread.Condition{};
 
@@ -118,7 +118,7 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 pub fn release(tensor: wTensor) void {
     const allocator = tensor.context.allocator;
 
-    const events = tensor.events;
+    const events = &tensor.events;
     events.first = null;
 
     tensor.mutex.lock();
@@ -133,7 +133,6 @@ pub fn release(tensor: wTensor) void {
     }
     tensor.mutex.unlock();
 
-    linked_list.release(events) catch unreachable;
     cl.buffer.release(tensor.buffer) catch unreachable;
 
     allocator.free(tensor.shape);

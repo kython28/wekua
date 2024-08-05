@@ -1,18 +1,21 @@
 const std = @import("std");
 
-const linked_list = @import("linked_list.zig");
-const wLinkedList = linked_list.wLinkedList;
+const wLinkedList = @import("linked_list.zig");
+// const wLinkedList = linked_list.wLinkedList;
 
 pub const wQueue = struct {
     mutex: std.Thread.Mutex,
     cond: std.Thread.Condition,
     queue: wLinkedList,
 
-    pub fn init(allocator: std.mem.Allocator) !wQueue {
+    releasing: bool,
+
+    pub fn init(allocator: std.mem.Allocator) wQueue {
         return wQueue{
             .mutex = std.Thread.Mutex{},
-            .queue = try linked_list.create(allocator),
-            .cond = std.Thread.Condition{}
+            .queue = wLinkedList.init(allocator),
+            .cond = std.Thread.Condition{},
+            .releasing = false
         };
     }
 
@@ -20,35 +23,36 @@ pub const wQueue = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        try linked_list.append(self.queue, data);
+        try self.queue.append(data);
         self.cond.signal();
     }
 
     pub fn get(self: *wQueue, wait: bool) !?*anyopaque {
         self.mutex.lock();
         defer self.mutex.unlock();
+        defer self.cond.signal();
 
         if (!wait and self.queue.last == null) return null;
 
         while (self.queue.last == null) {
+            if (self.releasing) return null;
+
             self.cond.wait(&self.mutex);
         }
 
-        const data = try linked_list.pop(self.queue);
+        const data = try self.queue.pop();
         return data;
     }
 
-    pub fn join(self: *wQueue) void {
+    pub fn release(self: *wQueue) void {
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        self.releasing = true;
+        self.cond.broadcast();
 
         while (self.queue.last != null) {
             self.cond.wait(&self.mutex);
         }
-    }
-
-    pub fn release(self: *wQueue) void {
-        // self.join();
-        linked_list.release(self.queue) catch unreachable;
     }
 };

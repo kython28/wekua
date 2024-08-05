@@ -7,112 +7,103 @@ const _w_linked_list_node = struct {
     next: ?*_w_linked_list_node
 };
 
-pub const wLinkedListNode = *_w_linked_list_node;
+pub const Node = *_w_linked_list_node;
 
 pub const errors = error {
     CannotHasElementsWhenRealasing,
     LinkedListEmpty
 };
 
-const _w_linked_list = struct {
-    allocator: std.mem.Allocator,
-    first: ?wLinkedListNode,
-    last: ?wLinkedListNode,
+// pub const wLinkedList = struct {
+allocator: std.mem.Allocator,
+first: ?Node,
+last: ?Node,
+len: usize,
 
-    len: usize
-};
-
-pub const wLinkedList = *_w_linked_list;
-
-pub fn create(allocator: std.mem.Allocator) !wLinkedList {
-    const linked_list = try allocator.create(_w_linked_list);
-    linked_list.allocator = allocator;
-    linked_list.first = null;
-    linked_list.last = null;
-    linked_list.len = 0;
-
-    return linked_list;
+pub fn init(allocator: std.mem.Allocator) wLinkedList {
+    return wLinkedList{
+        .allocator = allocator,
+        .first = null,
+        .last = null,
+        .len = 0
+    };
 }
 
-pub fn append(linked_list: wLinkedList, data: ?*anyopaque) !void {
-    const new_node = try linked_list.allocator.create(_w_linked_list_node);
+pub fn append(self: *wLinkedList, data: ?*anyopaque) !void {
+    const new_node = try self.allocator.create(_w_linked_list_node);
 
-    if (linked_list.last) |last_node| {
+    if (self.last) |last_node| {
         last_node.next = new_node;
     }
 
     new_node.data = data;
-    new_node.prev = linked_list.last;
+    new_node.prev = self.last;
     new_node.next = null;
 
-    linked_list.last = new_node;
+    self.last = new_node;
 
-    if (linked_list.first == null) {
-        linked_list.first = new_node;
+    if (self.first == null) {
+        self.first = new_node;
     }
 
-    linked_list.len += 1;
+    self.len += 1;
 }
 
-pub fn appendleft(linked_list: wLinkedList, data: ?*anyopaque) !void {
-    const new_node = try linked_list.allocator.create(_w_linked_list_node);
+pub fn appendleft(self: *wLinkedList, data: ?*anyopaque) !void {
+    const new_node = try self.allocator.create(_w_linked_list_node);
 
-    if (linked_list.first) |first_node| {
+    if (self.first) |first_node| {
         first_node.prev = new_node;
     }
 
     new_node.data = data;
     new_node.prev = null;
-    new_node.next = linked_list.first;
+    new_node.next = self.first;
 
-    linked_list.first = new_node;
-    if (linked_list.last == null) {
-        linked_list.last = new_node;
+    self.first = new_node;
+    if (self.last == null) {
+        self.last = new_node;
     }
-    linked_list.len += 1;
+    self.len += 1;
 }
 
-pub fn pop(linked_list: wLinkedList) !?*anyopaque {
-    const last_node = linked_list.last orelse return errors.LinkedListEmpty;
+pub fn pop(self: *wLinkedList) !?*anyopaque {
+    const last_node = self.last orelse return errors.LinkedListEmpty;
 
     if (last_node.prev) |prev_node| {
         prev_node.next = null;
-        linked_list.last = prev_node;
+        self.last = prev_node;
     }else{
-        linked_list.first = null;
-        linked_list.last = null;
+        self.first = null;
+        self.last = null;
     }
 
     const data = last_node.data;
-    linked_list.allocator.destroy(last_node);
-    linked_list.len -= 1;
+    self.allocator.destroy(last_node);
+    self.len -= 1;
     return data;
 }
 
-pub fn popleft(linked_list: wLinkedList) !?*anyopaque {
-    const first_node = linked_list.first orelse return errors.LinkedListEmpty;
-    
+pub fn popleft(self: *wLinkedList) !?*anyopaque {
+    const first_node = self.first orelse return errors.LinkedListEmpty;
+
     if (first_node.next) |next_node| {
         next_node.prev = null;
-        linked_list.first = next_node;
+        self.first = next_node;
     }else{
-        linked_list.first = null;
-        linked_list.last = null;
+        self.first = null;
+        self.last = null;
     }
 
     const data = first_node.data;
-    linked_list.allocator.destroy(first_node);
-    linked_list.len -= 1;
+    self.allocator.destroy(first_node);
+    self.len -= 1;
     return data;
 }
 
-pub fn is_empty(linked_list: wLinkedList) bool {
-    return (linked_list.len == 0);
+pub fn is_empty(self: *wLinkedList) bool {
+    return (self.len == 0);
 }
+// };
 
-pub fn release(linked_list: wLinkedList) !void {
-    if (linked_list.first) |_| {
-        return errors.CannotHasElementsWhenRealasing;
-    }
-    linked_list.allocator.destroy(linked_list);
-}
+const wLinkedList = @This();

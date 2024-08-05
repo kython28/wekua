@@ -2,7 +2,7 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const wContext = @import("../../core/context.zig").wContext;
-const linked_list = @import("../../utils/linked_list.zig");
+const wLinkedList = @import("../../utils/linked_list.zig");
 
 pub const wTensorDtype = enum (u8) {
     int8 = 0,
@@ -84,7 +84,7 @@ pub const _w_tensor = struct {
 
     mutex: std.Thread.Mutex,
     condition: std.Thread.Condition,
-    events: linked_list.wLinkedList
+    events: wLinkedList
 };
 
 pub const wTensor = *_w_tensor;

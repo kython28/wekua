@@ -2,7 +2,7 @@ const std = @import("std");
 const cl = @import("opencl");
 const command_queue = @import("command_queue.zig");
 
-const linked_list = @import("../utils/linked_list.zig");
+const wLinkedList = @import("../utils/linked_list.zig");
 const w_tensor_event = @import("../tensor/utils/event.zig");
 const wTensorEvent = w_tensor_event.wTensorEvent;
 
@@ -14,12 +14,12 @@ const _wcontext = struct {
     command_queues: []command_queue.wCommandQueue,
 
     worker: std.Thread,
-    queue: *wQueue
+    queue: wQueue
 };
 
 pub const wContext = *_wcontext;
 
-fn release_previous_event(node: linked_list.wLinkedListNode, tensor_event: wTensorEvent) !bool {
+fn release_previous_event(node: wLinkedList.Node, tensor_event: wTensorEvent) !bool {
     const allocator = tensor_event.allocator;
     const t_event_condition = tensor_event.condition;
     if (node.prev) |prev_node| {
@@ -44,8 +44,8 @@ fn release_previous_event(node: linked_list.wLinkedListNode, tensor_event: wTens
     return true;
 }
 
-fn deal_with_new_tensor_event(data: *anyopaque, pending_events: linked_list.wLinkedList) !void {
-    const node: linked_list.wLinkedListNode = @alignCast(@ptrCast(data));
+fn deal_with_new_tensor_event(data: *anyopaque, pending_events: *wLinkedList) !void {
+    const node: wLinkedList.Node = @alignCast(@ptrCast(data));
     const tensor_event: wTensorEvent = @alignCast(@ptrCast(node.data.?));
     const mutex = tensor_event.mutex;
 
@@ -64,16 +64,16 @@ fn deal_with_new_tensor_event(data: *anyopaque, pending_events: linked_list.wLin
     if (finished) {
         const released = try release_previous_event(node, tensor_event);
         if (!released) {
-            try linked_list.append(pending_events, node);
+            try pending_events.append(node);
         }
     }
 }
 
-fn deal_with_old_tensor_events(pending_events: linked_list.wLinkedList) !void {
-    var node: ?linked_list.wLinkedListNode = pending_events.first;
-    var stop_node: ?linked_list.wLinkedListNode = null;
+fn deal_with_old_tensor_events(pending_events: *wLinkedList) !void {
+    var node: ?wLinkedList.Node = pending_events.first;
+    var stop_node: ?wLinkedList.Node = null;
     while (node != null) {
-        const tensor_event_queue_node: linked_list.wLinkedListNode = @alignCast(@ptrCast(node.?.data.?));
+        const tensor_event_queue_node: wLinkedList.Node = @alignCast(@ptrCast(node.?.data.?));
         const tensor_event: wTensorEvent = @alignCast(@ptrCast(tensor_event_queue_node.data.?));
         const mutex = tensor_event.mutex;
 
@@ -109,18 +109,17 @@ fn deal_with_old_tensor_events(pending_events: linked_list.wLinkedList) !void {
 }
 
 fn context_events_worker(allocator: std.mem.Allocator, queue: *wQueue) void {
-    const pending_events: linked_list.wLinkedList = linked_list.create(allocator) catch unreachable;
-    defer linked_list.release(pending_events) catch unreachable;
+    var pending_events: wLinkedList = wLinkedList.init(allocator);
 
     while (true) {
         const cl_user_data: ?*anyopaque = queue.get(true) catch unreachable;
         if (cl_user_data) |v| {
-            deal_with_new_tensor_event(v, pending_events) catch unreachable;
+            deal_with_new_tensor_event(v, &pending_events) catch unreachable;
         }else{
             break;
         }
 
-        deal_with_old_tensor_events(pending_events) catch unreachable;
+        deal_with_old_tensor_events(&pending_events) catch unreachable;
     }
 }
 
@@ -170,29 +169,21 @@ pub fn create_from_cl_context(
     context.allocator = allocator;
     context.ctx = cl_ctx;
     context.command_queues = try command_queue.create_multiple(allocator, cl_ctx, devices);
-    context.queue = try allocator.create(wQueue);
-    context.queue.* = try wQueue.init(allocator);
+    context.queue = wQueue.init(allocator);
 
-    errdefer {
-        context.queue.release();
-        allocator.destroy(context.queue);
-    }
-
-    context.worker = try std.Thread.spawn(.{}, context_events_worker, .{allocator, context.queue});
+    context.worker = try std.Thread.spawn(.{}, context_events_worker, .{allocator, &context.queue});
     return context;
 }
 
 pub fn release(context: wContext) void {
     const allocator = context.allocator;
 
-    context.queue.put(null) catch unreachable;
-    context.worker.join();
     context.queue.release();
+    context.worker.join();
 
     cl.context.release(context.ctx) catch unreachable;
     command_queue.release_multiple(allocator, context.command_queues);
 
-    allocator.destroy(context.queue);
     allocator.destroy(context);
 }
 
