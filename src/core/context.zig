@@ -6,7 +6,7 @@ const wLinkedList = @import("../utils/linked_list.zig");
 const w_tensor_event = @import("../tensor/utils/event.zig");
 const wTensorEvent = w_tensor_event.wTensorEvent;
 
-const wQueue = @import("../utils/queue.zig").wQueue;
+const wQueue = @import("../utils/queue.zig");
 
 const _wcontext = struct {
     allocator: std.mem.Allocator,

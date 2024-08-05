@@ -6,7 +6,7 @@ const wTensor = @import("dtypes.zig").wTensor;
 const command_queue_m = @import("../../core/command_queue.zig");
 const wCommandQueue = command_queue_m.wCommandQueue;
 
-const wQueue = @import("../../utils/queue.zig").wQueue;
+const wQueue = @import("../../utils/queue.zig");
 
 const clEventArray = std.ArrayList(cl.event.cl_event);
 const UserCallbacksArray = std.ArrayList(*const event_callback);
