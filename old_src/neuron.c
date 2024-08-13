@@ -90,6 +90,9 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 
 				data_cache[x+1] = output;
 			}
+		}else if (!output){
+			output = wekuaAllocMatrix(ctx, in->shape[0], weight[x]->shape[0], dtype);
+			if (output == NULL) goto wekua_rli_fail;
 		}
 
 		ret = wekuaBlasGemm(one, NULL, 0, in, 1, weight[x], NULL, NULL, output, 0, NULL);
