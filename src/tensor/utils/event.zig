@@ -130,7 +130,9 @@ fn create_new_tensor_event(
 
     tensor_event.mutex = &tensor.mutex;
     tensor_event.condition = &tensor.condition;
-    tensor_event.ctx_queue = &tensor.context.queue;
+
+    const ctx_queue = &tensor.context.queue;
+    tensor_event.ctx_queue = ctx_queue;
 
     try events.append(tensor_event);
     errdefer {
@@ -163,8 +165,9 @@ fn create_new_tensor_event(
         }
     }
 
-    const new_node = try tensor_event.ctx_queue.queue.create_new_node(events.last);
-    errdefer tensor_event.ctx_queue.queue.release_node(new_node);
+    const ctx_queue_ll = &ctx_queue.queue;
+    const new_node = try ctx_queue_ll.create_new_node(events.last);
+    errdefer ctx_queue_ll.release_node(new_node);
 
     try cl.event.set_callback(event, .complete, &tensor_event_callback, new_node);
 }
