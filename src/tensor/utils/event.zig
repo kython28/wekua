@@ -77,9 +77,10 @@ fn tensor_event_callback(_: cl.event.cl_event, event_command_status: i32, user_d
     if (event_status != .complete) unreachable;
 
     const node: wLinkedList.Node = @alignCast(@ptrCast(user_data.?));
-    const tensor_event: wTensorEvent = @alignCast(@ptrCast(node.data.?));
+    const events_node: wLinkedList.Node = @alignCast(@ptrCast(node.data.?));
+    const tensor_event: wTensorEvent = @alignCast(@ptrCast(events_node.data.?));
 
-    tensor_event.ctx_queue.put(node) catch unreachable;
+    tensor_event.ctx_queue.put_node(node);
 }
 
 fn create_new_tensor_event(
@@ -121,8 +122,10 @@ fn create_new_tensor_event(
         try user_datas.append(user_data);
     }
     errdefer {
-        _ = callbacks.pop();
-        _ = user_datas.pop();
+        if (callback) |_| {
+            _ = callbacks.pop();
+            _ = user_datas.pop();
+        }
     }
 
     tensor_event.mutex = &tensor.mutex;
@@ -152,7 +155,18 @@ fn create_new_tensor_event(
             tensor_event.write_event = event;
         }
     }
-    try cl.event.set_callback(event, .complete, &tensor_event_callback, events.last);
+    errdefer {
+        if (event_type == .read) {
+            const array = tensor_event.read_events.?;
+            array.deinit();
+            allocator.destroy(array);
+        }
+    }
+
+    const new_node = try tensor_event.ctx_queue.queue.create_new_node(events.last);
+    errdefer tensor_event.ctx_queue.queue.release_node(new_node);
+
+    try cl.event.set_callback(event, .complete, &tensor_event_callback, new_node);
 }
 
 pub fn release_tensor_event(tensor_event: wTensorEvent) !void {

@@ -2,9 +2,8 @@ const wekua = @import("wekua");
 const cl = @import("opencl");
 const std = @import("std");
 
-const allocator = std.testing.allocator;
 
-fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
+fn create_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreateTensorConfig) !void {
     const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
@@ -12,7 +11,7 @@ fn create_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
     wekua.tensor.release(tensor);
 }
 
-fn create_check_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
+fn create_check_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreateTensorConfig) !void {
     const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
@@ -57,28 +56,41 @@ fn create_check_and_release(config: wekua.tensor.wCreateTensorConfig) !void {
     for (map) |elem| {
         try std.testing.expectEqual(0, elem);
     }
-
 }
 
-test "create and release" {
-    try create_and_release(.{
+// test "create and release" {
+fn test_create_and_release(allocator: std.mem.Allocator) !void {
+    try create_and_release(allocator, .{
         .dtype = .float32
     });
 
-    try create_and_release(.{
+    try create_and_release(allocator, .{
         .dtype = .float32,
         .is_complex = true
     });
 }
 
-test "create, check and release" {
-    try create_check_and_release(.{
+// test "create, check and release" {
+fn test_create_check_and_release(allocator: std.mem.Allocator) !void {
+    try create_check_and_release(allocator, .{
         .dtype = .uint64
     });
 
-    try create_check_and_release(.{
+    try create_check_and_release(allocator, .{
         .dtype = .uint64,
         .is_complex = true
     });
 }
 
+
+test "create and release" {
+    const allocator = std.testing.allocator;
+    try test_create_and_release(allocator);
+    try std.testing.checkAllAllocationFailures(allocator, test_create_and_release, .{});
+}
+
+test "create, check and release" {
+    const allocator = std.testing.allocator;
+    try test_create_and_release(allocator);
+    try std.testing.checkAllAllocationFailures(allocator, test_create_check_and_release, .{});
+}

@@ -76,13 +76,8 @@ test "try to fill with exceptions" {
     );
 }
 
-test "fill and check" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
-    defer wekua.tensor.release(tensor);
-
+// test "fill and check" {
+fn fill_and_check(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
     const w_cmd = ctx.command_queues[0];
     const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
     try wekua.tensor.extra.fill(w_cmd, tensor, scalar, null);
@@ -90,13 +85,7 @@ test "fill and check" {
     try check_elements(ctx, w_cmd, tensor, scalar.uint64, 0);
 }
 
-test "fill multiple times and check" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
-    defer wekua.tensor.release(tensor);
-
+fn fill_multiple_and_check(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
     const w_cmd = ctx.command_queues[0];
     const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
 
@@ -108,13 +97,7 @@ test "fill multiple times and check" {
     try check_elements(ctx, w_cmd, tensor, scalar.uint64, 0);
 }
 
-test "fill multiple times and check2" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
-    defer wekua.tensor.release(tensor);
-
+fn fill_multiple_and_check2(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
     const w_cmd = ctx.command_queues[0];
     const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
 
@@ -125,6 +108,60 @@ test "fill multiple times and check2" {
     try wekua.tensor.extra.fill(w_cmd, tensor, scalar, null);
 
     try check_elements(ctx, w_cmd, tensor, scalar.uint64, 0);
+}
+
+fn fill_complex_and_check(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
+    const w_cmd = ctx.command_queues[0];
+    const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
+    const imag: wekua.tensor.wScalar = .{.uint64 = 4234234};
+    try wekua.tensor.extra.fill(w_cmd, tensor, scalar, imag);
+
+    try check_elements(ctx, w_cmd, tensor, scalar.uint64, imag.uint64);
+}
+
+fn fill_complex_multiple_and_check(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
+    const w_cmd = ctx.command_queues[0];
+    const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
+    const imag: wekua.tensor.wScalar = .{.uint64 = 4234234};
+
+    for (1..30) |s| {
+        const p: wekua.tensor.wScalar = .{.uint64 = s * 10 - 10};
+        try wekua.tensor.extra.fill(w_cmd, tensor, .{ .uint64 = s}, p);
+    }
+    try wekua.tensor.extra.fill(w_cmd, tensor, scalar, imag);
+
+    try check_elements(ctx, w_cmd, tensor, scalar.uint64, imag.uint64);
+}
+
+fn fill_complex_multiple_and_check2(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
+    const w_cmd = ctx.command_queues[0];
+    const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
+    const imag: wekua.tensor.wScalar = .{.uint64 = 4234234};
+
+    for (1..30) |s| {
+        const p: wekua.tensor.wScalar = .{.uint64 = s * 10 - 10};
+        try wekua.tensor.extra.fill(w_cmd, tensor, .{ .uint64 = s}, p);
+        try check_elements(ctx, w_cmd, tensor, s, p.uint64);
+    }
+    try wekua.tensor.extra.fill(w_cmd, tensor, scalar, imag);
+
+    try check_elements(ctx, w_cmd, tensor, scalar.uint64, imag.uint64);
+}
+
+test "fill and check" {
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer wekua.context.release(ctx);
+
+    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
+    defer wekua.tensor.release(tensor);
+
+    try fill_and_check(allocator, ctx, tensor);
+    try fill_multiple_and_check(allocator, ctx, tensor);
+    try fill_multiple_and_check2(allocator, ctx, tensor);
+
+    try std.testing.checkAllAllocationFailures(allocator, fill_and_check, .{ctx, tensor});
+    try std.testing.checkAllAllocationFailures(allocator, fill_multiple_and_check, .{ctx, tensor});
+    try std.testing.checkAllAllocationFailures(allocator, fill_multiple_and_check2, .{ctx, tensor});
 }
 
 test "fill complex and check" {
@@ -138,59 +175,11 @@ test "fill complex and check" {
     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
     defer wekua.tensor.release(tensor);
 
-    const w_cmd = ctx.command_queues[0];
-    const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
-    const imag: wekua.tensor.wScalar = .{.uint64 = 4234234};
-    try wekua.tensor.extra.fill(w_cmd, tensor, scalar, imag);
+    try fill_complex_and_check(allocator, ctx, tensor);
+    try fill_complex_multiple_and_check(allocator, ctx, tensor);
+    try fill_complex_multiple_and_check2(allocator, ctx, tensor);
 
-    try check_elements(ctx, w_cmd, tensor, scalar.uint64, imag.uint64);
-}
-
-test "fill complex multiple times and check" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const config: wekua.tensor.wCreateTensorConfig = .{
-        .dtype = wekua.tensor.wTensorDtype.uint64,
-        .is_complex = true
-    };
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
-    defer wekua.tensor.release(tensor);
-
-    const w_cmd = ctx.command_queues[0];
-    const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
-    const imag: wekua.tensor.wScalar = .{.uint64 = 4234234};
-
-    for (1..30) |s| {
-        const p: wekua.tensor.wScalar = .{.uint64 = s * 10 - 10};
-        try wekua.tensor.extra.fill(w_cmd, tensor, .{ .uint64 = s}, p);
-    }
-    try wekua.tensor.extra.fill(w_cmd, tensor, scalar, imag);
-
-    try check_elements(ctx, w_cmd, tensor, scalar.uint64, imag.uint64);
-}
-
-test "fill complex multiple times and check2" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const config: wekua.tensor.wCreateTensorConfig = .{
-        .dtype = wekua.tensor.wTensorDtype.uint64,
-        .is_complex = true
-    };
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
-    defer wekua.tensor.release(tensor);
-
-    const w_cmd = ctx.command_queues[0];
-    const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
-    const imag: wekua.tensor.wScalar = .{.uint64 = 4234234};
-
-    for (1..30) |s| {
-        const p: wekua.tensor.wScalar = .{.uint64 = s * 10 - 10};
-        try wekua.tensor.extra.fill(w_cmd, tensor, .{ .uint64 = s}, p);
-        try check_elements(ctx, w_cmd, tensor, s, p.uint64);
-    }
-    try wekua.tensor.extra.fill(w_cmd, tensor, scalar, imag);
-
-    try check_elements(ctx, w_cmd, tensor, scalar.uint64, imag.uint64);
+    try std.testing.checkAllAllocationFailures(allocator, fill_complex_and_check, .{ctx, tensor});
+    try std.testing.checkAllAllocationFailures(allocator, fill_complex_multiple_and_check, .{ctx, tensor});
+    try std.testing.checkAllAllocationFailures(allocator, fill_complex_multiple_and_check2, .{ctx, tensor});
 }

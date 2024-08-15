@@ -10,9 +10,9 @@ fn create_random_tensor(
 ) !wekua.tensor.wTensor {
 
     const shape: [3]u64 = .{
-        randprg.intRangeAtMost(u64, 1, 500),
-        randprg.intRangeAtMost(u64, 1, 500),
-        randprg.intRangeAtMost(u64, 1, 500)
+        randprg.intRangeAtMost(u64, 2, 500),
+        randprg.intRangeAtMost(u64, 2, 500),
+        randprg.intRangeAtMost(u64, 2, 500)
     };
 
     const tensor = try wekua.tensor.alloc(ctx, &shape, .{

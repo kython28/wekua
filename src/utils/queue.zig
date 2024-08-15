@@ -18,10 +18,20 @@ pub fn init(allocator: std.mem.Allocator) wQueue {
 }
 
 pub fn put(self: *wQueue, data: ?*anyopaque) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    const mutex = &self.mutex;
+    mutex.lock();
+    defer mutex.unlock();
 
     try self.queue.append(data);
+    self.cond.signal();
+}
+
+pub fn put_node(self: *wQueue, node: wLinkedList.Node) void {
+    const mutex = &self.mutex;
+    mutex.lock();
+    defer mutex.unlock();
+
+    self.queue.append_node(node);
     self.cond.signal();
 }
 

@@ -17,8 +17,11 @@ pub fn build(b: *std.Build) void {
     });
     wekua_module.addImport("opencl", opencl_module);
 
+    const test_file = b.option(
+        []const u8, "test_file", "Specify test file (default: tests/wekua.zig)"
+    ) orelse "tests/wekua.zig";
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("tests/wekua.zig"),
+        .root_source_file = b.path(test_file),
         .target = target,
         .optimize = optimize
     });
