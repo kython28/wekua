@@ -1,9 +1,27 @@
 CC = gcc
-CFLAGS = -W -g -fPIC -O2
 archives = wekua.o matrix.o print.o trig.o blas.o extra.o aberth_root.o linear.o acti.o acti_linear.o acti_sigmoid.o acti_tanh.o acti_relu.o acti_leakyrelu.o werror.o network.o neuron.o optim.o file.o fifo.o regularization.o
 
+# ifeq ($(CC), gcc)
+# 	CFLAGS = -W -Werror -Wall -Wextra -pedantic -Wno-pointer-arith -fPIC
+# else ifeq ($(CC), clang)
+# 	CFLAGS = -W -Werror -Wall -Wextra -pedantic -Wno-gnu-pointer-arith -fPIC
+# endif
+
+CFLAGS = -W -fPIC
+
+ifeq ($(MODE), debug)
+	DEBUG_FLAGS = -O0 -g -fsanitize=address -fno-omit-frame-pointer
+else ifeq ($(MODE), debug-nvidia)
+	DEBUG_FLAGS = -O0 -g -fsanitize=address -fsanitize-recover=address
+else
+	DEBUG_FLAGS = -O2
+endif
+
+# export CFLAGS
+# export DEBUG_FLAGS
+
 main: $(archives)
-	$(CC) $(CFLAGS) -shared -lOpenCL -pthread $(archives) -o libwekua.so -lm
+	$(CC) $(CFLAGS) -shared $(DEBUG_FLAGS) -lOpenCL -pthread $(archives) -o libwekua.so -lm
 
 %.o: old_src/%.c
 	$(CC) -c $(CFLAGS) $< -o $@
