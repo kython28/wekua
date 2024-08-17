@@ -24,7 +24,7 @@ main: $(archives)
 	$(CC) $(CFLAGS) -shared $(DEBUG_FLAGS) -lOpenCL -pthread $(archives) -o libwekua.so -lm
 
 %.o: old_src/%.c
-	$(CC) -c $(CFLAGS) $< -o $@
+	$(CC) -c $(CFLAGS) $(DEBUG_FLAGS) $< -o $@
 
 install:
 	cp libwekua.so /usr/lib/
