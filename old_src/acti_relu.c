@@ -1,6 +1,6 @@
 #include "../headers/acti.h"
 
-int run_relu(void *data, wmatrix input, uint32_t nw, cl_event *be){
+int run_relu(__attribute__((unused)) void *data, wmatrix input, uint32_t nw, cl_event *be){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype;
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_RELU, dtype, input->com);
@@ -22,7 +22,7 @@ int run_relu(void *data, wmatrix input, uint32_t nw, cl_event *be){
 	return ret;
 }
 
-wmatrix get_dev_relu(void *data, wmatrix input){
+wmatrix get_dev_relu(__attribute__((unused)) void *data, wmatrix input){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype;
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_RELU_DEV, dtype, input->com);
@@ -59,7 +59,7 @@ void free_relu(void *a, uint32_t nw, cl_event *be){
 	free(a);
 }
 
-wacti wekuaActiReLU(){
+wacti wekuaActiReLU(void){
 	wacti acti = (wacti) calloc(1, sizeof(struct _w_acti));
 	if (acti == NULL) return NULL;
 	

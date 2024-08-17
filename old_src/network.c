@@ -3,6 +3,7 @@
 
 wnetwork wekuaNeuronNetwork(uint32_t neur_num, uint8_t dtype){
 	wnetwork net = (wnetwork) calloc(1, sizeof(struct _w_net));
+	if (net == NULL) return NULL;
 
 	net->nneur = neur_num;
 	net->dtype = dtype;

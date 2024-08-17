@@ -1,8 +1,5 @@
 #include "regularization.h"
 
-static float flt_exp = 2.0;
-static double dbl_exp = 2.0;
-
 static int sum_weight(wmatrix a, wmatrix b, void *alpha, void *beta, uint32_t *nevents, cl_event *e){
 	wekuaContext ctx = a->ctx;
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_SUM, a->dtype, a->com);
@@ -72,7 +69,6 @@ wmatrix wekuaL2Regularization(wmatrix weight, void *alpha, void *beta){
 	uint8_t dtype = weight->dtype;
 	uint32_t nevents = 1;
 	wmatrix b = NULL;
-	void *ptr = NULL;
 
 	double d_alpha_ = 0.0;
 	double d_beta_ = 0.0;
@@ -90,11 +86,11 @@ wmatrix wekuaL2Regularization(wmatrix weight, void *alpha, void *beta){
 		}
 	}else{
 		if (alpha){
-			f_alpha_ = 2.0 * ((float*)alpha)[0];
+			f_alpha_ = 2.0f * ((float*)alpha)[0];
 			alpha = &f_alpha_;
 		}
 		if (beta) {
-			f_beta_ = 2.0 * ((float*)beta)[0];
+			f_beta_ = 2.0f * ((float*)beta)[0];
 			beta = &f_beta_;
 		}
 	}
@@ -102,7 +98,6 @@ wmatrix wekuaL2Regularization(wmatrix weight, void *alpha, void *beta){
 	b = wekuaAllocMatrix(ctx, 1, a->shape[0], dtype);
 	int ret = sum_weight(a, b, alpha, beta, &nevents, e);
 
-	wekuaL1Regularization_error:
 	if (nevents){
 		clWaitForEvents(nevents, &e[1]);
 		for (uint32_t i = 1; i<nevents; i++) clReleaseEvent(e[i]);

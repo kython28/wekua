@@ -2,7 +2,7 @@
 
 uint64_t zero_extra = 0;
 
-uint8_t isgreat(void *a, void *b, uint8_t dtype){
+static uint8_t isgreat(void *a, void *b, uint8_t dtype){
 	if (dtype == WEKUA_DTYPE_INT8){
 		if (((int8_t*)a)[0] > ((int8_t*)b)[0]) return 1;
 		return 0;
@@ -268,9 +268,9 @@ int wekuaMatrixMean(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be
 			((int16_t*)imag)[0] /= (int16_t)size;
 		}
 	}else if (dtype == WEKUA_DTYPE_UINT16){
-		((int16_t*)real)[0] /= (uint16_t)size;
+		((uint16_t*)real)[0] /= (uint16_t)size;
 		if (a->com){
-			((int16_t*)imag)[0] /= (uint16_t)size;
+			((uint16_t*)imag)[0] /= (uint16_t)size;
 		}
 	}else if (dtype == WEKUA_DTYPE_INT32){
 		((int32_t*)real)[0] /= (int32_t)size;
@@ -278,9 +278,9 @@ int wekuaMatrixMean(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be
 			((int32_t*)imag)[0] /= (int32_t)size;
 		}
 	}else if (dtype == WEKUA_DTYPE_UINT32){
-		((int32_t*)real)[0] /= (uint32_t)size;
+		((uint32_t*)real)[0] /= (uint32_t)size;
 		if (a->com){
-			((int32_t*)imag)[0] /= (uint32_t)size;
+			((uint32_t*)imag)[0] /= (uint32_t)size;
 		}
 	}else if (dtype == WEKUA_DTYPE_INT64){
 		((int64_t*)real)[0] /= (int64_t)size;
@@ -288,9 +288,9 @@ int wekuaMatrixMean(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be
 			((int64_t*)imag)[0] /= (int64_t)size;
 		}
 	}else if (dtype == WEKUA_DTYPE_UINT64){
-		((int64_t*)real)[0] /= size;
+		((uint64_t*)real)[0] /= size;
 		if (a->com){
-			((int64_t*)imag)[0] /= size;
+			((uint64_t*)imag)[0] /= size;
 		}
 	}else if (dtype == WEKUA_DTYPE_FLOAT){
 		((float*)real)[0] /= (float)size;
@@ -336,7 +336,12 @@ wmatrix wekuaMatrixPoly(wmatrix a, uint32_t nw, cl_event *be){
 	if (rs == NULL || is == NULL) goto wk_poly_fail;
 
 	c = wekuaAllocMatrix(a->ctx, 1, row+1, dtype);
-	if (c == NULL) return NULL;
+	if (c == NULL) {
+		free(rs);
+		free(is);
+		free(one);
+		return NULL;
+	}
 	if (com){
 		if (createComplexMatrix(c)) goto wk_poly_fail;
 	}
@@ -385,11 +390,11 @@ wmatrix wekuaMatrixPoly(wmatrix a, uint32_t nw, cl_event *be){
 		else goto wk_poly_fail;
 
 		if (dtype == WEKUA_DTYPE_FLOAT){
-			((float*)rs)[0] /= -1.0*x;
-			if (com) ((float*)is)[0] /= -1.0*x;
+			((float*)rs)[0] /= (float) -x;
+			if (com) ((float*)is)[0] /= (float) -x;
 		}else{
-			((double*)rs)[0] /= -1.0*x;
-			if (com) ((double*)is)[0] /= -1.0*x;
+			((double*)rs)[0] /= (double) -x;
+			if (com) ((double*)is)[0] /= (double) -x;
 		}
 		wekuaPutValueToMatrix(c, 0, row-x, rs, is, 0, NULL);
 
@@ -546,7 +551,7 @@ wmatrix wekuaMatrixEulerIden(wmatrix angle, uint32_t nw, cl_event *be){
 	clSetKernelArg(kernel, 3, sizeof(cl_mem), &a->imag);
 	clSetKernelArg(kernel, 4, 8, &a->col);
 
-	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->shape, &a->work_items[4], 0, NULL, &e);
+	ret = clEnqueueNDRangeKernel(ctx->command_queue, kernel, 2, NULL, a->shape, &a->work_items[4], nw, be, &e);
 	if (ret == CL_SUCCESS){
 		clWaitForEvents(1, &e);
 		clReleaseEvent(e);

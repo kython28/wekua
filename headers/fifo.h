@@ -15,10 +15,10 @@ typedef struct _w_fifo {
 	uint64_t qsize;
 } *wfifo;
 
-wfifo wekuaAllocFIFO();
+wfifo wekuaAllocFIFO(void);
 void *wekuaFIFOGet(wfifo fifo);
-uint8_t wekuaFIFOisEmpty(wfifo fifo);
-uint8_t wekuaFIFOisnotEmpty(wfifo fifo);
+uint8_t wekuaFIFOisEmpty(wfifo fifo) __attribute__ ((warn_unused_result));
+uint8_t wekuaFIFOisnotEmpty(wfifo fifo) __attribute__ ((warn_unused_result));
 void wekuaFIFOPut(wfifo fifo, void *data);
 void wekuaFreeFIFO(wfifo fifo);
 
@@ -26,3 +26,4 @@ void wekuaFreeFIFO(wfifo fifo);
 }
 #endif
 #endif
+

@@ -1,24 +1,27 @@
 CC = gcc
 archives = wekua.o matrix.o print.o trig.o blas.o extra.o aberth_root.o linear.o acti.o acti_linear.o acti_sigmoid.o acti_tanh.o acti_relu.o acti_leakyrelu.o werror.o network.o neuron.o optim.o file.o fifo.o regularization.o
 
-# ifeq ($(CC), gcc)
-# 	CFLAGS = -W -Werror -Wall -Wextra -pedantic -Wno-pointer-arith -fPIC
-# else ifeq ($(CC), clang)
-# 	CFLAGS = -W -Werror -Wall -Wextra -pedantic -Wno-gnu-pointer-arith -fPIC
-# endif
-
-CFLAGS = -W -fPIC
+COMMON_CFLAGS = -W -Werror -Wall -Wextra -Wpedantic -Wno-pointer-arith -fPIC -Wshadow -Wunused-result -Wno-unused-command-line-argument -Wconversion -Wformat=2 -Wformat-security -Wnull-dereference -Wuninitialized -Wstrict-aliasing=2 -Wundef -Wunreachable-code -Wfloat-equal -Wredundant-decls -Wwrite-strings -Wdouble-promotion -Wswitch-enum
+ifeq ($(CC), gcc)
+	CFLAGS = $(COMMON_CFLAGS) -Wlogical-op
+else
+	CFLAGS = $(COMMON_CFLAGS)
+endif
 
 ifeq ($(MODE), debug)
 	DEBUG_FLAGS = -O0 -g -fsanitize=address -fno-omit-frame-pointer
 else ifeq ($(MODE), debug-nvidia)
 	DEBUG_FLAGS = -O0 -g -fsanitize=address -fsanitize-recover=address
+else ifeq ($(MODE), analyze)
+	COMMON_CFLAGS = -fPIC -Werror
+	ifeq ($(CC), gcc)
+		DEBUG_FLAGS = -O0 -g -fanalyzer -Wno-analyzer-malloc-leak
+	else
+		DEBUG_FLAGS = -O0 -g -Wno-unused-command-line-argument --analyze --analyze -Xclang -analyzer-config -Xclang crosscheck-with-z3=true
+	endif
 else
-	DEBUG_FLAGS = -O2
+	DEBUG_FLAGS = -O2 -D_FORTIFY_SOURCE=3
 endif
-
-# export CFLAGS
-# export DEBUG_FLAGS
 
 main: $(archives)
 	$(CC) $(CFLAGS) -shared $(DEBUG_FLAGS) -lOpenCL -pthread $(archives) -o libwekua.so -lm

@@ -2,8 +2,6 @@
 
 const uint64_t zero_blas = 0;
 
-void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max);
-
 int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e){
 	if (x == NULL || y == NULL){
 		return CL_INVALID_MEM_OBJECT;

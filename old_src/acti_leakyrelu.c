@@ -75,6 +75,11 @@ wacti wekuaActiLeakyReLU(wekuaContext ctx, void *alpha, void *alphai, uint8_t dt
 	uint32_t dl = ctx->dtype_length[dtype];
 
 	void *data = calloc(2, dl);
+	if (data == NULL) {
+		free(acti);
+		return NULL;
+	}
+
 	memcpy(data, alpha, dl);
 	if (alphai != NULL) memcpy(data+dl, alphai, dl);
 	

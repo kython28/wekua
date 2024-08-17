@@ -2,7 +2,7 @@
 
 void *get_one(uint8_t dtype, uint32_t dl);
 
-int run_sigmoid(void *data, wmatrix input, uint32_t nw, cl_event *be){
+int run_sigmoid(__attribute__((unused)) void *data, __attribute__((unused)) wmatrix input, uint32_t nw, cl_event *be){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype;
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_SIGMOID, dtype, input->com);
@@ -23,7 +23,7 @@ int run_sigmoid(void *data, wmatrix input, uint32_t nw, cl_event *be){
 	return ret;
 }
 
-wmatrix get_dev_sig(void *data, wmatrix input){
+wmatrix get_dev_sig(__attribute__ ((unused)) void *data, wmatrix input){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype, com = input->com;
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_SIGMOID_DEV, dtype, com);
@@ -62,7 +62,7 @@ void free_sigmoid(void *a, uint32_t nw, cl_event *be){
 	free(a);
 }
 
-wacti wekuaActiSigmoid(){
+wacti wekuaActiSigmoid(void){
 	wacti acti = (wacti) calloc(1, sizeof(struct _w_acti));
 	if (acti == NULL) return NULL;
 	

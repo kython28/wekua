@@ -16,3 +16,4 @@ wmatrix wekuaActiGetDev(wacti acti, wmatrix output){
 	if (acti == NULL || output == NULL) return NULL;
 	return acti->get_dev(acti->data, output);
 }
+

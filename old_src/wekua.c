@@ -92,12 +92,21 @@ const uint32_t dtype_length[10] = {
 	sizeof(double)
 };
 
-void getRandomBuffer(void *buf, uint64_t size){
+int getRandomBuffer(void *buf, size_t size){
 	int fd = open("/dev/urandom", O_RDONLY);
 	if (fd >= 0){
-		read(fd, buf, size);
+		size_t bytes_read = 0;
+		while (bytes_read < size) {
+			ssize_t ret = read(fd, buf + bytes_read, (size - bytes_read));
+			if (ret < 0) {
+				close(fd);
+				return -1;
+			}
+			bytes_read += (size_t)ret;
+		}
 	}
 	close(fd);
+	return 0;
 }
 
 uint32_t getPlatforms(wPlatform **platform){
@@ -105,17 +114,27 @@ uint32_t getPlatforms(wPlatform **platform){
 	clGetPlatformIDs(0, NULL, &nplat);
 	if (nplat > 0){
 		cl_platform_id *plat = (cl_platform_id*) calloc(nplat, sizeof(cl_platform_id));
+		if (plat == NULL) return 0;
+
 		*platform = (wPlatform*) calloc(nplat, sizeof(wPlatform));
+		if (*platform == NULL) {
+			free(plat);
+			return 0;
+		}
 		clGetPlatformIDs(nplat, plat, NULL);
 		for (uint32_t x=0; x<nplat; x++){
 			wekuaPlatformFromclPlatform(plat[x], &(*platform)[x]);
 		}
 		free(plat);
+	}else{
+		*platform = NULL;
 	}
 	return nplat;
 }
 
 void wekuaPlatformFromclPlatform(cl_platform_id platform, wPlatform *plat){
+	if (plat == NULL) return;
+
 	plat->platform = platform;
 
 	clGetPlatformInfo(platform, CL_PLATFORM_NAME, 0, NULL, &plat->nlen);
@@ -130,11 +149,21 @@ void freeWekuaPlatform(wPlatform *plat, uint32_t nplat){
 }
 
 uint32_t getDevices(wPlatform *platform , wDevice **device, cl_device_type type){
+	if (platform == NULL) return 0;
+	if (device == NULL) return 0;
+
 	uint32_t ndev;
 	clGetDeviceIDs(platform->platform, type, 0, NULL, &ndev);
 	if (ndev > 0){
 		cl_device_id *dev = (cl_device_id*) calloc(ndev, sizeof(cl_device_id));
+		if (dev == NULL) return 0;
+
 		*device = (wDevice*) calloc(ndev, sizeof(wDevice));
+		if (*device == NULL) {
+			free(dev);
+			return 0;
+		}
+
 		clGetDeviceIDs(platform->platform, type, ndev, dev, NULL);
 		for (uint32_t x=0; x<ndev; x++){
 			(*device)[x].platform = platform;
@@ -188,21 +217,41 @@ void freeWekuaDevice(wDevice *dev, uint32_t ndev){
 	free(dev);
 }
 
-char *getKernelData(const char *name, long *size){
-	int fd = open(name, O_RDONLY);
+static char *getKernelData(const char *name, size_t *size){
+	const int fd = open(name, O_RDONLY);
 	if (fd < 0){
 		return NULL;
 	}
-	*size = lseek(fd, 0, SEEK_END);
-	lseek(fd, 0, SEEK_SET);
-	char *cont = (char*) calloc(size[0], 1);
-	if (read(fd, cont, size[0]) != size[0]){
-		free(cont);
-		close(fd);
-		return NULL;
+
+	char *content = NULL;
+	ssize_t lseek_ret = lseek(fd, 0, SEEK_END);
+	if (lseek_ret <= 0) {
+		goto getKernelData_finish;
 	}
+	*size = (size_t)lseek_ret;
+
+	lseek_ret = lseek(fd, 0, SEEK_SET);
+	if (lseek_ret < 0) {
+		goto getKernelData_finish;
+	}
+
+	content = (char*) calloc(size[0], 1);
+	const ssize_t data_read = read(fd, content, size[0]);
+	if (data_read != ((ssize_t)size[0])){
+		goto getKernelData_error;
+	}
+
+	goto getKernelData_finish;
+
+getKernelData_error:
+	if (content != NULL) {
+		free(content);
+		content = NULL;
+	}
+
+getKernelData_finish:
 	close(fd);
-	return cont;
+	return content;
 }
 
 
@@ -241,8 +290,6 @@ wekuaContext createWekuaContextsFromOpenCLContext(cl_context ctx, wDevice *dev, 
 		return NULL;
 	}else if (dev->max_work_item_dimensions < 3) return NULL;
 
-	int ret;
-
 	wekuaContext context = (wekuaContext) calloc(1, sizeof(struct _wk_ctx));
 	if (context == NULL) return NULL;
 
@@ -271,6 +318,12 @@ wekuaContext createWekuaContextsFromOpenCLContext(cl_context ctx, wDevice *dev, 
 
 	wfifo garbage_queue = wekuaAllocFIFO();
 	struct w_matrix_free_arg *data = calloc(1, sizeof(struct w_matrix_free_arg));
+	if (data == NULL) {
+		wekuaFreeFIFO(garbage_queue);
+		freeWekuaContext(context);
+		return NULL;
+	}
+
 	pthread_mutex_init(&data->lock, NULL);
 	data->fifo = garbage_queue;
 	data->service = 1;
@@ -301,8 +354,21 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors, ui
 	wekuaContext ctx;
 	uint32_t nplat, *ndev, ps=0, ds=0;
 	nplat = getPlatforms(&plat);
+	if (nplat == 0) {
+		return NULL;
+	}
+
 	devs = (wDevice**) calloc(nplat, sizeof(wDevice*));
+	if (devs == NULL) {
+		freeWekuaPlatform(plat, nplat);
+		return NULL;
+	}
 	ndev = (uint32_t*) calloc(nplat, 4);
+	if (ndev == NULL) {
+		free(devs);
+		freeWekuaPlatform(plat, nplat);
+		return NULL;
+	}
 
 	for (uint32_t p=0; p<nplat; p++){
 		ndev[p] = getDevices(&plat[p], &devs[p], type);
@@ -310,6 +376,7 @@ wekuaContext createSomeWekuaContext(cl_device_type type, uint8_t use_vectors, ui
 			if (devs[ps] == NULL){
 				ps = p;
 			}
+			if (devs[p] == NULL) continue;
 
 			if (devs[p][d].compute_units*devs[p][d].clock_frequency*devs[p][d].max_work_group_size > devs[ps][ds].compute_units*devs[ps][ds].clock_frequency*devs[ps][ds].max_work_group_size){
 				ps = p; ds = d;
@@ -336,7 +403,7 @@ cl_kernel compileCustomKernel(wekuaContext ctx, const char *filename, const char
 	uint64_t size;
 	int ret;
 
-	source = getKernelData(filename, (long*)&size);
+	source = getKernelData(filename, (size_t*)&size);
 
 	program[0] = clCreateProgramWithSource(ctx->ctx, 1, (const char**)&source, &size, &ret);
 	if (ret != CL_SUCCESS) return NULL;
@@ -369,12 +436,16 @@ cl_kernel compileCustomKernel(wekuaContext ctx, const char *filename, const char
 }
 
 cl_kernel compileKernel(wekuaContext ctx, uint8_t id, uint8_t dtype, uint8_t com){
-	uint32_t pos = com*KERNEL_COL + id*10 + dtype;
+	uint32_t pos = (uint32_t)(com*KERNEL_COL + id*10 + dtype);
 	cl_kernel kernel = ctx->kernels[pos];
 	if (kernel != NULL) return kernel;
 
-	char *args;
-	asprintf(&args, "-Dwk_width=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d", ctx->vector_width[dtype], dtype, ctx->local_mem_type, com);
+	char *args = NULL;
+	int ret = asprintf(
+		&args, "-Dwk_width=%d -Ddtype=%d -Dmem_type=%d -Dcom=%d",
+		ctx->vector_width[dtype], dtype, ctx->local_mem_type, com
+	);
+	if (ret < 0) return NULL;
 
 	kernel = compileCustomKernel(ctx, kernels[id], ker_name[id], args, &ctx->programs[pos]);
 	ctx->kernels[pos] = kernel;
@@ -387,17 +458,18 @@ void freeWekuaContext(wekuaContext context){
 	if (context == NULL) return;
 
 	struct w_matrix_free_arg *data = context->garbage_collector_arg;
+	if (data != NULL) {
+		wfifo fifo = data->fifo;
+		pthread_mutex_lock(&data->lock);
+		data->service = 0;
+		pthread_mutex_unlock(&data->lock);
+		wekuaFIFOPut(fifo, NULL);
+		pthread_join(context->garbage_collector, NULL);
 
-	wfifo fifo = data->fifo;
-	pthread_mutex_lock(&data->lock);
-	data->service = 0;
-	pthread_mutex_unlock(&data->lock);
-	wekuaFIFOPut(fifo, NULL);
-	pthread_join(context->garbage_collector, NULL);
-
-	pthread_mutex_destroy(&data->lock);
-	wekuaFreeFIFO(fifo);
-	free(data);
+		pthread_mutex_destroy(&data->lock);
+		wekuaFreeFIFO(fifo);
+		free(data);
+	}
 
 	if (context->kernels){
 		for (uint32_t x=0; x<KERNEL_COL*2; x++){

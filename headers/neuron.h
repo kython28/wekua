@@ -26,13 +26,13 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 // wneuron wekuaConv2d(wekuaContext ctx, uint64_t in_channels, uint64_t out_channels, uint64_t kernel_size_w, uint64_t kernel_size_h, uint64_t stride_w, uint64_t stride_h, uint8_t bias, uint8_t dtype);
 
 wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw, cl_event *be);
-int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regularization, werror *err);
+int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regularization, werror *err) __attribute__ ((warn_unused_result));
 
 void wekuaFreeNeuronError(werror error);
 void wekuaFreeNeuronCache(wcache cache);
 
-uint8_t saveWekuaNeuron(const char *name, wneuron neuron);
-uint8_t loadWekuaNeuron(const char *name, wneuron neuron);
+uint8_t saveWekuaNeuron(const char *name, wneuron neuron) __attribute__ ((warn_unused_result));
+uint8_t loadWekuaNeuron(const char *name, wneuron neuron) __attribute__ ((warn_unused_result));
 
 void wekuaFreeNeuron(wneuron neur, uint32_t nw, cl_event *be);
 

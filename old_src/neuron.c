@@ -2,7 +2,6 @@
 #include "regularization.h"
 
 // ------------------- HELPERS ------------------- //
-void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max);
 void *get_one(uint8_t dtype, uint32_t dl);
 
 static int run_neuron_bias(wekuaContext ctx, cl_command_queue cmd, cl_device_local_mem_type local_mem_type, wmatrix output, wmatrix bias, uint32_t dl, cl_event *e){
@@ -106,7 +105,8 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 			clReleaseEvent(e);
 		}
 
-		runWekuaActi(acti, output, 0, NULL);
+		ret = runWekuaActi(acti, output, 0, NULL);
+		if (ret != CL_SUCCESS) goto wekua_rli_fail;
 
 		if (!cache && in != input) wekuaFreeMatrix(in, 0, NULL);
 		in = output;
@@ -129,7 +129,7 @@ wmatrix runWekuaNeuron(wneuron neuron, wmatrix input, wcache *cache, uint32_t nw
 int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regularization, werror *err){
 	if (neuron == NULL || error == NULL || cache == NULL) return CL_INVALID_ARG_VALUE;
 
-	int ret;
+	int ret = CL_SUCCESS;
 
 	wekuaContext ctx;
 	
@@ -205,15 +205,18 @@ int wekuaNeuronBackward(wneuron neuron, werror error, wcache cache, wmatrix regu
 	if (ret == CL_SUCCESS && err){
 		if (!err[0]){
 			err[0] = (werror) calloc(1, sizeof(struct _w_error));
-			err[0]->err = tmp;
+			if (err[0] == NULL) {
+				wekuaFreeMatrix(tmp, 0, NULL);
+			}else{
+				err[0]->err = tmp;
+			}
 		}
 	}else{
 		wekuaFreeMatrix(tmp, 0, NULL);
-
-		if (nevents){
-			clWaitForEvents(nevents, e);
-			for (uint32_t i=0; i<nevents; i++) clReleaseEvent(e[i]);
-		}
+	}
+	if (nevents){
+		clWaitForEvents(nevents, e);
+		for (uint32_t i=0; i<nevents; i++) clReleaseEvent(e[i]);
 	}
 
 	return ret;

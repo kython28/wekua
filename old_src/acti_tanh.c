@@ -2,7 +2,7 @@
 
 void *get_one(uint8_t dtype, uint32_t dl);
 
-int run_tanh(void *data, wmatrix input, uint32_t nw, cl_event *be){
+int run_tanh(__attribute__((unused)) void *data, wmatrix input, uint32_t nw, cl_event *be){
 	cl_event e;
 
 	int ret = wekuaMatrixTanh(input, nw, be, &e);
@@ -14,7 +14,7 @@ int run_tanh(void *data, wmatrix input, uint32_t nw, cl_event *be){
 	return ret;
 }
 
-wmatrix get_dev_tanh(void *data, wmatrix input){
+wmatrix get_dev_tanh(__attribute__((unused)) void *data, wmatrix input){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype, com = input->com;
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_TANH_DEV, dtype, com);
@@ -53,7 +53,7 @@ void free_tanh(void *a, uint32_t nw, cl_event *be){
 	free(a);
 }
 
-wacti wekuaActiTanh(){
+wacti wekuaActiTanh(void){
 	wacti acti = (wacti) calloc(1, sizeof(struct _w_acti));
 	if (acti == NULL) return NULL;
 	

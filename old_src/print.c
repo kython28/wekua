@@ -1,5 +1,7 @@
 #include "../headers/matrix.h"
 #include <stdio.h>
+#include <math.h>
+#include <float.h>
 
 void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be){
 	clWaitForEvents(nw, be);
@@ -20,7 +22,7 @@ void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void
 		clEnqueueReadBuffer(ctx->command_queue, a->imag, CL_FALSE, posi, len_dtype, imag, 0, NULL, &e[nevents++]);
 	}
 	clWaitForEvents(nevents, e);
-	for (uint32_t x=0; x<nevents; x++) clReleaseEvent(e[x]);
+	for (uint32_t event_index=0; event_index<nevents; event_index++) clReleaseEvent(e[event_index]);
 }
 
 void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be){
@@ -32,7 +34,7 @@ void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *
 	}
 
 	uint64_t len_dtype = a->ctx->dtype_length[a->dtype];
-	uint64_t posi = y*a->col*len_dtype + x*len_dtype, zero = 0;
+	uint64_t posi = y*a->col*len_dtype + x*len_dtype;
 
 	wekuaContext ctx = a->ctx;
 
@@ -46,7 +48,7 @@ void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *
 		clEnqueueWriteBuffer(ctx->command_queue, a->imag, CL_FALSE, posi, len_dtype, imag, 0, NULL, &e[nevents++]);
 	}
 	clWaitForEvents(nevents, e);
-	for (uint32_t x=0; x<nevents; x++) clReleaseEvent(e[x]);
+	for (uint32_t event_index=0; event_index<nevents; event_index++) clReleaseEvent(e[event_index]);
 }
 
 const char dtype_text[][15] = {
@@ -63,7 +65,7 @@ const char dtype_text[][15] = {
 };
 
 
-void wekuaMatrixRealPrintChar(wmatrix a){
+static void wekuaMatrixRealPrintChar(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -98,7 +100,7 @@ void wekuaMatrixRealPrintChar(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintUchar(wmatrix a){
+static void wekuaMatrixRealPrintUchar(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -133,7 +135,7 @@ void wekuaMatrixRealPrintUchar(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintShort(wmatrix a){
+static void wekuaMatrixRealPrintShort(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -168,7 +170,7 @@ void wekuaMatrixRealPrintShort(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintUshort(wmatrix a){
+static void wekuaMatrixRealPrintUshort(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -203,7 +205,7 @@ void wekuaMatrixRealPrintUshort(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintInt(wmatrix a){
+static void wekuaMatrixRealPrintInt(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -238,7 +240,7 @@ void wekuaMatrixRealPrintInt(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintUint(wmatrix a){
+static void wekuaMatrixRealPrintUint(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -273,7 +275,7 @@ void wekuaMatrixRealPrintUint(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintLong(wmatrix a){
+static void wekuaMatrixRealPrintLong(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -308,7 +310,7 @@ void wekuaMatrixRealPrintLong(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintUlong(wmatrix a){
+static void wekuaMatrixRealPrintUlong(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -343,7 +345,7 @@ void wekuaMatrixRealPrintUlong(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintFloat(wmatrix a){
+static void wekuaMatrixRealPrintFloat(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -364,7 +366,7 @@ void wekuaMatrixRealPrintFloat(wmatrix a){
 			}
 			if ((x < 4 || x >= col-4) && (y < 4 || y >= row-4)){
 				wekuaGetValueFromMatrix(a, y, x, &real, NULL, 0, NULL);
-				printf("%14.5e", real);
+				printf("%14.5e", (double)real);
 				if (y+1 != row || x+1 != col){
 					printf(",");
 				}
@@ -378,7 +380,7 @@ void wekuaMatrixRealPrintFloat(wmatrix a){
 	}
 }
 
-void wekuaMatrixRealPrintDouble(wmatrix a){
+static void wekuaMatrixRealPrintDouble(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -415,7 +417,7 @@ void wekuaMatrixRealPrintDouble(wmatrix a){
 
 
 
-void wekuaMatrixComplexPrintChar(wmatrix a){
+static void wekuaMatrixComplexPrintChar(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -424,13 +426,13 @@ void wekuaMatrixComplexPrintChar(wmatrix a){
 
 	int8_t real, imag;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -442,11 +444,11 @@ void wekuaMatrixComplexPrintChar(wmatrix a){
 				memset(num, 0, 10);
 				wekuaGetValueFromMatrix(a, y, x, &real, &imag, 0, NULL);
 
-				if (real != 0.0 && imag != 0.0){
+				if (real == 0 && imag != 0){
 					sprintf(num, "%d%+dj", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (real != 0 && imag == 0){
 					sprintf(num, "%de", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real == 0 && imag != 0){
 					sprintf(num, "%dj", imag);
 				}else{
 					sprintf(num, "%d", real);
@@ -465,7 +467,7 @@ void wekuaMatrixComplexPrintChar(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintUchar(wmatrix a){
+static void wekuaMatrixComplexPrintUchar(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -474,13 +476,13 @@ void wekuaMatrixComplexPrintUchar(wmatrix a){
 
 	uint8_t real, imag;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -492,11 +494,11 @@ void wekuaMatrixComplexPrintUchar(wmatrix a){
 				memset(num, 0, 10);
 				wekuaGetValueFromMatrix(a, y, x, &real, &imag, 0, NULL);
 
-				if (real != 0.0 && imag != 0.0){
+				if (real != 0 && imag != 0){
 					sprintf(num, "%u+%uj", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (real != 0 && imag == 0){
 					sprintf(num, "%ue", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real == 0 && imag != 0){
 					sprintf(num, "%uj", imag);
 				}else{
 					sprintf(num, "%u", real);
@@ -515,7 +517,7 @@ void wekuaMatrixComplexPrintUchar(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintShort(wmatrix a){
+static void wekuaMatrixComplexPrintShort(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -524,13 +526,13 @@ void wekuaMatrixComplexPrintShort(wmatrix a){
 
 	int16_t real, imag;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -542,11 +544,11 @@ void wekuaMatrixComplexPrintShort(wmatrix a){
 				memset(num, 0, 14);
 				wekuaGetValueFromMatrix(a, y, x, &real, &imag, 0, NULL);
 
-				if (real != 0.0 && imag != 0.0){
+				if (real != 0 && imag != 0){
 					sprintf(num, "%d%+dj", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (real != 0 && imag == 0){
 					sprintf(num, "%de", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real == 0 && imag != 0){
 					sprintf(num, "%dj", imag);
 				}else{
 					sprintf(num, "%d", real);
@@ -565,7 +567,7 @@ void wekuaMatrixComplexPrintShort(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintUshort(wmatrix a){
+static void wekuaMatrixComplexPrintUshort(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -574,13 +576,13 @@ void wekuaMatrixComplexPrintUshort(wmatrix a){
 
 	uint16_t real, imag;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -592,11 +594,11 @@ void wekuaMatrixComplexPrintUshort(wmatrix a){
 				memset(num, 0, 14);
 				wekuaGetValueFromMatrix(a, y, x, &real, &imag, 0, NULL);
 
-				if (real != 0.0 && imag != 0.0){
+				if (real != 0 && imag != 0){
 					sprintf(num, "%u+%uj", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (real != 0 && imag == 0){
 					sprintf(num, "%ue", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real == 0 && imag != 0){
 					sprintf(num, "%uj", imag);
 				}else{
 					sprintf(num, "%u", real);
@@ -615,7 +617,7 @@ void wekuaMatrixComplexPrintUshort(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintInt(wmatrix a){
+static void wekuaMatrixComplexPrintInt(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -625,13 +627,13 @@ void wekuaMatrixComplexPrintInt(wmatrix a){
 	double real, imag;
 	int32_t r, i;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -644,11 +646,13 @@ void wekuaMatrixComplexPrintInt(wmatrix a){
 				wekuaGetValueFromMatrix(a, y, x, &r, &i, 0, NULL);
 				real = 1.0*r; imag = 1.0*i;
 
-				if (real != 0.0 && imag != 0.0){
+				uint8_t real_is_zero = (fabs(real) < DBL_EPSILON) ? 1 : 0;
+				uint8_t imag_is_zero = (fabs(imag) < DBL_EPSILON) ? 1 : 0;
+				if (!real_is_zero && !imag_is_zero){
 					sprintf(num, "%.2e%+.2ej", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (!real_is_zero && imag_is_zero){
 					sprintf(num, "%.5e", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real_is_zero && !imag_is_zero){
 					sprintf(num, "%.5ej", imag);
 				}else{
 					sprintf(num, "%.5e", real);
@@ -667,7 +671,7 @@ void wekuaMatrixComplexPrintInt(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintUint(wmatrix a){
+static void wekuaMatrixComplexPrintUint(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -677,13 +681,13 @@ void wekuaMatrixComplexPrintUint(wmatrix a){
 	double real, imag;
 	uint32_t r, i;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -694,13 +698,15 @@ void wekuaMatrixComplexPrintUint(wmatrix a){
 			if ((x < 2 || x >= col-2) && (y < 2 || y >= row-2)){
 				memset(num, 0, 23);
 				wekuaGetValueFromMatrix(a, y, x, &r, &i, 0, NULL);
-				real = 1.0*r; imag = 1.0*i;
+				real = (double) r; imag = (double) i;
 
-				if (real != 0.0 && imag != 0.0){
+				uint8_t real_is_zero = (fabs(real) < DBL_EPSILON) ? 1 : 0;
+				uint8_t imag_is_zero = (fabs(imag) < DBL_EPSILON) ? 1 : 0;
+				if (!real_is_zero && !imag_is_zero){
 					sprintf(num, "%.2e%+.2ej", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (!real_is_zero && imag_is_zero){
 					sprintf(num, "%.5e", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real_is_zero && !imag_is_zero){
 					sprintf(num, "%.5ej", imag);
 				}else{
 					sprintf(num, "%.5e", real);
@@ -719,7 +725,7 @@ void wekuaMatrixComplexPrintUint(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintLong(wmatrix a){
+static void wekuaMatrixComplexPrintLong(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -729,13 +735,13 @@ void wekuaMatrixComplexPrintLong(wmatrix a){
 	double real, imag;
 	int64_t r, i;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -746,13 +752,15 @@ void wekuaMatrixComplexPrintLong(wmatrix a){
 			if ((x < 2 || x >= col-2) && (y < 2 || y >= row-2)){
 				memset(num, 0, 23);
 				wekuaGetValueFromMatrix(a, y, x, &r, &i, 0, NULL);
-				real = 1.0*r; imag = 1.0*i;
+				real = (double) r; imag = (double) i;
 
-				if (real != 0.0 && imag != 0.0){
+				uint8_t real_is_zero = (fabs(real) < DBL_EPSILON) ? 1 : 0;
+				uint8_t imag_is_zero = (fabs(imag) < DBL_EPSILON) ? 1 : 0;
+				if (!real_is_zero && !imag_is_zero){
 					sprintf(num, "%.2e%+.2ej", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (!real_is_zero && imag_is_zero){
 					sprintf(num, "%.5e", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real_is_zero && !imag_is_zero){
 					sprintf(num, "%.5ej", imag);
 				}else{
 					sprintf(num, "%.5e", real);
@@ -771,7 +779,7 @@ void wekuaMatrixComplexPrintLong(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintUlong(wmatrix a){
+static void wekuaMatrixComplexPrintUlong(wmatrix a){
 	if (a == NULL){
 		return;
 	}
@@ -779,15 +787,15 @@ void wekuaMatrixComplexPrintUlong(wmatrix a){
 	char num[23];
 
 	double real, imag;
-	uint64_t r, i;
+	uint64_t r = 0, i = 0;
 
-	uint32_t col, row;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -798,16 +806,69 @@ void wekuaMatrixComplexPrintUlong(wmatrix a){
 			if ((x < 2 || x >= col-2) && (y < 2 || y >= row-2)){
 				memset(num, 0, 23);
 				wekuaGetValueFromMatrix(a, y, x, &r, &i, 0, NULL);
-				real = 1.0*r; imag = 1.0*i;
+				real = (double) r; imag = (double) i;
 
-				if (real != 0.0 && imag != 0.0){
+				uint8_t real_is_zero = (fabs(real) < DBL_EPSILON) ? 1 : 0;
+				uint8_t imag_is_zero = (fabs(imag) < DBL_EPSILON) ? 1 : 0;
+				if (!real_is_zero && !imag_is_zero){
 					sprintf(num, "%.2e%+.2ej", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (!real_is_zero && imag_is_zero){
 					sprintf(num, "%.5e", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real_is_zero && !imag_is_zero){
 					sprintf(num, "%.5ej", imag);
 				}else{
 					sprintf(num, "%.5e", real);
+				}
+
+				printf("%24s", num);
+				if (y+1 != row || x+1 != col){
+					printf(",");
+				}
+			}else if ((x == 2 && (y < 3 || y >= row-2)) || (y == 2 && (x < 3 || x >= col-2))){
+				printf("%25s", "... ");
+			}
+			if (row > 1 && x == col-1 && (y < 3 || y >= row-2)){
+				printf("\n");
+			}
+		}
+	}
+}
+
+static void wekuaMatrixComplexPrintFloat(wmatrix a){
+	if (a == NULL){
+		return;
+	}
+	uint8_t d = 0;
+	char num[23];
+
+	float real = 0.0, imag = 0.0;
+	uint64_t col, row;
+
+	col = a->shape[1];
+	row = a->shape[0];
+
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
+			if (x == 0 && (y < 3 || y >= row-2)){
+				if (d){
+					printf("         ");
+				}else{
+					d ^= 1;
+				}
+			}
+			if ((x < 2 || x >= col-2) && (y < 2 || y >= row-2)){
+				memset(num, 0, 23);
+				wekuaGetValueFromMatrix(a, y, x, &real, &imag, 0, NULL);
+				uint8_t real_is_zero = (fabsf(real) < FLT_EPSILON) ? 1 : 0;
+				uint8_t imag_is_zero = (fabsf(imag) < FLT_EPSILON) ? 1 : 0;
+				if (!real_is_zero && !imag_is_zero){
+					sprintf(num, "%.2e%+.2ej", (double)real, (double)imag);
+				}else if (!real_is_zero && imag_is_zero){
+					sprintf(num, "%.5e", (double)real);
+				}else if (real_is_zero && !imag_is_zero){
+					sprintf(num, "%.5ej", (double)imag);
+				}else{
+					sprintf(num, "%.5e", (double) real);
 				}
 				printf("%24s", num);
 				if (y+1 != row || x+1 != col){
@@ -823,21 +884,21 @@ void wekuaMatrixComplexPrintUlong(wmatrix a){
 	}
 }
 
-void wekuaMatrixComplexPrintFloat(wmatrix a){
+static void wekuaMatrixComplexPrintDouble(wmatrix a){
 	if (a == NULL){
 		return;
 	}
 	uint8_t d = 0;
 	char num[23];
-
-	float real, imag;
-	uint32_t col, row;
+	double real, imag = 0.0;
+	uint64_t col, row;
 
 	col = a->shape[1];
 	row = a->shape[0];
 
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
+
+	for (uint64_t y=0; y<row; y++){
+		for (uint64_t x=0; x<col; x++){
 			if (x == 0 && (y < 3 || y >= row-2)){
 				if (d){
 					printf("         ");
@@ -848,59 +909,14 @@ void wekuaMatrixComplexPrintFloat(wmatrix a){
 			if ((x < 2 || x >= col-2) && (y < 2 || y >= row-2)){
 				memset(num, 0, 23);
 				wekuaGetValueFromMatrix(a, y, x, &real, &imag, 0, NULL);
-				if (real != 0.0 && imag != 0.0){
+
+				uint8_t real_is_zero = (fabs(real) < DBL_EPSILON) ? 1 : 0;
+				uint8_t imag_is_zero = (fabs(imag) < DBL_EPSILON) ? 1 : 0;
+				if (!real_is_zero && !imag_is_zero){
 					sprintf(num, "%.2e%+.2ej", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
+				}else if (!real_is_zero && imag_is_zero){
 					sprintf(num, "%.5e", real);
-				}else if (real == 0.0 && imag != 0.0){
-					sprintf(num, "%.5ej", imag);
-				}else{
-					sprintf(num, "%.5e", real);
-				}
-				printf("%24s", num);
-				if (y+1 != row || x+1 != col){
-					printf(",");
-				}
-			}else if ((x == 2 && (y < 3 || y >= row-2)) || (y == 2 && (x < 3 || x >= col-2))){
-				printf("%25s", "... ");
-			}
-			if (row > 1 && x == col-1 && (y < 3 || y >= row-2)){
-				printf("\n");
-			}
-		}
-	}
-}
-
-void wekuaMatrixComplexPrintDouble(wmatrix a){
-	if (a == NULL){
-		return;
-	}
-	uint8_t d = 0;
-	char num[23];
-	double real, imag;
-	uint32_t col, row;
-
-	col = a->shape[1];
-	row = a->shape[0];
-
-
-	for (uint32_t y=0; y<row; y++){
-		for (uint32_t x=0; x<col; x++){
-			if (x == 0 && (y < 3 || y >= row-2)){
-				if (d){
-					printf("         ");
-				}else{
-					d ^= 1;
-				}
-			}
-			if ((x < 2 || x >= col-2) && (y < 2 || y >= row-2)){
-				memset(num, 0, 23);
-				wekuaGetValueFromMatrix(a, y, x, &real, &imag, 0, NULL);
-				if (real != 0.0 && imag != 0.0){
-					sprintf(num, "%.2e%+.2ej", real, imag);
-				}else if (real != 0.0 && imag == 0.0){
-					sprintf(num, "%.5e", real);
-				}else if (real == 0.0 && imag != 0.0){
+				}else if (real_is_zero && !imag_is_zero){
 					sprintf(num, "%.5ej", imag);
 				}else{
 					sprintf(num, "%.5e", real);

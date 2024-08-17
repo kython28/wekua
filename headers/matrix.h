@@ -26,7 +26,7 @@ extern "C" {
 #endif
 
 // To get random buffer from /dev/urandom
-void getRandomBuffer(void *buf, uint64_t size);
+int getRandomBuffer(void *buf, size_t size);
 
 typedef struct _wk_matrix {
 	// Free function
@@ -56,8 +56,11 @@ typedef struct _wk_matrix {
 } *wmatrix;
 
 void wekuaMatrixPrint(wmatrix a, uint32_t nw, cl_event *be); // To print wmatrix
-uint8_t createComplexMatrix(wmatrix a); // To enable complex numbers.
+uint8_t createComplexMatrix(wmatrix a) __attribute__ ((warn_unused_result)); // To enable complex numbers.
 int removeComplexMatrix(wmatrix b, uint32_t nw, cl_event *be); // To disable complex numbers.
+
+void getLWI(const uint64_t *global_items, uint64_t *local_items, uint32_t si, uint64_t max);
+int mem_set_zero(wmatrix a, cl_mem buf);
 
 wmatrix wekuaMatrixEmpty(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype); // To alloc an empty matrix
 wmatrix wekuaAllocMatrix(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t dtype); // To alloc a null matrix
@@ -70,8 +73,8 @@ wmatrix wekuaMatrixResize(wmatrix a, uint64_t r, uint64_t c, void *alpha, void *
 wmatrix wekuaMatrixConvert(wmatrix a, uint8_t dtype, uint32_t nw, cl_event *be, cl_event *e);
 wmatrix wekuaMatrixFromBuffer(wekuaContext ctx, uint64_t r, uint64_t c, void *rbuf, void *ibuf, uint8_t dtype);
 
-int wekuaMatrixCopyBuffer(wmatrix a, void *rbuf, void *ibuf);
-int wekuaMatrixWritetoBuffer(wmatrix a, void *rbuf, void *ibuf);
+int wekuaMatrixCopyBuffer(wmatrix a, void *rbuf, void *ibuf) __attribute__ ((warn_unused_result));
+int wekuaMatrixWritetoBuffer(wmatrix a, void *rbuf, void *ibuf) __attribute__ ((warn_unused_result));
 
 void wekuaGetValueFromMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
 void wekuaPutValueToMatrix(wmatrix a, uint64_t y, uint64_t x, void *real, void *imag, uint32_t nw, cl_event *be);
@@ -80,14 +83,14 @@ int wekuaCopyMatrixRegion(
 	wmatrix src, uint64_t src_offset_x, uint64_t src_offset_y,
 	wmatrix dst, uint64_t dst_offset_x, uint64_t dst_offset_y,
 	uint64_t w, uint64_t h
-);
+) __attribute__ ((warn_unused_result));
 
 // Some BLAS functions
-int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // y = (alpha+beta*j)*x + y
-int wekuaBlasScalar(wmatrix x, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // Dot all elements in a matrix for a scalar. Alpha is real number and Beta is imaginary number
+int wekuaBlasAxpy(wmatrix x, wmatrix y, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // y = (alpha+beta*j)*x + y
+int wekuaBlasScalar(wmatrix x, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // Dot all elements in a matrix for a scalar. Alpha is real number and Beta is imaginary number
 int wekuaBlasGemm(void *ralpha, void *ialpha, uint8_t a_trans, wmatrix a, uint8_t b_trans, wmatrix b,
 	void *rbeta, void *ibeta, wmatrix c, uint32_t nw, cl_event *be
-);
+) __attribute__ ((warn_unused_result));
  
 // Basic functions
 wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype);
@@ -100,36 +103,36 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 	double delta, uint8_t trans
 );
 
-int wekuaMatrixAdd(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix addition
-int wekuaMatrixAddScalar(wmatrix a, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e); // Add to every values a scalar -> a_{i} += alpha + beta*j
-int wekuaMatrixSub(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Matrix Substration
-int wekuaMatrixDot(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // Hadamard product
-int wekuaMatrixDivide(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e); // a_{i} /= b_{i}
-int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = a_{i}^{exp_r+exp_i*j} or a_{i} = a_{i}^{b_{i}}
-int wekuaMatrixLn(wmatrix a, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = ln(a_{i})
-int wekuaMatrixLog(wmatrix a, wmatrix b, void *base_r, void *base_i);
-int wekuaMatrixTrace(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Matrix Trace
-int wekuaMatrixSqrt(wmatrix a, uint32_t nw, cl_event *be, cl_event *e); // a_{i} = sqrt(a_{i})
+int wekuaMatrixAdd(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // Matrix addition
+int wekuaMatrixAddScalar(wmatrix a, void *alpha, void *beta, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // Add to every values a scalar -> a_{i} += alpha + beta*j
+int wekuaMatrixSub(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // Matrix Substration
+int wekuaMatrixDot(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // Hadamard product
+int wekuaMatrixDivide(wmatrix a, wmatrix b, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // a_{i} /= b_{i}
+int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // a_{i} = a_{i}^{exp_r+exp_i*j} or a_{i} = a_{i}^{b_{i}}
+int wekuaMatrixLn(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // a_{i} = ln(a_{i})
+int wekuaMatrixLog(wmatrix a, wmatrix b, void *base_r, void *base_i) __attribute__ ((warn_unused_result));
+int wekuaMatrixTrace(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be) __attribute__ ((warn_unused_result)); // Matrix Trace
+int wekuaMatrixSqrt(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result)); // a_{i} = sqrt(a_{i})
 
 // Linear functions
 wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be); // Matrix inverse
 wmatrix wekuaMatrixSolve(wmatrix a, wmatrix b, uint32_t nw, cl_event *be);
 wmatrix wekuaMatrixPinv(wmatrix a, uint32_t nw, cl_event *be); // Matrix Pseudo-inverse
 uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be); // Matrix range
-int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Matrix determinant
+int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be) __attribute__ ((warn_unused_result)); // Matrix determinant
 
 // Trigonometric functions
-int wekuaMatrixSin(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
-int wekuaMatrixCos(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
-int wekuaMatrixTan(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
-int wekuaMatrixSinh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
-int wekuaMatrixCosh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
-int wekuaMatrixTanh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e);
+int wekuaMatrixSin(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result));
+int wekuaMatrixCos(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result));
+int wekuaMatrixTan(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result));
+int wekuaMatrixSinh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result));
+int wekuaMatrixCosh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result));
+int wekuaMatrixTanh(wmatrix a, uint32_t nw, cl_event *be, cl_event *e) __attribute__ ((warn_unused_result));
 
 // Extra functions
-int wekuaMatrixSum(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Sum of all the elements
-int wekuaMatrixMul(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Mul of all the elements
-int wekuaMatrixMean(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be); // Mean of all the elements
+int wekuaMatrixSum(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be) __attribute__ ((warn_unused_result)); // Sum of all the elements
+int wekuaMatrixMul(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be) __attribute__ ((warn_unused_result)); // Mul of all the elements
+int wekuaMatrixMean(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be) __attribute__ ((warn_unused_result)); // Mean of all the elements
 void wekuaMatrixMax(wmatrix a, uint64_t *y, uint64_t *x, uint32_t nw, cl_event *be); // To get max value.
 void wekuaMatrixMin(wmatrix a, uint64_t *y, uint64_t *x, uint32_t nw, cl_event *be); // To get min value.
 wmatrix wekuaMatrixPoly(wmatrix a, uint32_t nw, cl_event *be); // Matrix Poly (Leverrier)
@@ -145,3 +148,4 @@ wmatrix loadWekuaMatrix(const char *name, wekuaContext ctx);
 }
 #endif
 #endif
+

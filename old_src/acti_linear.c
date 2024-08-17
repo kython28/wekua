@@ -2,12 +2,12 @@
 
 void *get_one(uint8_t dtype, uint32_t dl);
 
-int run_alinear(void *data, wmatrix input, uint32_t nw, cl_event *be){
+int run_alinear(__attribute__((unused)) void *data, __attribute__((unused)) wmatrix input, uint32_t nw, cl_event *be){
 	clWaitForEvents(nw, be);
 	return CL_SUCCESS;
 }
 
-wmatrix get_dev(void *data, wmatrix input){
+wmatrix get_dev(__attribute__((unused)) void *data, wmatrix input){
 	wekuaContext ctx = input->ctx;
 	uint8_t dtype = input->dtype;
 
@@ -24,7 +24,7 @@ void free_linear(void *a, uint32_t nw, cl_event *be){
 	free(a);
 }
 
-wacti wekuaActiLinear(){
+wacti wekuaActiLinear(void){
 	wacti acti = (wacti) calloc(1, sizeof(struct _w_acti));
 	if (acti == NULL) return NULL;
 	

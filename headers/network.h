@@ -22,10 +22,10 @@ wmatrix runWekuaNetwork(wnetwork net, wmatrix input, wcache **cache);
 int wekuaNetworkBackward(
 	wnetwork net, werror *error, wcache *cache, werror *err,
 	void *alpha, void *beta, uint8_t regularization_type
-);
+) __attribute__ ((warn_unused_result));
 
-uint8_t saveWekuaNetwork(const char *name, wnetwork net);
-uint8_t loadWekuaNetwork(const char *name, wnetwork net, wekuaContext ctx);
+uint8_t saveWekuaNetwork(const char *name, wnetwork net) __attribute__ ((warn_unused_result));
+uint8_t loadWekuaNetwork(const char *name, wnetwork net, wekuaContext ctx) __attribute__ ((warn_unused_result));
 
 void wekuaFreeNetCache(wnetwork net, wcache *cache);
 void wekuaFreeNetError(wnetwork net, werror *error);

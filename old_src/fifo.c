@@ -11,8 +11,12 @@ struct linked_list {
 	struct linked_list_node *last;
 };
 
-wfifo wekuaAllocFIFO(){
+wfifo wekuaAllocFIFO(void){
 	wfifo fifo = calloc(1, sizeof(struct _w_fifo));
+	if (fifo == NULL){
+		return NULL;
+	}
+
 	if (pthread_cond_init(&fifo->cond, NULL) != 0){
 		free(fifo);
 		return NULL;
@@ -23,6 +27,11 @@ wfifo wekuaAllocFIFO(){
 		return NULL;
 	}
 	fifo->data = calloc(1, sizeof(struct linked_list));
+	if (fifo->data == NULL){
+		pthread_mutex_destroy(&fifo->lock);
+		free(fifo);
+		return NULL;
+	}
 	return fifo;
 }
 
@@ -60,6 +69,11 @@ void wekuaFIFOPut(wfifo fifo, void *data){
 
 	pthread_mutex_lock(lock);
 	node = calloc(1, sizeof(struct linked_list_node));
+	if (node == NULL){
+		pthread_mutex_unlock(lock);
+		return;
+	}
+
 	node_last = &queue->last;
 	if (node_last[0] == NULL){
 		queue->first = node;

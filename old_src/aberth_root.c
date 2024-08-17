@@ -26,7 +26,7 @@ wmatrix getUpperLowerBounds(wekuaContext ctx, wmatrix a, uint32_t dl, uint8_t dt
 		((double*)b_scal)[0] = ((double*)max)[0]/fabs(((double*)a_scal)[0]);
 
 	}else{
-		((float*)b_scal)[0] = ((float*)max)[0]/fabs(((float*)a_scal)[0]);
+		((float*)b_scal)[0] = ((float*)max)[0]/fabsf(((float*)a_scal)[0]);
 	}
 
 	wekuaPutValueToMatrix(b, 0, 1, b_scal, NULL, 0, NULL);
@@ -67,7 +67,7 @@ wmatrix getRoots(wekuaContext ctx, wmatrix ran, uint64_t degree, uint8_t dtype){
 
 	
 	if (dtype == WEKUA_DTYPE_DOUBLE) ((double*)pi2)[0] = CL_M_PI*2.0;
-	else ((float*)pi2)[0] = CL_M_PI_F*2.0;
+	else ((float*)pi2)[0] = CL_M_PI_F*2.0f;
 
 	radius = wekuaMatrixRandUniform(ctx, 1, degree, scal1, NULL, scal2, NULL, dtype);
 	if (radius == NULL) return NULL;
@@ -78,7 +78,12 @@ wmatrix getRoots(wekuaContext ctx, wmatrix ran, uint64_t degree, uint8_t dtype){
 		return NULL;
 	}
 
-	wekuaMatrixDot(angle, radius, 0, NULL, &e);
+	int ret = wekuaMatrixDot(angle, radius, 0, NULL, &e);
+	if (ret != CL_SUCCESS) {
+		wekuaFreeMatrix(angle, 0, NULL);
+		wekuaFreeMatrix(radius, 0, NULL);
+		return NULL;
+	}
 
 	roots = wekuaMatrixEulerIden(angle, 1, &e);
 

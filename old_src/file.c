@@ -33,7 +33,7 @@ int open_a_file(const char *name, uint8_t create){
 uint8_t saveMatrix(int fd, wmatrix a){
 	uint8_t ret = CL_SUCCESS;
 
-	uint64_t size = 0, r, c;
+	uint64_t size = 0, r;
 	uint8_t dtype = a->dtype, com = a->com;
 	uint32_t dl;
 
@@ -43,7 +43,6 @@ uint8_t saveMatrix(int fd, wmatrix a){
 	struct header file_h;
 
 	r = a->shape[0];
-	c = a->col;
 
 	size = a->shape[1];
 
@@ -63,13 +62,24 @@ uint8_t saveMatrix(int fd, wmatrix a){
 
 	if (com) size *= 2;
 
-	uint64_t current = lseek(fd, 0, SEEK_CUR);
-	posix_fallocate(fd, current, size);
+	ssize_t lseek_ret = lseek(fd, (ssize_t)size, SEEK_CUR);
+	if (lseek_ret < 0) return 1;
+
+	uint64_t current = (uint64_t) lseek_ret;
+	posix_fallocate(fd, (ssize_t)current, (ssize_t)size);
 
 	void *addr = mmap(NULL, current+size, PROT_WRITE, MAP_SHARED, fd, 0);
 
-	if (com) wekuaMatrixWritetoBuffer(a, addr + current, addr + current + size/2);
-	else wekuaMatrixWritetoBuffer(a, addr + current, NULL);
+	if (com) {
+		 if (wekuaMatrixWritetoBuffer(a, addr + current, addr + current + size/2) != CL_SUCCESS) {
+			 return 1;
+		 }
+	}
+	else {
+		if (wekuaMatrixWritetoBuffer(a, addr + current, NULL) != CL_SUCCESS) {
+			return 1;
+		}
+	}
 
 	munmap(addr, current+size);
 
@@ -85,7 +95,10 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 
 	if (read(fd, &file_h, sizeof(struct header)) != sizeof(struct header)) return NULL;
 
-	uint64_t current = lseek(fd, 0, SEEK_CUR);
+	ssize_t lseek_ret = lseek(fd, 0, SEEK_CUR);
+	if (lseek_ret < 0) return NULL;
+
+	uint64_t current = (uint64_t)lseek_ret;
 
 	void *addr = NULL;
 	uint64_t size = file_h.size;
@@ -100,7 +113,7 @@ wmatrix loadMatrix(int fd, wekuaContext ctx){
 	}
 
 	munmap(addr, current + size);
-	lseek(fd, current + size, SEEK_SET);
+	lseek(fd, (ssize_t)(current + size), SEEK_SET);
 	return a;
 }
 
@@ -171,7 +184,6 @@ uint8_t saveWekuaNeuron(const char *name, wneuron neuron){
 	if (name == NULL || neuron == NULL) return 1;
 	int fd;
 	uint8_t ret;
-	uint64_t layer = neuron->layer;
 
 	fd = open_a_file(name, 1);
 	if (fd < 0) return 1;
@@ -242,9 +254,9 @@ uint8_t loadWekuaNetwork(const char *name, wnetwork net, wekuaContext ctx){
 		w = neuron->weight;
 		b = neuron->bias;
 		
-		for (uint64_t x=0; x<layer; x++) wekuaFreeMatrix(w[x], 0, NULL);
+		for (uint64_t y=0; y<layer; y++) wekuaFreeMatrix(w[y], 0, NULL);
 		if (b){
-			for (uint64_t x=0; x<layer; x++) wekuaFreeMatrix(b[x], 0, NULL);
+			for (uint64_t y=0; y<layer; y++) wekuaFreeMatrix(b[y], 0, NULL);
 		}
 
 		loadNeuron(fd, ctx, neuron);

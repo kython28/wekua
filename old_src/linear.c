@@ -13,19 +13,28 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 	neur->acti = acti;
 
 	weight = (wmatrix*) calloc(deep, sizeof(wmatrix));
-	if (weight == NULL) return NULL;
+	if (weight == NULL) {
+		free(neur);
+		return NULL;
+	}
 	neur->weight = weight;
 
-	void *start, *end;
+	void *start = NULL, *end = NULL;
 	if (dtype == WEKUA_DTYPE_FLOAT){
 		start = malloc(sizeof(float));
+		if (start == NULL) goto wekua_linear_fail;
+
 		end = malloc(sizeof(float));
+		if (end == NULL) goto wekua_linear_fail;
 
 		((float*)start)[0] = -1.0;
 		((float*)end)[0] = 1.0;
 	}else{
 		start = malloc(sizeof(double));
+		if (start == NULL) goto wekua_linear_fail;
+
 		end = malloc(sizeof(double));
+		if (end == NULL) goto wekua_linear_fail;
 
 		((double*)start)[0] = -1.0;
 		((double*)end)[0] = 1.0;
@@ -71,8 +80,8 @@ wneuron wekuaLinear(wekuaContext ctx, uint64_t input, uint64_t output, uint64_t 
 	neur = NULL;
 
 	wekua_linear_success:
-	free(start);
-	free(end);
+	if (start != NULL) free(start);
+	if (end != NULL) free(end);
 
 	return neur;
 }

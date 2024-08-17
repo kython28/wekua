@@ -1,22 +1,22 @@
 #include "../headers/matrix.h"
 #include <math.h>
+#include <float.h>
 
 uint64_t zero = 0;
 
-void getLWI(uint64_t *x, uint64_t *y, uint32_t si, uint64_t max){
-	uint64_t c = (uint64_t)(pow(1.0*max, 1.0/si));
-	uint64_t a, b;
+void getLWI(const uint64_t *global_items, uint64_t *local_items, uint32_t si, uint64_t max){
+	uint64_t c = (uint64_t)(pow((double)max, 1.0/si));
 	for (uint32_t j=0; j<si; j++){
-		a = x[j];
-		if (a < c){
-			y[j] = a;
+		const uint64_t g_items = global_items[j];
+		if (g_items < c){
+			local_items[j] = g_items;
 			continue;
 		}
-		b = c;
-		while (a%b != 0){
-			b--;
+		uint64_t l_items = c;
+		while (g_items%l_items != 0){
+			l_items--;
 		}
-		x[j] = a; y[j] = b;
+		local_items[j] = l_items;
 	}
 }
 
@@ -76,7 +76,6 @@ int removeComplexMatrix(wmatrix b, uint32_t nw, cl_event *be){
 		return CL_SUCCESS;
 	}
 
-	cl_event e;
 	int ret;
 	
 	clWaitForEvents(nw, be);
@@ -181,7 +180,7 @@ wmatrix wekuaFillMatrix(wekuaContext ctx, uint64_t r, uint64_t c, void *alpha, v
 	
 	int ret;
 	uint8_t com = 0;
-	uint32_t dl = ctx->dtype_length[dtype], evn = 0;
+	uint32_t dl = ctx->dtype_length[dtype];
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_FILL, dtype, com);
 	if (kernel == NULL){
 		wekuaFreeMatrix(a, 0, NULL);
@@ -233,7 +232,8 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 	}
 
 	cl_command_queue cmd = ctx->command_queue;
-	cl_context ct = ctx->ctx;
+	cl_context cl_ctx = ctx->ctx;
+	cl_mem_flags flags = ctx->flags;
 	cl_mem ran_r=NULL, ran_i=NULL;
 	cl_event e;
 
@@ -241,7 +241,7 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 
 	int ret;
 
-	ran_r = clCreateBuffer(ctx->ctx, ctx->flags, size, NULL, &ret);
+	ran_r = clCreateBuffer(cl_ctx, flags, size, NULL, &ret);
 	if (ret != CL_SUCCESS){
 		clReleaseMemObject(ran_r);
 		return NULL;
@@ -256,7 +256,7 @@ wmatrix wekuaMatrixRandn(wekuaContext ctx, uint64_t r, uint64_t c, uint8_t com){
 	clReleaseEvent(e);
 
 	if (com){
-		ran_i = clCreateBuffer(ctx->ctx, ctx->flags, size, NULL, &ret);
+		ran_i = clCreateBuffer(cl_ctx, flags, size, NULL, &ret);
 		if (ret != 0){
 			clReleaseMemObject(ran_r);
 			clReleaseMemObject(ran_i);
@@ -349,16 +349,14 @@ wmatrix wekuaMatrixRandUniform(wekuaContext ctx, uint64_t r, uint64_t c, void *r
 	if (ret == CL_SUCCESS){
 		evn++;
 		clWaitForEvents(evn, e);
-		if (befo != NULL) clReleaseEvent(befo[0]);
 		clReleaseEvent(e[evn-1]);
 	}else{
 		wekuaFreeMatrix(a, evn, befo);
 		wekuaFreeMatrix(b, 0, NULL);
 		a = NULL;
 		b = NULL;
-
-		clReleaseEvent(befo[0]);
 	}
+	if (befo != NULL) clReleaseEvent(befo[0]);
 
 	if (a != b){
 		wekuaFreeMatrix(a, 0, NULL);
@@ -632,7 +630,10 @@ wmatrix wekuaMatrixIden(wekuaContext ctx, uint64_t col, uint8_t dtype){
 	int ret;
 
 	cl_kernel kernel = compileKernel(ctx, WEKUA_KERNEL_IDEN, dtype, 0);
-	if (kernel == NULL) return NULL;
+	if (kernel == NULL) {
+		wekuaFreeMatrix(iden, 0, NULL);
+		return NULL;
+	}
 	cl_event e;
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), &iden->real);
@@ -814,7 +815,7 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 	double start_r, double start_i, double end_r, double end_i,
 	double delta, uint8_t trans
 ){
-	if (start_r == end_r && start_i == end_i) return NULL;
+	if (fabs(start_r - end_r) < DBL_EPSILON && fabs(start_i - end_i) < DBL_EPSILON) return NULL;
 
 	wmatrix a;
 	uint8_t com;
@@ -830,16 +831,16 @@ wmatrix wekuaMatrixArange(wekuaContext ctx,
 	ydis = end_i-start_i;
 
 	norm = sqrt(xdis*xdis + ydis*ydis);
-	if (xdis == 0.0) theta = CL_M_PI_2;
+	if (fabs(xdis) < DBL_EPSILON) theta = CL_M_PI_2;
 	else theta = atan(ydis/xdis);
 
-	col = (uint64_t) norm/delta;
-	while (col*delta > norm) col--;
+	col = (uint64_t) floor(norm/delta);
+	while (((double)col)*delta > norm) col--;
 
 	delta_r = (xdis*delta)/(cos(theta)*norm);
 	delta_i = (ydis*delta)/(sin(theta)*norm);
 
-	if (ydis == 0.0) com = 0;
+	if (fabs(ydis) < DBL_EPSILON) com = 0;
 	else com = 1;
 
 	if (trans){
@@ -894,9 +895,9 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 	else if (a->dtype < WEKUA_DTYPE_FLOAT) return NULL;
 
 	wekuaContext ctx = a->ctx;
-	uint64_t col = a->shape[1], rcol = a->vl_shape[1], evn, *shape = a->vl_shape, *wi = a->work_items;
+	uint32_t evn = 0;
+	uint64_t col = a->shape[1], rcol = a->vl_shape[1], *shape = a->vl_shape, *wi = a->work_items;
 	uint8_t dtype = a->dtype, otherm = 1, com = a->com;
-	uint32_t dl = ctx->dtype_length[dtype];
 	int ret;
 	wmatrix inv = NULL, b = NULL;
 	cl_event *e = NULL;
@@ -944,8 +945,6 @@ wmatrix wekuaMatrixInv(wmatrix a, uint32_t nw, cl_event *be){
 	}
 
 	kernel = compileKernel(ctx, WEKUA_KERNEL_GAUSS_2, dtype, com);
-
-	dl *= wi[4];
 
 	clSetKernelArg(kernel, 0, sizeof(cl_mem), i_real);
 	clSetKernelArg(kernel, 1, sizeof(cl_mem), i_imag);
@@ -1016,26 +1015,40 @@ wmatrix wekuaMatrixPinv(wmatrix a, uint32_t nw, cl_event *be){
 	cl_event e;
 	wmatrix pinv=NULL, te=NULL, ti=NULL;
 
-	uint32_t rang = wekuaMatrixRang(a, 1, &e);
-
-	clReleaseEvent(e);
+	uint64_t rang = wekuaMatrixRang(a, nw, be);
+	if (rang == 0) goto wekua_pinv_finish;
 
 	te = wekuaAllocMatrix(ctx, rang, rang, dtype);
 
+	int ret;
 	if (rang == a->shape[0]){
-		wekuaBlasGemm(one, NULL, 0, a, 1, a, NULL, NULL, te, 0, NULL);
+		ret = wekuaBlasGemm(one, NULL, 0, a, 1, a, NULL, NULL, te, 0, NULL);
+		if (ret != CL_SUCCESS) goto wekua_pinv_fail;
 		
 		ti = wekuaMatrixInv(te, 0, NULL);
+		pinv = wekuaAllocMatrix(ctx, a->shape[0], ti->shape[0], dtype);
 
-		wekuaBlasGemm(one, NULL, 1, a, 0, ti, NULL, NULL, pinv, 0, NULL);
+		ret = wekuaBlasGemm(one, NULL, 1, a, 0, ti, NULL, NULL, pinv, 0, NULL);
+		if (ret != CL_SUCCESS) goto wekua_pinv_fail;
 	}else if (rang == a->shape[1]){
-		wekuaBlasGemm(one, NULL, 1, a, 0, a, NULL, NULL, te, 0, NULL);
+		ret = wekuaBlasGemm(one, NULL, 1, a, 0, a, NULL, NULL, te, 0, NULL);
+		if (ret != CL_SUCCESS) goto wekua_pinv_fail;
 
 		ti = wekuaMatrixInv(te, 1, &e);
-		wekuaBlasGemm(one, NULL, 0, ti, 1, a, NULL, NULL, pinv, 0, NULL);
+		pinv = wekuaAllocMatrix(ctx, ti->shape[1], a->shape[1], dtype);
+
+		ret = wekuaBlasGemm(one, NULL, 0, ti, 1, a, NULL, NULL, pinv, 0, NULL);
+		if (ret != CL_SUCCESS) goto wekua_pinv_fail;
 	}
-	wekuaFreeMatrix(te, 0, NULL);
-	wekuaFreeMatrix(ti, 0, NULL);
+
+	goto wekua_pinv_finish;
+
+	wekua_pinv_fail:
+	if (pinv != NULL) wekuaFreeMatrix(pinv, 0, NULL);
+
+	wekua_pinv_finish:
+	if (te != NULL) wekuaFreeMatrix(te, 0, NULL);
+	if (ti != NULL) wekuaFreeMatrix(ti, 0, NULL);
 
 	free(one);
 
@@ -1049,7 +1062,7 @@ uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be){
 	wekuaContext ctx = a->ctx;
 	int ret;
 	uint8_t dtype = a->dtype, otherm = 0, com = a->com;
-	uint64_t rang = 0, evn, r = a->shape[0], *wi = &a->work_items[6], col, rcol, *shape = a->shape;
+	uint64_t rang = 0, evn = 0, r = a->shape[0], *wi = &a->work_items[6], col, rcol, *shape = a->shape;
 	uint32_t dl = ctx->dtype_length[dtype];
 	wmatrix b = NULL, c = NULL, d = NULL, f = NULL;
 	cl_event *e = NULL;
@@ -1093,7 +1106,8 @@ uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be){
 	f = wekuaMatrixAbs(b, 1, &e[evn]);
 	if (f == NULL) goto wekua_rang_fail;
 
-	wekuaBlasGemm(one, NULL, 0, f, 1, c, NULL, NULL, d, 0, NULL);
+	ret = wekuaBlasGemm(one, NULL, 0, f, 1, c, NULL, NULL, d, 0, NULL);
+	if (ret != CL_SUCCESS) goto wekua_rang_fail;
 
 	for (uint64_t i=0; i<d->shape[0]; i++){
 		wekuaGetValueFromMatrix(d, i, 0, one, NULL, 0, NULL);
@@ -1103,7 +1117,7 @@ uint64_t wekuaMatrixRang(wmatrix a, uint32_t nw, cl_event *be){
 	wekua_rang_fail:
 	if (e != NULL){
 		evn++;
-		clWaitForEvents(evn, e);
+		clWaitForEvents((uint32_t)evn, e);
 		free(e);
 	}
 	if (one != NULL) free(one);
@@ -1262,7 +1276,7 @@ int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw
 	if (a == NULL) return CL_INVALID_MEM_OBJECT;
 	else if (a->dtype < WEKUA_DTYPE_FLOAT) return CL_INVALID_MEM_OBJECT;
 
-	uint8_t om = 0, dtype = a->dtype, com = a->com;
+	uint8_t dtype = a->dtype, com = a->com;
 	wekuaContext ctx = a->ctx;
 	uint32_t dl = ctx->dtype_length[dtype];
 	
@@ -1272,8 +1286,6 @@ int wekuaMatrixPower(wmatrix a, wmatrix b, void *exp_r, void *exp_i, uint32_t nw
 	if (exp_i == NULL) exp_i = &zero;
 
 	if (b != NULL){
-		om = 1;
-
 		if (memcmp(a->shape, b->shape, 16) != 0) return CL_INVALID_MEM_OBJECT;
 
 		com |= b->com;
@@ -1410,13 +1422,13 @@ int wekuaMatrixSqrt(wmatrix a, uint32_t nw, cl_event *be, cl_event *e){
 }
 
 int wekuaMatrixDet(wmatrix a, void *real, void *imag, uint32_t nw, cl_event *be){
-	if (a == NULL && real == NULL && imag == NULL) return CL_INVALID_ARG_VALUE;
+	if (a == NULL || (real == NULL && imag == NULL)) return CL_INVALID_ARG_VALUE;
 	else if (a->dtype < WEKUA_DTYPE_FLOAT) return CL_INVALID_MEM_OBJECT;
 
 	wekuaContext ctx = a->ctx;
 	uint8_t dtype = a->dtype, com = a->com;
 	int ret = CL_SUCCESS;
-	uint32_t evn;
+	uint32_t evn = 0;
 	uint64_t col = a->shape[1], rcol = a->vl_shape[1], *shape, *wi;
 	void *one = NULL;
 	cl_event *e = NULL, *befo = NULL;

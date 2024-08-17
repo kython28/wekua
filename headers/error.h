@@ -13,7 +13,7 @@ typedef struct _w_error {
 	uint64_t no_err;
 } *werror;
 
-int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be); // Mean Square Error
+int wekuaMSE(wmatrix output, wmatrix output_wanted, void *error, void *errori, werror *err, uint32_t nw, cl_event *be) __attribute__ ((warn_unused_result)); // Mean Square Error
 
 #ifdef __cplusplus
 }

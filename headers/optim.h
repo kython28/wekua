@@ -29,8 +29,8 @@ woptim wekuaOptimRMSProp(wekuaContext ctx, wnetwork net, void *lr, void *lri, vo
 woptim wekuaOptimAdadelta(wekuaContext ctx, wnetwork net, void *lr, void *lri, uint8_t dtype); // Adadelta
 woptim wekuaOptimAdam(wekuaContext ctx,  wnetwork net, void *lr, void *lri, void *beta1, void *beta1i, void *beta2, void *beta2i, uint8_t dtype); // Adam
 
-int wekuaOptimStep(woptim optim, werror *error, wcache *cache);
-int wekuaOptimZero(woptim optim);
+int wekuaOptimStep(woptim optim, werror *error, wcache *cache) __attribute__ ((warn_unused_result));
+int wekuaOptimZero(woptim optim) __attribute__ ((warn_unused_result));
 
 void wekuaFreeOptim(woptim optim, uint32_t nw, cl_event *be);
 
