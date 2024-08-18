@@ -72,6 +72,22 @@ pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]cl.event
     return event;
 }
 
+pub fn concatenate_events(allocator: std.mem.Allocator, events_array: []const []const cl.event.cl_event) !void {
+    var final_array_len: usize = 0;
+    for (events_array) |arr| final_array_len += arr.len;
+
+    const final_array = try allocator.alloc(cl.event.cl_event, final_array_len);
+
+    var offset: usize = 0;
+    for (events_array) |arr| {
+        const arr_len = arr.len;
+        @memcpy(final_array[offset..(offset + arr_len)], arr);
+        offset += arr_len;
+    }
+
+    return final_array;
+}
+
 fn tensor_event_callback(_: cl.event.cl_event, event_command_status: i32, user_data: ?*anyopaque) callconv(.C) void {
     const event_status: cl.event.enums.execution_status = @enumFromInt(event_command_status);
     if (event_status != .complete) unreachable;

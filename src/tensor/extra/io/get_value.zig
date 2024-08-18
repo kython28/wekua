@@ -12,10 +12,7 @@ const wTensor = dtypes.wTensor;
 const wScalar = dtypes.wScalar;
 const wTensorDtype = dtypes.wTensorDtype;
 
-fn get_value_callback(_: std.mem.Allocator, user_data: ?*anyopaque) void {
-    const cond: *std.Thread.Condition = @alignCast(@ptrCast(user_data.?));
-    cond.signal();
-}
+const utils = @import("utils.zig");
 
 fn write_value_to_scalar(pattern: []u8, scalar: *wScalar, dtype: wTensorDtype) void {
     const tensor_dtype_fields = @typeInfo(wTensorDtype).Enum.fields;
@@ -87,7 +84,7 @@ pub fn get_value(
 
     var cond = std.Thread.Condition{};
     try w_event.register_new_event(
-        command_queue, tensor, &get_value_callback, &cond, new_event, .read
+        command_queue, tensor, &utils.signal_condition_callback, &cond, new_event, .read
     );
     cond.wait(tensor_mutex);
     tensor_mutex.unlock();

@@ -191,11 +191,11 @@ test "create random buffer, write to tensor and read" {
 
     const w_cmd = ctx.command_queues[0];
     try wekua.tensor.io.read_from_buffer(
-        w_cmd, tensor, @as([*]u8, @ptrCast(buf1.ptr))[0..(buf1.len * @sizeOf(i64))]
+        w_cmd, tensor, buf1
     );
 
     try wekua.tensor.io.write_to_buffer(
-        w_cmd, tensor, @as([*]u8, @ptrCast(buf2.ptr))[0..(buf2.len * @sizeOf(i64))]
+        w_cmd, tensor, buf2
     );
 
     for (buf1, buf2) |e1, e2| {

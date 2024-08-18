@@ -103,3 +103,19 @@ pub fn get_dtype_size(dtype: wTensorDtype) usize {
         .float64 => @sizeOf(f64)
     };
 }
+
+pub fn get_wekua_dtype_from_zig_type(comptime T: type) wTensorDtype {
+    return switch (T) {
+        i8 => .int8,
+        u8 => .uint8,
+        i16 => .int16,
+        u16 => .uint16,
+        i32 => .int32,
+        u32 => .uint32,
+        i64 => .int64,
+        u64 => .uint64,
+        f32 => .float32,
+        f64 => .float64,
+        else => @panic("Type not supported")
+    };
+}

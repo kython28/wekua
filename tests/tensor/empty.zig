@@ -7,7 +7,8 @@ fn create_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreate
     const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
-    const tensor = try wekua.tensor.empty(ctx, &[_]u64{20, 10}, config);
+    const shape_expected: []const u64 = &[_]u64{20, 10};
+    const tensor = try wekua.tensor.empty(ctx, shape_expected, config);
     defer wekua.tensor.release(tensor);
 
     if (config.is_complex) {
@@ -18,7 +19,10 @@ fn create_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreate
     }else{
         try std.testing.expect(!tensor.is_complex);
         try std.testing.expect(tensor.vectors_enabled);
+        try std.testing.expect(tensor.number_of_elements == 20*10);
     }
+
+    try std.testing.expectEqualSlices(u64, shape_expected, tensor.shape);
 }
 
 fn test_tensor_creation(allocator: std.mem.Allocator) !void {
