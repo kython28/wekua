@@ -202,3 +202,111 @@ test "create random buffer, write to tensor and read" {
         try std.testing.expectEqual(e1, e2);
     }
 }
+
+fn copy_tensors_and_check(
+    _: std.mem.Allocator, src: wekua.tensor.wTensor, dst: wekua.tensor.wTensor,
+    command_queue: wekua.command_queue.wCommandQueue, buf1: []f64, buf2: []f64
+) !void {
+    try wekua.tensor.io.copy(command_queue, src, dst);
+
+    try wekua.tensor.io.write_to_buffer(command_queue, src, buf1);
+    try wekua.tensor.io.write_to_buffer(command_queue, dst, buf2);
+
+    const eps = std.math.floatEps(f64);
+    for (buf1, buf2) |a, b| {
+        try std.testing.expectApproxEqAbs(a, b, eps);
+    }
+}
+
+test "Copy tensors with same row pitch" {
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer wekua.context.release(ctx);
+
+    const cmd = ctx.command_queues[0];
+    const tensor1 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64});
+    defer wekua.tensor.release(tensor1);
+
+    const tensor2 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64});
+    defer wekua.tensor.release(tensor2);
+
+    try wekua.tensor.extra.random.random(cmd, tensor1);
+
+    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    defer allocator.free(buf1);
+
+    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    defer allocator.free(buf2);
+
+    try std.testing.checkAllAllocationFailures(allocator, copy_tensors_and_check, .{
+        tensor1, tensor2, cmd, buf1, buf2
+    });
+}
+
+test "Copy tensors with different row pitch" {
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer wekua.context.release(ctx);
+
+    const cmd = ctx.command_queues[0];
+    const tensor1 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64});
+    defer wekua.tensor.release(tensor1);
+
+    const tensor2 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64, .vectors_enabled = false});
+    defer wekua.tensor.release(tensor2);
+
+    try wekua.tensor.extra.random.random(cmd, tensor1);
+
+    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    defer allocator.free(buf1);
+
+    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    defer allocator.free(buf2);
+
+    try std.testing.checkAllAllocationFailures(allocator, copy_tensors_and_check, .{
+        tensor1, tensor2, cmd, buf1, buf2
+    });
+}
+
+test "Try to copy tensors with different dtype" {
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer wekua.context.release(ctx);
+
+    const cmd = ctx.command_queues[0];
+    const tensor1 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64});
+    defer wekua.tensor.release(tensor1);
+
+    const tensor2 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .int8});
+    defer wekua.tensor.release(tensor2);
+
+    const ret = wekua.tensor.io.copy(cmd, tensor1, tensor2);
+    try std.testing.expectError(error.UnqualTensors, ret);
+}
+
+test "Try to copy tensors with different shape" {
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer wekua.context.release(ctx);
+
+    const cmd = ctx.command_queues[0];
+    const tensor1 = try wekua.tensor.empty(ctx, &.{100, 50}, .{.dtype = .float64});
+    defer wekua.tensor.release(tensor1);
+
+    const tensor2 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64});
+    defer wekua.tensor.release(tensor2);
+
+    const ret = wekua.tensor.io.copy(cmd, tensor1, tensor2);
+    try std.testing.expectError(error.UnqualTensors, ret);
+}
+
+test "Try to copy complex and real tensors" {
+    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer wekua.context.release(ctx);
+
+    const cmd = ctx.command_queues[0];
+    const tensor1 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64, .is_complex = true});
+    defer wekua.tensor.release(tensor1);
+
+    const tensor2 = try wekua.tensor.empty(ctx, &.{100, 100}, .{.dtype = .float64});
+    defer wekua.tensor.release(tensor2);
+
+    const ret = wekua.tensor.io.copy(cmd, tensor1, tensor2);
+    try std.testing.expectError(error.UnqualTensors, ret);
+}

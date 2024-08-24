@@ -21,7 +21,6 @@ pub fn write_to_buffer(command_queue: wCommandQueue, tensor: wTensor, buffer: an
     const dtype_size = dtypes.get_dtype_size(dtype);
     const number_of_elements = tensor.number_of_elements;
 
-    const tensor_size = tensor.size;
     const tensor_shape = tensor.shape;
     const c: usize = @intCast(
         tensor_shape[tensor_shape.len - 1] * (
@@ -44,7 +43,7 @@ pub fn write_to_buffer(command_queue: wCommandQueue, tensor: wTensor, buffer: an
     var new_event: cl.event.cl_event = undefined;
     try cl.buffer.read_rect(
         command_queue.cmd, tensor.buffer, false, &buff_origin, &buff_origin, &region,
-        buf_row_pitch, tensor_size, host_row_pitch, 0, buffer_as_bytes.ptr, prev_events, &new_event
+        buf_row_pitch, 0, host_row_pitch, 0, buffer_as_bytes.ptr, prev_events, &new_event
     );
     errdefer {
         cl.event.wait(new_event) catch unreachable;

@@ -57,7 +57,7 @@ fn get_kernel(command_queue: wCommandQueue, tensor: wTensor) !cl.kernel.cl_kerne
 
 fn fill_with_random_bytes(
     cmd: cl.command_queue.cl_command_queue, tensor_buf: cl.buffer.cl_mem,
-    size: usize, prev_events: ?[]cl.event.cl_event
+    size: usize, prev_events: ?[]const cl.event.cl_event
 ) !void {
     var event: cl.event.cl_event = undefined;
     const map_flags = @intFromEnum(cl.buffer.enums.map_flags.read)|@intFromEnum(cl.buffer.enums.map_flags.write);

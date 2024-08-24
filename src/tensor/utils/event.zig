@@ -39,7 +39,7 @@ const _w_tensor_event = struct {
 
 pub const wTensorEvent = *_w_tensor_event;
 
-pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]cl.event.cl_event {
+pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]const cl.event.cl_event {
     const mutex = &tensor.mutex; 
     mutex.lock();
     errdefer mutex.unlock();
@@ -57,13 +57,13 @@ pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]cl.event
         };
     }
 
-    var event: ?[]cl.event.cl_event = null;
+    var event: ?[]const cl.event.cl_event = null;
     loop: while (node != null) {
         tensor_event = @alignCast(@ptrCast(node.?.data.?));
         switch (tensor_event.event_type) {
             .read => node = node.?.prev,
             .write => {
-                event = @as([*]cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1];
+                event = @as([*]const cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1];
                 break :loop;
             }
         }
@@ -72,17 +72,27 @@ pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]cl.event
     return event;
 }
 
-pub fn concatenate_events(allocator: std.mem.Allocator, events_array: []const []const cl.event.cl_event) !void {
+pub fn concatenate_events(
+    allocator: std.mem.Allocator, events_array: []const ?[]const cl.event.cl_event
+) !?[]cl.event.cl_event {
     var final_array_len: usize = 0;
-    for (events_array) |arr| final_array_len += arr.len;
+    for (events_array) |events| {
+        if (events) |v| {
+            final_array_len += v.len;
+        }
+    }
+
+    if (final_array_len == 0) return null;
 
     const final_array = try allocator.alloc(cl.event.cl_event, final_array_len);
 
     var offset: usize = 0;
-    for (events_array) |arr| {
-        const arr_len = arr.len;
-        @memcpy(final_array[offset..(offset + arr_len)], arr);
-        offset += arr_len;
+    for (events_array) |events| {
+        if (events) |v| {
+            const arr_len = v.len;
+            @memcpy(final_array[offset..(offset + arr_len)], v);
+            offset += arr_len;
+        }
     }
 
     return final_array;
@@ -97,6 +107,14 @@ fn tensor_event_callback(_: cl.event.cl_event, event_command_status: i32, user_d
     const tensor_event: wTensorEvent = @alignCast(@ptrCast(events_node.data.?));
 
     tensor_event.ctx_queue.put_node(node);
+}
+
+fn push_new_event_to_callback(event: cl.event.cl_event, tensor_event_node: wLinkedList.Node, ctx_queue: *wQueue) !void {
+    const ctx_queue_ll = &ctx_queue.queue;
+    const new_node = try ctx_queue_ll.create_new_node(tensor_event_node);
+    errdefer ctx_queue_ll.release_node(new_node);
+
+    try cl.event.set_callback(event, .complete, &tensor_event_callback, new_node);
 }
 
 fn create_new_tensor_event(
@@ -181,12 +199,9 @@ fn create_new_tensor_event(
         }
     }
 
-    const ctx_queue_ll = &ctx_queue.queue;
-    const new_node = try ctx_queue_ll.create_new_node(events.last);
-    errdefer ctx_queue_ll.release_node(new_node);
-
-    try cl.event.set_callback(event, .complete, &tensor_event_callback, new_node);
+    try push_new_event_to_callback(event, events.last.?, ctx_queue);
 }
+
 
 pub fn release_tensor_event(tensor_event: wTensorEvent) !void {
     const allocator = tensor_event.allocator;
@@ -240,8 +255,17 @@ pub fn register_new_event(
                     }
                     if (callback) |v| {
                         try te.callbacks.append(v);
+                        errdefer {
+                            _ = te.callbacks.pop();
+                        }
                         try te.user_datas.append(user_data);
                     }
+                    errdefer {
+                        _ = te.callbacks.pop();
+                        _ = te.user_datas.pop();
+                    }
+
+                    try push_new_event_to_callback(event, node, &tensor.context.queue);
                     return;
                 }
             },
