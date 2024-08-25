@@ -38,7 +38,7 @@ fn copy_tensor_with_different_row_pitch(command_queue: wCommandQueue, src: wTens
             1 + @as(u64, @intCast(@intFromBool(src.is_complex)))
         )
     );
-    const r: usize = number_of_elements / c;
+    const r: usize = number_of_elements / src.row_pitch;
 
     const buff_origin: [3]usize = .{0, 0, 0};
     const region: [3]usize = .{c*dtype_size, r, 1};

@@ -44,7 +44,9 @@ fn release_previous_event(node: wLinkedList.Node, tensor_event: wTensorEvent) !b
     return true;
 }
 
-fn deal_with_new_tensor_event(data: *anyopaque, pending_events: *wLinkedList) !void {
+fn deal_with_new_tensor_event(
+    allocator: std.mem.Allocator, ctx_queue_node: wLinkedList.Node, data: *anyopaque, pending_events: *wLinkedList
+) !void {
     const node: wLinkedList.Node = @alignCast(@ptrCast(data));
     const tensor_event: wTensorEvent = @alignCast(@ptrCast(node.data.?));
     const mutex = tensor_event.mutex;
@@ -63,9 +65,13 @@ fn deal_with_new_tensor_event(data: *anyopaque, pending_events: *wLinkedList) !v
 
     if (finished) {
         const released = try release_previous_event(node, tensor_event);
-        if (!released) {
-            try pending_events.append(node);
+        if (released) {
+            allocator.destroy(ctx_queue_node);
+        }else{
+            pending_events.append_node(ctx_queue_node);
         }
+    }else{
+        allocator.destroy(ctx_queue_node);
     }
 }
 
@@ -112,10 +118,14 @@ fn context_events_worker(allocator: std.mem.Allocator, queue: *wQueue) void {
     var pending_events: wLinkedList = wLinkedList.init(allocator);
 
     while (true) {
-        const cl_user_data: ?*anyopaque = queue.get(true) catch unreachable;
+        const last_node: ?wLinkedList.Node = queue.get_node(true) catch unreachable;
+        if (last_node == null) break;
+
+        const cl_user_data: ?*anyopaque = last_node.?.data;
         if (cl_user_data) |v| {
-            deal_with_new_tensor_event(v, &pending_events) catch unreachable;
+            deal_with_new_tensor_event(allocator, last_node.?, v, &pending_events) catch unreachable;
         }else{
+            allocator.destroy(last_node.?);
             break;
         }
 

@@ -27,7 +27,7 @@ pub fn write_to_buffer(command_queue: wCommandQueue, tensor: wTensor, buffer: an
             1 + @as(u64, @intCast(@intFromBool(tensor.is_complex)))
         )
     );
-    const r: usize = number_of_elements / c;
+    const r: usize = number_of_elements / tensor.row_pitch;
 
     const buff_origin: [3]usize = .{0, 0, 0};
     const region: [3]usize = .{c*dtype_size, r, 1};

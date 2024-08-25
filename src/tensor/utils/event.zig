@@ -42,7 +42,6 @@ pub const wTensorEvent = *_w_tensor_event;
 pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]const cl.event.cl_event {
     const mutex = &tensor.mutex; 
     mutex.lock();
-    errdefer mutex.unlock();
 
     const tensor_events = tensor.events;
     var node = tensor_events.last;
@@ -57,19 +56,26 @@ pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]const cl
         };
     }
 
-    var event: ?[]const cl.event.cl_event = null;
+    var events: ?[]const cl.event.cl_event = null;
     loop: while (node != null) {
         tensor_event = @alignCast(@ptrCast(node.?.data.?));
         switch (tensor_event.event_type) {
-            .read => node = node.?.prev,
+            .read => {
+                const read_events = tensor_event.read_events.?.items;
+                if (tensor_event.events_finalized == read_events.len) {
+                    events = read_events;
+                    break :loop;
+                }
+                node = node.?.prev;
+            },
             .write => {
-                event = @as([*]const cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1];
+                events = @as([*]const cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1];
                 break :loop;
             }
         }
     }
 
-    return event;
+    return events;
 }
 
 pub fn concatenate_events(

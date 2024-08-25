@@ -70,8 +70,14 @@ pub const _w_tensor = struct {
     vl_shape: []u64,
 
     number_of_elements: u64,
+    number_of_elements_without_pitch: u64,
+
     row_pitch: u64,
+    pitchs: []u64,
+    pitchs_buffer: cl.buffer.cl_mem,
+
     row_pitch_for_vectors: u64,
+
     size: usize,
 
     dtype: wTensorDtype,

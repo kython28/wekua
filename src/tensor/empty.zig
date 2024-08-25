@@ -12,6 +12,30 @@ const dtypes = @import("utils/dtypes.zig");
 const wTensor = dtypes.wTensor;
 const wCreateTensorConfig = dtypes.wCreateTensorConfig;
 
+fn create_pitch_buffer(context: wContext, tensor: wTensor, pitchs: []const u64) !void {
+    const pitchs_as_bytes = std.mem.asBytes(pitchs);
+    const pitchs_buffer = try cl.buffer.create(
+        context.ctx, @intFromEnum(cl.buffer.enums.mem_flags.read_write), pitchs_as_bytes.len, null
+    );
+    tensor.pitchs_buffer = pitchs_buffer;
+    errdefer cl.buffer.release(pitchs_buffer) catch unreachable;
+
+    const prev_events = w_event.acquire_tensor(tensor, .write);
+    defer tensor.mutex.unlock();
+
+    var new_event: cl.event.cl_event = undefined;
+    const command_queue = context.command_queues[0];
+    try cl.buffer.write(
+        command_queue.cmd, pitchs_buffer, false, 0, pitchs_as_bytes.len, pitchs_as_bytes.ptr, prev_events, &new_event
+    );
+    errdefer {
+        cl.event.wait(new_event) catch unreachable;
+        cl.event.release(new_event) catch unreachable;
+    }
+
+    try w_event.register_new_event(command_queue, tensor, null, null, new_event, .write);
+}
+
 pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig) !wTensor {
     const allocator = context.allocator;
     const command_queues = context.command_queues;
@@ -48,10 +72,9 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
         }
     }
 
-    const vl_shape = try allocator.alloc(u64, shape.len);
-    tensor.vl_shape = vl_shape;
+    const vl_shape = try allocator.dupe(u64, shape);
     errdefer allocator.free(vl_shape);
-    @memcpy(vl_shape, shape);
+    tensor.vl_shape = vl_shape;
 
     const last_element_index = shape.len - 1;
     var row_pitch: u64 = shape[last_element_index];
@@ -67,8 +90,23 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     var number_of_elements: u64 = 1;
     for (shape[0..last_element_index]) |e| number_of_elements *= e;
+    tensor.number_of_elements_without_pitch = number_of_elements * shape[last_element_index] * (
+        1 + @as(u64, @intFromBool(is_complex))
+    );
     number_of_elements *= row_pitch;
     tensor.number_of_elements = number_of_elements;
+
+    const pitchs = try allocator.alloc(u64, shape.len);
+    errdefer allocator.free(pitchs);
+    tensor.pitchs = pitchs;
+
+    var pitch: u64 = number_of_elements;
+    for (shape[0..last_element_index], pitchs[0..last_element_index]) |e, *p| {
+        pitch /= e;
+        p.* = pitch;
+    }
+    pitchs[last_element_index] = 1;
+
 
     const work_item_for_all_elements: []u64 = try allocator.alloc(u64, command_queues.len);
     errdefer allocator.free(work_item_for_all_elements);
@@ -112,6 +150,9 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     tensor.size = size;
 
     tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
+    errdefer cl.buffer.release(tensor.buffer) catch unreachable;
+
+    try create_pitch_buffer(context, tensor, pitchs);
     return tensor;
 }
 
@@ -134,9 +175,11 @@ pub fn release(tensor: wTensor) void {
     tensor.mutex.unlock();
 
     cl.buffer.release(tensor.buffer) catch unreachable;
+    cl.buffer.release(tensor.pitchs_buffer) catch unreachable;
 
     allocator.free(tensor.shape);
     allocator.free(tensor.vl_shape);
+    allocator.free(tensor.pitchs);
     allocator.free(tensor.work_item_for_all_elements);
     allocator.free(tensor.work_items_like_matrix);
     allocator.free(tensor.work_items_like_matrix_without_vectors);

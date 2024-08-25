@@ -179,10 +179,10 @@ test "create random buffer, write to tensor and read" {
     const tensor = try create_random_tensor(ctx, false, randprg, null, null);
     defer wekua.tensor.release(tensor);
 
-    const buf1: []i64 = try allocator.alloc(i64, tensor.number_of_elements);
+    const buf1: []i64 = try allocator.alloc(i64, tensor.number_of_elements_without_pitch);
     defer allocator.free(buf1);
 
-    const buf2: []i64 = try allocator.alloc(i64, tensor.number_of_elements);
+    const buf2: []i64 = try allocator.alloc(i64, tensor.number_of_elements_without_pitch);
     defer allocator.free(buf2);
 
     for (buf1) |*element| {
@@ -231,10 +231,10 @@ test "Copy tensors with same row pitch" {
 
     try wekua.tensor.extra.random.random(cmd, tensor1);
 
-    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
     defer allocator.free(buf1);
 
-    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
     defer allocator.free(buf2);
 
     try std.testing.checkAllAllocationFailures(allocator, copy_tensors_and_check, .{
@@ -255,10 +255,10 @@ test "Copy tensors with different row pitch" {
 
     try wekua.tensor.extra.random.random(cmd, tensor1);
 
-    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
     defer allocator.free(buf1);
 
-    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements);
+    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
     defer allocator.free(buf2);
 
     try std.testing.checkAllAllocationFailures(allocator, copy_tensors_and_check, .{

@@ -27,8 +27,11 @@ pub fn alloc(context: wContext, shape: []const u64, config: wCreateTensorConfig)
         0, tensor.size, prev_events,
         &new_event
     );
+    errdefer {
+        cl.event.wait(new_event) catch unreachable;
+        cl.event.release(new_event) catch unreachable;
+    }
 
     try w_event.register_new_event(command_queue, tensor, null, null, new_event, .write);
-
     return tensor;
 }
