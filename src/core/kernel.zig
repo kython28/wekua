@@ -9,6 +9,7 @@ const header_content: []const u8 = @embedFile("wekua_cl_lib.h");
 pub const wKernelsID = enum (u16) {
     Random = 0,
     RandRange = 1,
+    Transpose = 2
 };
 
 pub const total_number_of_kernels: u16 = @intCast(@typeInfo(wKernelsID).Enum.fields.len);
@@ -42,7 +43,7 @@ fn compile_header(
 
     // const content: []const u8 = header_content; // Don't ask, this just work and i don't know why
     const new_header_prg = try cl.program.create_with_source(
-        command_queue.ctx, @as([*]const []const u8, @ptrCast(&header_content))[0..1],
+        command_queue.ctx.ctx, @as([*]const []const u8, @ptrCast(&header_content))[0..1],
         command_queue.allocator
     );
 
@@ -73,7 +74,7 @@ pub fn compile_kernel(
     program: *cl.program.cl_program,
     content: []const u8
 ) !void {
-    const cl_ctx = command_queue.ctx;
+    const cl_ctx = command_queue.ctx.ctx;
     const allocator = command_queue.allocator;
     const new_program = try cl.program.create_with_source(
         cl_ctx, @as([*]const []const u8, @ptrCast(&content))[0..1],

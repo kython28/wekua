@@ -83,7 +83,7 @@ pub fn get_value(
     }
 
     var cond = std.Thread.Condition{};
-    try w_event.register_new_event(
+    try w_event.register_new_event_to_single_tensor(
         command_queue, tensor, &utils.signal_condition_callback, &cond, new_event, .read
     );
     cond.wait(tensor_mutex);

@@ -20,7 +20,7 @@ fn check_elements(
     };
     defer cl.event.set_user_event_status(custom_event, .complete) catch unreachable;
 
-    wekua.tensor.event.register_new_event(w_cmd, tensor, null, null, custom_event, .read) catch |err| {
+    wekua.tensor.event.register_new_event_to_single_tensor(w_cmd, tensor, null, null, custom_event, .read) catch |err| {
         tensor.mutex.unlock();
         return err;
     };

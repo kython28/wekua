@@ -105,5 +105,5 @@ pub fn put_value(
     errdefer allocator.destroy(resources);
     resources.pattern = pattern;
 
-    try w_event.register_new_event(command_queue, tensor, &put_value_callback, resources, new_event, .write);
+    try w_event.register_new_event_to_single_tensor(command_queue, tensor, &put_value_callback, resources, new_event, .write);
 }

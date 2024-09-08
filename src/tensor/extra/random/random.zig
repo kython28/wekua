@@ -20,16 +20,8 @@ fn get_kernel(command_queue: wCommandQueue, tensor: wTensor) !cl.kernel.cl_kerne
     const dtype = tensor.dtype;
     const is_complex = tensor.is_complex;
 
-    // It is 8 because: float32, float64, complex_float32, complex_float64
-    const kernels_set = try w_kernel.get_kernel(command_queue, .Random, 4);
-
-    var index: usize = @intFromBool(is_complex) * @as(usize, 2);
-    index += switch (dtype) {
-        .float32 => 0,
-        .float64 => 1,
-        else => unreachable
-    };
-
+    const kernels_set = try w_kernel.get_kernel(command_queue, .Random, dtypes.number_of_dtypes * 2);
+    const index: usize = @intFromBool(is_complex) * dtypes.number_of_dtypes + @as(usize, @intFromEnum(dtype));
     if (kernels_set.kernels.?[index]) |kernel| {
         return kernel;
     }
@@ -79,12 +71,6 @@ fn fill_with_random_bytes(
 }
 
 pub fn random(command_queue: wCommandQueue, tensor: wTensor) !void {
-    const dtype = tensor.dtype;
-    switch (dtype) {
-        .float32,.float64 => {},
-        else => return w_errors.errors.UnsupportedDataType
-    }
-
     const kernel = try get_kernel(command_queue, tensor);
     const cmd = command_queue.cmd;
     const tensor_buf = &tensor.buffer;
@@ -97,21 +83,23 @@ pub fn random(command_queue: wCommandQueue, tensor: wTensor) !void {
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
     const shape = tensor.shape;
-    const row_pitch = tensor.row_pitch;
-    const rows = tensor.number_of_elements / row_pitch;
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(tensor_buf));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(tensor_buf));
-    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&row_pitch));
+    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&tensor.row_pitch));
     try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&shape[shape.len - 1]));
 
     // TODO: Adapt code to use views
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
-        cmd, kernel, null, &[2]u64{rows, row_pitch},
+        cmd, kernel, null, &tensor.shape_like_matrix_without_vectors,
         &tensor.work_items_like_matrix_without_vectors[command_queue.wekua_id],
         null, &new_event
     );
+    errdefer {
+        cl.event.wait(new_event) catch unreachable;
+        cl.event.release(new_event) catch unreachable;
+    }
 
-    try w_event.register_new_event(command_queue, tensor, null, null, new_event, .write);
+    try w_event.register_new_event_to_single_tensor(command_queue, tensor, null, null, new_event, .write);
 }

@@ -178,7 +178,7 @@ pub fn create_from_cl_context(
 
     context.allocator = allocator;
     context.ctx = cl_ctx;
-    context.command_queues = try command_queue.create_multiple(allocator, cl_ctx, devices);
+    context.command_queues = try command_queue.create_multiple(allocator, context, devices);
     context.queue = wQueue.init(allocator);
 
     context.worker = try std.Thread.spawn(.{}, context_events_worker, .{allocator, &context.queue});

@@ -8,7 +8,6 @@ fn create_random_tensor(
     ctx: wekua.context.wContext, is_complex: bool, randprg: std.Random,
     real_scalar: ?wekua.tensor.wScalar, imag_scalar: ?wekua.tensor.wScalar
 ) !wekua.tensor.wTensor {
-
     const shape: [3]u64 = .{
         randprg.intRangeAtMost(u64, 2, 500),
         randprg.intRangeAtMost(u64, 2, 500),
@@ -179,10 +178,10 @@ test "create random buffer, write to tensor and read" {
     const tensor = try create_random_tensor(ctx, false, randprg, null, null);
     defer wekua.tensor.release(tensor);
 
-    const buf1: []i64 = try allocator.alloc(i64, tensor.number_of_elements_without_pitch);
+    const buf1: []i64 = try allocator.alloc(i64, tensor.number_of_elements_without_padding);
     defer allocator.free(buf1);
 
-    const buf2: []i64 = try allocator.alloc(i64, tensor.number_of_elements_without_pitch);
+    const buf2: []i64 = try allocator.alloc(i64, tensor.number_of_elements_without_padding);
     defer allocator.free(buf2);
 
     for (buf1) |*element| {
@@ -231,10 +230,10 @@ test "Copy tensors with same row pitch" {
 
     try wekua.tensor.extra.random.random(cmd, tensor1);
 
-    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
+    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_padding);
     defer allocator.free(buf1);
 
-    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
+    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_padding);
     defer allocator.free(buf2);
 
     try std.testing.checkAllAllocationFailures(allocator, copy_tensors_and_check, .{
@@ -255,10 +254,10 @@ test "Copy tensors with different row pitch" {
 
     try wekua.tensor.extra.random.random(cmd, tensor1);
 
-    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
+    const buf1: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_padding);
     defer allocator.free(buf1);
 
-    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_pitch);
+    const buf2: []f64 = try allocator.alloc(f64, tensor1.number_of_elements_without_padding);
     defer allocator.free(buf2);
 
     try std.testing.checkAllAllocationFailures(allocator, copy_tensors_and_check, .{
@@ -278,7 +277,7 @@ test "Try to copy tensors with different dtype" {
     defer wekua.tensor.release(tensor2);
 
     const ret = wekua.tensor.io.copy(cmd, tensor1, tensor2);
-    try std.testing.expectError(error.UnqualTensors, ret);
+    try std.testing.expectError(error.UnqualTensorsDtype, ret);
 }
 
 test "Try to copy tensors with different shape" {
@@ -293,7 +292,7 @@ test "Try to copy tensors with different shape" {
     defer wekua.tensor.release(tensor2);
 
     const ret = wekua.tensor.io.copy(cmd, tensor1, tensor2);
-    try std.testing.expectError(error.UnqualTensors, ret);
+    try std.testing.expectError(error.UnqualTensorsShape, ret);
 }
 
 test "Try to copy complex and real tensors" {
@@ -308,5 +307,5 @@ test "Try to copy complex and real tensors" {
     defer wekua.tensor.release(tensor2);
 
     const ret = wekua.tensor.io.copy(cmd, tensor1, tensor2);
-    try std.testing.expectError(error.UnqualTensors, ret);
+    try std.testing.expectError(error.TensorIsnotComplex, ret);
 }

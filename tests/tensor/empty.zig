@@ -14,12 +14,14 @@ fn create_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreate
     if (config.is_complex) {
         try std.testing.expect(tensor.is_complex);
         try std.testing.expect(!tensor.vectors_enabled);
-        try std.testing.expect(tensor.number_of_elements_without_pitch == 2*20*10);
-        try std.testing.expect(tensor.row_pitch == tensor.row_pitch_for_vectors);
+        try std.testing.expectEqual(2*20*10, tensor.number_of_elements_without_padding);
+        try std.testing.expectEqual(tensor.row_pitch, tensor.row_pitch_for_vectors);
+        try std.testing.expectEqual(2, tensor.pitchs[tensor.pitchs.len - 1]);
     }else{
         try std.testing.expect(!tensor.is_complex);
         try std.testing.expect(tensor.vectors_enabled);
-        try std.testing.expect(tensor.number_of_elements_without_pitch == 20*10);
+        try std.testing.expectEqual(20*10, tensor.number_of_elements_without_padding);
+        try std.testing.expectEqual(1, tensor.pitchs[tensor.pitchs.len - 1]);
     }
 
     try std.testing.expectEqualSlices(u64, shape_expected, tensor.shape);

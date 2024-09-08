@@ -15,6 +15,7 @@ __kernel void random(
 	const ulong i = get_global_id(0);
 	const ulong j = get_global_id(1);
 
+#if dtype >= 8
 #if com == 1
 	const ulong index = i*row_pitch + j*2;
 
@@ -32,5 +33,20 @@ __kernel void random(
 	}else{
 		numbers[index] = random_numbers[index]/RAND_BASE;
 	}
+#endif
+#else
+#if com == 1
+	const ulong index = i*row_pitch + j*2;
+
+	if (j >= col) {
+		numbers[index] = 0;
+		numbers[index + 1] = 0;
+	}
+#else
+	const ulong index = i*row_pitch + j;
+	if (j >= col) {
+		numbers[index] = 0;
+	}
+#endif
 #endif
 }

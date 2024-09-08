@@ -21,6 +21,8 @@ pub const wTensorDtype = enum (u8) {
     float64 = 9
 };
 
+pub const number_of_dtypes: usize = @typeInfo(wTensorDtype).Enum.fields.len;
+
 pub const wScalar = union(wTensorDtype) {
     int8: i8,
     uint8: u8,
@@ -70,7 +72,7 @@ pub const _w_tensor = struct {
     vl_shape: []u64,
 
     number_of_elements: u64,
-    number_of_elements_without_pitch: u64,
+    number_of_elements_without_padding: u64,
 
     row_pitch: u64,
     pitchs: []u64,
@@ -83,6 +85,9 @@ pub const _w_tensor = struct {
     dtype: wTensorDtype,
     is_complex: bool,
     vectors_enabled: bool,
+
+    shape_like_matrix: [2]u64,
+    shape_like_matrix_without_vectors: [2]u64,
 
     work_item_for_all_elements: []u64,
     work_items_like_matrix: [][2]u64,

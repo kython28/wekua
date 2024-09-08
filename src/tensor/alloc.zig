@@ -23,7 +23,7 @@ pub fn alloc(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     var new_event: cl.event.cl_event = undefined;
     try cl.buffer.fill(
-        cmd, tensor.buffer, &zero, @sizeOf(u64),
+        cmd, tensor.buffer, &zero, dtypes.get_dtype_size(tensor.dtype),
         0, tensor.size, prev_events,
         &new_event
     );
@@ -32,6 +32,6 @@ pub fn alloc(context: wContext, shape: []const u64, config: wCreateTensorConfig)
         cl.event.release(new_event) catch unreachable;
     }
 
-    try w_event.register_new_event(command_queue, tensor, null, null, new_event, .write);
+    try w_event.register_new_event_to_single_tensor(command_queue, tensor, null, null, new_event, .write);
     return tensor;
 }

@@ -13,7 +13,7 @@ const wTensor = dtypes.wTensor;
 const wCreateTensorConfig = dtypes.wCreateTensorConfig;
 
 fn create_pitch_buffer(context: wContext, tensor: wTensor, pitchs: []const u64) !void {
-    const pitchs_as_bytes = std.mem.asBytes(pitchs);
+    const pitchs_as_bytes = @as([*]const u8, @ptrCast(pitchs.ptr))[0..(pitchs.len * @sizeOf(u64))];
     const pitchs_buffer = try cl.buffer.create(
         context.ctx, @intFromEnum(cl.buffer.enums.mem_flags.read_write), pitchs_as_bytes.len, null
     );
@@ -33,7 +33,7 @@ fn create_pitch_buffer(context: wContext, tensor: wTensor, pitchs: []const u64) 
         cl.event.release(new_event) catch unreachable;
     }
 
-    try w_event.register_new_event(command_queue, tensor, null, null, new_event, .write);
+    try w_event.register_new_event_to_single_tensor(command_queue, tensor, null, null, new_event, .write);
 }
 
 pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig) !wTensor {
@@ -90,7 +90,7 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     var number_of_elements: u64 = 1;
     for (shape[0..last_element_index]) |e| number_of_elements *= e;
-    tensor.number_of_elements_without_pitch = number_of_elements * shape[last_element_index] * (
+    tensor.number_of_elements_without_padding = number_of_elements * shape[last_element_index] * (
         1 + @as(u64, @intFromBool(is_complex))
     );
     number_of_elements *= row_pitch;
@@ -105,7 +105,7 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
         pitch /= e;
         p.* = pitch;
     }
-    pitchs[last_element_index] = 1;
+    pitchs[last_element_index] = if (is_complex) 2 else 1;
 
 
     const work_item_for_all_elements: []u64 = try allocator.alloc(u64, command_queues.len);
@@ -121,29 +121,27 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     tensor.work_items_like_matrix = work_items_like_matrix;
     tensor.work_items_like_matrix_without_vectors = work_items_like_matrix_without_vectors;
 
+    const rows = number_of_elements / row_pitch;
+    const shape_like_matrix: []u64 = &tensor.shape_like_matrix;
+    const shape_like_matrix_without_vectors: []u64 = &tensor.shape_like_matrix_without_vectors;
+    shape_like_matrix[0] = rows;
+    shape_like_matrix[1] = row_pitch_for_vectors / (1 + @as(u64, @intFromBool(is_complex)));
+
+    shape_like_matrix_without_vectors[0] = rows;
+    shape_like_matrix_without_vectors[1] = row_pitch / (1 + @as(u64, @intFromBool(is_complex)));
+
     for (
         command_queues, work_item_for_all_elements,
         work_items_like_matrix,
         work_items_like_matrix_without_vectors
     ) |cmd, *wa, *wmv, *wm| {
         try work_items.get(
-            @as([*]u64, @ptrCast(&number_of_elements))[0..1],
-            @as([*]u64, @ptrCast(wa))[0..1],
+            @as([*]u64, @ptrCast(&number_of_elements))[0..1], @as([*]u64, @ptrCast(wa))[0..1],
             cmd.max_work_group_size
         );
 
-        const rows = number_of_elements / row_pitch;
-        try work_items.get(
-            &[2]u64{rows, row_pitch_for_vectors},
-            wmv,
-            cmd.max_work_group_size
-        );
-
-        try work_items.get(
-            &[2]u64{rows, row_pitch},
-            wm,
-            cmd.max_work_group_size
-        );
+        try work_items.get(shape_like_matrix, wmv, cmd.max_work_group_size);
+        try work_items.get(shape_like_matrix_without_vectors, wm, cmd.max_work_group_size);
     }
 
     const size: usize = number_of_elements * dtypes.get_dtype_size(dtype);

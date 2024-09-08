@@ -85,5 +85,5 @@ pub fn fill(
     errdefer allocator.destroy(resources);
     resources.pattern = pattern;
 
-    try w_event.register_new_event(command_queue, tensor, &fill_callback, resources, new_event, .write);
+    try w_event.register_new_event_to_single_tensor(command_queue, tensor, &fill_callback, resources, new_event, .write);
 }

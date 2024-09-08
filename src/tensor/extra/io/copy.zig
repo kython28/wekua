@@ -18,7 +18,7 @@ const copy_resources =  struct {
     prev_events: []cl.event.cl_event
 };
 
-pub fn release_events_array(allocator: std.mem.Allocator, user_data: ?*anyopaque) void {
+fn release_events_array(allocator: std.mem.Allocator, user_data: ?*anyopaque) void {
     if (user_data) |data| {
         const resources: *copy_resources = @ptrCast(@alignCast(data));
         allocator.free(resources.prev_events);
@@ -53,12 +53,9 @@ fn copy_tensor_with_different_row_pitch(command_queue: wCommandQueue, src: wTens
 
     const allocator = command_queue.allocator;
     const prev_events = try w_event.concatenate_events(allocator, &.{src_prev_events, dst_prev_events});
-    var not_registered: bool = true;
     errdefer {
-        if (not_registered) {
-            if (prev_events) |v| {
-                allocator.free(v);
-            }
+        if (prev_events) |v| {
+            allocator.free(v);
         }
     }
 
@@ -68,10 +65,8 @@ fn copy_tensor_with_different_row_pitch(command_queue: wCommandQueue, src: wTens
         dst_row_pitch, 0, prev_events, &new_event
     );
     errdefer {
-        if (not_registered) {
-            cl.event.wait(new_event) catch unreachable;
-            cl.event.release(new_event) catch unreachable;
-        }
+        cl.event.wait(new_event) catch unreachable;
+        cl.event.release(new_event) catch unreachable;
     }
 
     try cl.event.retain(new_event);
@@ -83,14 +78,12 @@ fn copy_tensor_with_different_row_pitch(command_queue: wCommandQueue, src: wTens
         resources.?.prev_events = v;
     }
     errdefer {
-        if (not_registered) {
-            if (resources) |v| allocator.destroy(v);
-        }
+        if (resources) |v| allocator.destroy(v);
     }
 
-    try w_event.register_new_event(command_queue, src, &release_events_array, resources, new_event, .read);
-    not_registered = false;
-    try w_event.register_new_event(command_queue, dst, null, resources, new_event, .write);
+    try w_event.register_new_event_to_multiple_tensors(
+        command_queue, &.{src, dst}, &release_events_array, resources, new_event, &.{.read, .write}
+    );
 }
 
 fn copy_tensor_with_same_row_pitch(command_queue: wCommandQueue, src: wTensor, dst: wTensor) !void {
@@ -102,11 +95,8 @@ fn copy_tensor_with_same_row_pitch(command_queue: wCommandQueue, src: wTensor, d
 
     const allocator = command_queue.allocator;
     const prev_events = try w_event.concatenate_events(allocator, &.{src_prev_events, dst_prev_events});
-    var not_registered: bool = true;
     errdefer {
-        if (not_registered) {
-            if (prev_events) |v| allocator.free(v);
-        }
+        if (prev_events) |v| allocator.free(v);
     }
 
     const size = src.size;
@@ -116,10 +106,8 @@ fn copy_tensor_with_same_row_pitch(command_queue: wCommandQueue, src: wTensor, d
     );
 
     errdefer {
-        if (not_registered) {
-            cl.event.wait(new_event) catch unreachable;
-            cl.event.release(new_event) catch unreachable;
-        }
+        cl.event.wait(new_event) catch unreachable;
+        cl.event.release(new_event) catch unreachable;
     }
 
     try cl.event.retain(new_event);
@@ -131,14 +119,12 @@ fn copy_tensor_with_same_row_pitch(command_queue: wCommandQueue, src: wTensor, d
         resources.?.prev_events = v;
     }
     errdefer {
-        if (not_registered) {
-            if (resources) |v| allocator.destroy(v);
-        }
+        if (resources) |v| allocator.destroy(v);
     }
 
-    try w_event.register_new_event(command_queue, src, &release_events_array, resources, new_event, .read);
-    not_registered = true;
-    try w_event.register_new_event(command_queue, dst, null, resources, new_event, .write);
+    try w_event.register_new_event_to_multiple_tensors(
+        command_queue, &.{src, dst}, &release_events_array, resources, new_event, &.{.read, .write}
+    );
 }
 
 pub fn copy(command_queue: wCommandQueue, src: wTensor, dst: wTensor) !void {

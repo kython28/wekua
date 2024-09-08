@@ -1,11 +1,12 @@
 const std = @import("std");
 const cl = @import("opencl");
 
+const wContext = @import("context.zig").wContext;
 const kernel = @import("kernel.zig");
 
 const _w_command_queue = struct {
     allocator: std.mem.Allocator,
-    ctx: cl.context.cl_context,
+    ctx: wContext,
     cmd: cl.command_queue.cl_command_queue,
     device: cl.device.cl_device_id,
 
@@ -86,10 +87,10 @@ fn get_device_info(allocator: std.mem.Allocator, cmd: wCommandQueue, device: cl.
 }
 
 pub fn create(
-    allocator: std.mem.Allocator, cl_ctx: cl.context.cl_context, device: cl.device.cl_device_id
+    allocator: std.mem.Allocator, ctx: wContext, device: cl.device.cl_device_id
 ) !wCommandQueue {
     const cmd: cl.command_queue.cl_command_queue = try cl.command_queue.create(
-        cl_ctx, device, 0
+        ctx.ctx, device, 0
     );
     errdefer cl.command_queue.release(cmd) catch unreachable;
 
@@ -97,7 +98,7 @@ pub fn create(
     errdefer allocator.destroy(new_wcmd);
 
     new_wcmd.allocator = allocator;
-    new_wcmd.ctx = cl_ctx;
+    new_wcmd.ctx = ctx;
     new_wcmd.cmd = cmd;
     new_wcmd.device = device;
     new_wcmd.wekua_id = 0;
@@ -119,7 +120,7 @@ pub fn create(
 }
 
 pub fn create_multiple(
-    allocator: std.mem.Allocator, cl_ctx: cl.context.cl_context, devices: []cl.device.cl_device_id
+    allocator: std.mem.Allocator, ctx: wContext, devices: []cl.device.cl_device_id
 ) ![]wCommandQueue {
     var cmd_created: u32 = 0;
     const command_queues: []wCommandQueue = try allocator.alloc(wCommandQueue, devices.len);
@@ -133,7 +134,7 @@ pub fn create_multiple(
     }
 
     for (devices, command_queues, 0..) |device, *wcmd, index| {
-        wcmd.* = try create(allocator, cl_ctx, device);
+        wcmd.* = try create(allocator, ctx, device);
         wcmd.*.wekua_id = index;
         cmd_created += 1;
     }
