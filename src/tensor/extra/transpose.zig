@@ -6,7 +6,6 @@ const wCommandQueue = w_command_queue.wCommandQueue;
 
 const w_kernel = @import("../../core/kernel.zig");
 
-const w_empty = @import("../empty.zig");
 const w_event = @import("../utils/event.zig");
 const w_errors = @import("../utils/errors.zig").errors;
 const w_copy = @import("io/copy.zig");
@@ -17,7 +16,7 @@ const wTensorDtype = dtypes.wTensorDtype;
 
 const validations = @import("../utils/validations.zig");
 
-const random_cl_kernel: []const u8 = @embedFile("kernels/transpose.cl");
+const transpose_cl_kernel: []const u8 = @embedFile("kernels/transpose.cl");
 
 const transpose_resources =  struct {
     prev_events: []cl.event.cl_event
@@ -29,38 +28,6 @@ pub fn release_events_array(allocator: std.mem.Allocator, user_data: ?*anyopaque
         allocator.free(resources.prev_events);
         allocator.destroy(resources);
     }
-}
-
-fn get_kernel(command_queue: wCommandQueue, tensor: wTensor) !cl.kernel.cl_kernel {
-    const dtype = tensor.dtype;
-    const is_complex = tensor.is_complex;
-
-    const kernels_set = try w_kernel.get_kernel(command_queue, .Transpose, dtypes.number_of_dtypes * 2);
-
-    const index: usize = @intFromBool(is_complex) * dtypes.number_of_dtypes + @as(u64, @intFromEnum(dtype));
-    if (kernels_set.kernels.?[index]) |kernel| {
-        return kernel;
-    }
-
-    var kernel: cl.kernel.cl_kernel = undefined;
-    var program: cl.program.cl_program = undefined;
-
-    try w_kernel.compile_kernel(
-        command_queue, .{
-            .dtype = dtype,
-            .is_complex = is_complex,
-            .vectors_enabled = false,
-            .kernel_name = "transpose",
-            // .extra_args = null
-        },
-        &kernel, &program,
-        random_cl_kernel
-    );
-
-    kernels_set.kernels.?[index] = kernel;
-    kernels_set.programs.?[index] = program;
-
-    return kernel;
 }
 
 pub fn transpose(command_queue: wCommandQueue, result_tensor: wTensor, tensor: wTensor, dim0: u64, dim1: u64) !void {
@@ -80,7 +47,9 @@ pub fn transpose(command_queue: wCommandQueue, result_tensor: wTensor, tensor: w
         return;
     }
 
-    const kernel = try get_kernel(command_queue, tensor);
+    const kernel = try w_kernel.get_cl_no_vector_kernel(
+        command_queue, tensor, .Transpose, "transpose", transpose_cl_kernel, null
+    );
     const cmd = command_queue.cmd;
 
     const src_prev_events = w_event.acquire_tensor(tensor, .read);

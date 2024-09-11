@@ -129,6 +129,7 @@ fn copy_tensor_with_same_row_pitch(command_queue: wCommandQueue, src: wTensor, d
 
 pub fn copy(command_queue: wCommandQueue, src: wTensor, dst: wTensor) !void {
     try validations.eql_tensors_dimensions(src, dst);
+    try validations.eql_number_space(src, dst);
 
     if (src.row_pitch == dst.row_pitch) {
         try copy_tensor_with_same_row_pitch(command_queue, src, dst);

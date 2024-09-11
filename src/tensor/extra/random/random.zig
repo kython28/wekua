@@ -16,37 +16,6 @@ const wTensorDtype = dtypes.wTensorDtype;
 
 const random_cl_kernel: []const u8 = @embedFile("kernels/random.cl");
 
-fn get_kernel(command_queue: wCommandQueue, tensor: wTensor) !cl.kernel.cl_kernel {
-    const dtype = tensor.dtype;
-    const is_complex = tensor.is_complex;
-
-    const kernels_set = try w_kernel.get_kernel(command_queue, .Random, dtypes.number_of_dtypes * 2);
-    const index: usize = @intFromBool(is_complex) * dtypes.number_of_dtypes + @as(usize, @intFromEnum(dtype));
-    if (kernels_set.kernels.?[index]) |kernel| {
-        return kernel;
-    }
-
-    var kernel: cl.kernel.cl_kernel = undefined;
-    var program: cl.program.cl_program = undefined;
-
-    try w_kernel.compile_kernel(
-        command_queue, .{
-            .dtype = dtype,
-            .is_complex = is_complex,
-            .vectors_enabled = false,
-            .kernel_name = "random",
-            // .extra_args = null
-        },
-        &kernel, &program,
-        random_cl_kernel
-    );
-
-    kernels_set.kernels.?[index] = kernel;
-    kernels_set.programs.?[index] = program;
-
-    return kernel;
-}
-
 fn fill_with_random_bytes(
     cmd: cl.command_queue.cl_command_queue, tensor_buf: cl.buffer.cl_mem,
     size: usize, prev_events: ?[]const cl.event.cl_event
@@ -71,7 +40,9 @@ fn fill_with_random_bytes(
 }
 
 pub fn random(command_queue: wCommandQueue, tensor: wTensor) !void {
-    const kernel = try get_kernel(command_queue, tensor);
+    const kernel = try w_kernel.get_cl_no_vector_kernel(
+        command_queue, tensor, .Random, "random", random_cl_kernel, null
+    );
     const cmd = command_queue.cmd;
     const tensor_buf = &tensor.buffer;
 

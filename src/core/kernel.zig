@@ -2,14 +2,17 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const wCommandQueue = @import("command_queue.zig").wCommandQueue;
-const wTensorDtype = @import("../tensor/utils/dtypes.zig").wTensorDtype;
+const dtypes = @import("../tensor/utils/dtypes.zig");
+const wTensor = dtypes.wTensor;
+const wTensorDtype = dtypes.wTensorDtype;
 
 const header_content: []const u8 = @embedFile("wekua_cl_lib.h");
 
 pub const wKernelsID = enum (u16) {
     Random = 0,
     RandRange = 1,
-    Transpose = 2
+    Transpose = 2,
+    ToComplex = 3
 };
 
 pub const total_number_of_kernels: u16 = @intCast(@typeInfo(wKernelsID).Enum.fields.len);
@@ -177,4 +180,82 @@ pub fn get_kernel(
     }
 
     return kernel;
+}
+
+pub fn create_and_get_kernel(
+    command_queue: wCommandQueue, kernel_id: wKernelsID, kernel_source: []const u8, options: wCompileOptions,
+    comptime can_use_complex: bool, comptime can_use_vectors: bool, number_of_cl_kernels: usize,
+    getting_index_func: anytype, extra_args: anytype
+) !cl.kernel.cl_kernel {
+    if (!can_use_complex and options.is_complex) {
+        @panic("Kernels with complex numbers are not allowed");
+    }
+    if (!can_use_vectors and options.vectors_enabled) {
+        @panic("Kernels with vectors are not allowed");
+    }
+
+    const kernels_set = try get_kernel(command_queue, kernel_id, number_of_cl_kernels);
+    const index: usize = getting_index_func(options.is_complex, options.vectors_enabled, options.dtype, extra_args);
+    if (kernels_set.kernels.?[index]) |kernel| {
+        return kernel;
+    }
+
+    var kernel: cl.kernel.cl_kernel = undefined;
+    var program: cl.program.cl_program = undefined;
+
+    try compile_kernel(
+        command_queue, options,
+        &kernel, &program,
+        kernel_source
+    );
+
+    kernels_set.kernels.?[index] = kernel;
+    kernels_set.programs.?[index] = program;
+
+    return kernel;
+}
+
+inline fn get_index_with_complex_and_dtype(is_complex: bool, _: bool, dtype: wTensorDtype, _: anytype) usize {
+    return @intFromBool(is_complex) * dtypes.number_of_dtypes + @as(usize, @intFromEnum(dtype));
+}
+
+pub fn get_cl_no_vector_kernel(
+    command_queue: wCommandQueue, tensor: wTensor, kernel_id: wKernelsID, kernel_name: []const u8,
+    kernel_source: []const u8, extra_args: ?[]const u8
+) !cl.kernel.cl_kernel {
+    const dtype = tensor.dtype;
+    const is_complex = tensor.is_complex;
+
+    return try create_and_get_kernel(
+        command_queue, kernel_id, kernel_source, .{
+            .dtype = dtype,
+            .is_complex = is_complex,
+            .vectors_enabled = false,
+            .kernel_name = kernel_name,
+            .extra_args = extra_args
+        }, true, false, dtypes.number_of_dtypes * 2, get_index_with_complex_and_dtype,
+        null
+    );
+}
+
+inline fn get_index_with_dtype(_: bool, _: bool, dtype: wTensorDtype, _: anytype) usize {
+    return @as(usize, @intFromEnum(dtype));
+}
+
+pub fn get_cl_no_vector_no_complex_single_kernel_per_dtype(
+    command_queue: wCommandQueue, tensor: wTensor, kernel_id: wKernelsID, kernel_name: []const u8,
+    kernel_source: []const u8, extra_args: ?[]const u8
+) !cl.kernel.cl_kernel {
+    const dtype = tensor.dtype;
+
+    return try create_and_get_kernel(
+        command_queue, kernel_id, kernel_source, .{
+            .dtype = dtype,
+            .is_complex = false,
+            .vectors_enabled = false,
+            .kernel_name = kernel_name,
+            .extra_args = extra_args
+        }, false, false, dtypes.number_of_dtypes, get_index_with_dtype,
+        null
+    );
 }

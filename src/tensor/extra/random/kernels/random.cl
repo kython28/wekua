@@ -10,7 +10,7 @@
 
 __kernel void random(
 	__global random_wks *random_numbers, __global wks *numbers,
-	ulong row_pitch, ulong col
+	const ulong row_pitch, const ulong col
 ) {
 	const ulong i = get_global_id(0);
 	const ulong j = get_global_id(1);

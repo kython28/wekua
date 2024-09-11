@@ -16,5 +16,4 @@ pub inline fn eql_number_space(tensor_a: wTensor, tensor_b: wTensor) !void {
 pub inline fn eql_tensors_dimensions(tensor_a: wTensor, tensor_b: wTensor) !void {
     try eql_tensors_dtype(tensor_a, tensor_b);
     if (!std.mem.eql(u64, tensor_a.shape, tensor_b.shape)) return w_errors.UnqualTensorsShape;
-    try eql_number_space(tensor_a, tensor_b);
 }

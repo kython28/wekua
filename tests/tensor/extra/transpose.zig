@@ -3,10 +3,8 @@ const wekua = @import("wekua");
 const cl = @import("opencl");
 const std = @import("std");
 
-const allocator = std.testing.allocator;
-
 fn test_transpose(
-    ctx: wekua.context.wContext, comptime is_complex: bool, randprg: std.Random,
+    allocator: std.mem.Allocator, ctx: wekua.context.wContext, comptime is_complex: bool, randprg: std.Random,
     comptime T: type
 ) !void {
     var shape: [4]u64 = .{
@@ -76,13 +74,14 @@ fn test_transpose(
 }
 
 test "Transpose and check" {
+    const allocator = std.testing.allocator;
     const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const types = .{u8, i8, u16, i16, u32, i32, u64, i64, f32, f64};
     const randprg = std.crypto.random;
     inline for (types) |T| {
-        try test_transpose(ctx, false, randprg, T);
-        try test_transpose(ctx, true, randprg, T);
+        try test_transpose(allocator, ctx, false, randprg, T);
+        try test_transpose(allocator, ctx, true, randprg, T);
     }
 }
