@@ -55,6 +55,19 @@ pub fn initialize_scalar(dtype: wTensorDtype, init_value: anytype) wScalar {
     };
 }
 
+pub fn create_scalar(value: anytype) wScalar {
+    const T = @TypeOf(value);
+    const dtype = comptime get_wekua_dtype_from_zig_type(T);
+    var new_scalar = initialize_scalar(dtype, undefined);
+    const tensor_dtype_fields = @typeInfo(wTensorDtype).Enum.fields;
+    inline for (tensor_dtype_fields) |field| {
+        if (@field(wTensorDtype, field.name) == dtype) {
+            @field(new_scalar, field.name) = value;
+        }
+    }
+    return new_scalar;
+}
+
 pub const wCreateTensorConfig = struct {
     dtype: wTensorDtype,
     cl_mem_flags: cl.buffer.cl_mem_flags = @intFromEnum(cl.buffer.enums.mem_flags.read_write),
@@ -73,6 +86,7 @@ pub const _w_tensor = struct {
 
     number_of_elements: u64,
     number_of_elements_without_padding: u64,
+    number_of_vectors: u64,
 
     row_pitch: u64,
     pitchs: []u64,
@@ -90,6 +104,7 @@ pub const _w_tensor = struct {
     shape_like_matrix_without_vectors: [2]u64,
 
     work_item_for_all_elements: []u64,
+    work_item_for_all_vectors: []u64,
     work_items_like_matrix: [][2]u64,
     work_items_like_matrix_without_vectors: [][2]u64,
 
@@ -116,6 +131,10 @@ pub fn get_dtype_size(dtype: wTensorDtype) usize {
 }
 
 pub fn get_wekua_dtype_from_zig_type(comptime T: type) wTensorDtype {
+    if (!@inComptime()) {
+        @panic("This function must run in comptime");
+    }
+
     return switch (T) {
         i8 => .int8,
         u8 => .uint8,

@@ -96,6 +96,9 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     number_of_elements *= row_pitch;
     tensor.number_of_elements = number_of_elements;
 
+    const number_of_vectors = number_of_elements / vector_width;
+    tensor.number_of_vectors = number_of_vectors;
+
     const pitchs = try allocator.alloc(u64, shape.len);
     errdefer allocator.free(pitchs);
     tensor.pitchs = pitchs;
@@ -107,9 +110,11 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     }
     pitchs[last_element_index] = if (is_complex) 2 else 1;
 
-
     const work_item_for_all_elements: []u64 = try allocator.alloc(u64, command_queues.len);
     errdefer allocator.free(work_item_for_all_elements);
+
+    const work_item_for_all_vectors: []u64 = try allocator.alloc(u64, command_queues.len);
+    errdefer allocator.free(work_item_for_all_vectors);
 
     const work_items_like_matrix: [][2]u64 = try allocator.alloc([2]u64, command_queues.len);
     errdefer allocator.free(work_items_like_matrix);
@@ -118,6 +123,7 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
     errdefer allocator.free(work_items_like_matrix_without_vectors);
 
     tensor.work_item_for_all_elements = work_item_for_all_elements;
+    tensor.work_item_for_all_vectors = work_item_for_all_vectors;
     tensor.work_items_like_matrix = work_items_like_matrix;
     tensor.work_items_like_matrix_without_vectors = work_items_like_matrix_without_vectors;
 
@@ -132,11 +138,17 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
 
     for (
         command_queues, work_item_for_all_elements,
+        work_item_for_all_vectors,
         work_items_like_matrix,
         work_items_like_matrix_without_vectors
-    ) |cmd, *wa, *wmv, *wm| {
+    ) |cmd, *wa, *wv, *wmv, *wm| {
         try work_items.get(
-            @as([*]u64, @ptrCast(&number_of_elements))[0..1], @as([*]u64, @ptrCast(wa))[0..1],
+            @as([*]const u64, @ptrCast(&number_of_elements))[0..1], @as([*]u64, @ptrCast(wa))[0..1],
+            cmd.max_work_group_size
+        );
+
+        try work_items.get(
+            @as([*]const u64, @ptrCast(&number_of_vectors))[0..1], @as([*]u64, @ptrCast(wv))[0..1],
             cmd.max_work_group_size
         );
 
@@ -179,6 +191,7 @@ pub fn release(tensor: wTensor) void {
     allocator.free(tensor.vl_shape);
     allocator.free(tensor.pitchs);
     allocator.free(tensor.work_item_for_all_elements);
+    allocator.free(tensor.work_item_for_all_vectors);
     allocator.free(tensor.work_items_like_matrix);
     allocator.free(tensor.work_items_like_matrix_without_vectors);
     allocator.destroy(tensor);

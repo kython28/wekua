@@ -15,7 +15,7 @@ pub fn check_buffer_type(dtype: wTensorDtype, buffer: anytype) !void {
         @panic("Buffer have to be a Slice");
     }
 
-    const buffer_dtype = dtypes.get_wekua_dtype_from_zig_type(buffer_type_info.Pointer.child);
+    const buffer_dtype = comptime dtypes.get_wekua_dtype_from_zig_type(buffer_type_info.Pointer.child);
     if (buffer_dtype != dtype) {
         return w_errors.errors.InvalidBuffer;
     }

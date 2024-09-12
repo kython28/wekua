@@ -14,8 +14,9 @@ fn test_transpose(
         randprg.intRangeAtMost(u64, 1, 20)
     };
 
+    const dtype = comptime wekua.tensor.get_wekua_dtype_from_zig_type(T);
     const tensor = try wekua.tensor.alloc(ctx, &shape, .{
-        .dtype = wekua.tensor.get_wekua_dtype_from_zig_type(T),
+        .dtype = dtype,
         .is_complex = is_complex
     });
     defer wekua.tensor.release(tensor);
@@ -31,7 +32,7 @@ fn test_transpose(
     shape[dim1] = l_dim;
 
     const tensor2 = try wekua.tensor.alloc(ctx, &shape, .{
-        .dtype = wekua.tensor.get_wekua_dtype_from_zig_type(T),
+        .dtype = dtype,
         .is_complex = is_complex
     });
     defer wekua.tensor.release(tensor2);
