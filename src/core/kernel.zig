@@ -198,7 +198,7 @@ pub fn create_and_get_kernel(
     }
 
     const kernels_set = try get_kernel(command_queue, kernel_id, number_of_cl_kernels);
-    const index: usize = getting_index_func(options.is_complex, options.vectors_enabled, options.dtype, extra_args);
+    const index: usize = getting_index_func(options.vectors_enabled, options.is_complex, options.dtype, extra_args);
     if (kernels_set.kernels.?[index]) |kernel| {
         return kernel;
     }
@@ -218,7 +218,37 @@ pub fn create_and_get_kernel(
     return kernel;
 }
 
-inline fn get_index_with_complex_and_dtype(is_complex: bool, _: bool, dtype: wTensorDtype, _: anytype) usize {
+inline fn get_index_with_vectors_complex_and_dtype(
+    vectors_enabled: bool, is_complex: bool, dtype: wTensorDtype, _: anytype
+) usize {
+    return (
+        @intFromBool(vectors_enabled) * (2 * dtypes.number_of_dtypes) +
+        @intFromBool(is_complex) * dtypes.number_of_dtypes + @as(usize, @intFromEnum(dtype))
+    );
+}
+
+pub fn get_cl_kernel(
+    command_queue: wCommandQueue, tensor: wTensor, kernel_id: wKernelsID, kernel_name: []const u8,
+    kernel_source: []const u8, extra_args: ?[]const u8
+) !cl.kernel.cl_kernel {
+    const dtype = tensor.dtype;
+    const is_complex = tensor.is_complex;
+
+    return try create_and_get_kernel(
+        command_queue, kernel_id, kernel_source, .{
+            .dtype = dtype,
+            .is_complex = is_complex,
+            .vectors_enabled = tensor.vectors_enabled,
+            .kernel_name = kernel_name,
+            .extra_args = extra_args
+        }, true, true, dtypes.number_of_dtypes * 2 * 2, get_index_with_vectors_complex_and_dtype,
+        null
+    );
+}
+
+inline fn get_index_with_complex_and_dtype(
+    _: bool, is_complex: bool, dtype: wTensorDtype, _: anytype
+) usize {
     return @intFromBool(is_complex) * dtypes.number_of_dtypes + @as(usize, @intFromEnum(dtype));
 }
 
@@ -241,7 +271,9 @@ pub fn get_cl_no_vector_kernel(
     );
 }
 
-inline fn get_index_with_dtype(_: bool, _: bool, dtype: wTensorDtype, _: anytype) usize {
+inline fn get_index_with_dtype(
+    _: bool, _: bool, dtype: wTensorDtype, _: anytype
+) usize {
     return @as(usize, @intFromEnum(dtype));
 }
 

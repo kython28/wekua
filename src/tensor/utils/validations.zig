@@ -17,3 +17,9 @@ pub inline fn eql_tensors_dimensions(tensor_a: wTensor, tensor_b: wTensor) !void
     try eql_tensors_dtype(tensor_a, tensor_b);
     if (!std.mem.eql(u64, tensor_a.shape, tensor_b.shape)) return w_errors.UnqualTensorsShape;
 }
+
+pub inline fn eql_tensors(tensor_a: wTensor, tensor_b: wTensor) !void {
+    try eql_tensors_dimensions(tensor_a, tensor_b);
+    try eql_number_space(tensor_a, tensor_b);
+    if (tensor_a.vectors_enabled != tensor_b.vectors_enabled) return w_errors.UnqualTensorsAttribute;
+}

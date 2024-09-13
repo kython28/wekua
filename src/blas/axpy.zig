@@ -29,17 +29,27 @@ fn release_events_array(allocator: std.mem.Allocator, user_data: ?*anyopaque) vo
     }
 }
 
-pub fn axpy(command_queue: wCommandQueue, x: wTensor, alpha: wScalar, y: wTensor) !void {
-    try validations.eql_number_space(x, y);
-    try validations.eql_tensors_dimensions(x, y);
+inline fn get_scalar(scalar: ?wScalar, dtype: wTensorDtype) !wScalar {
+    if (scalar) |v| {
+        if (dtype != @as(wTensorDtype, v)) {
+            return w_errors.InvalidScalarDtype;
+        }
 
-    const dtype = x.dtype;
-    if (dtype != @as(wTensorDtype, alpha)) {
-        return w_errors.InvalidScalarDtype;
+        return v;
     }
 
+    return dtypes.initialize_scalar(dtype, 0);
+}
+
+pub fn axpy(command_queue: wCommandQueue, x: wTensor, alpha: ?wScalar, beta: ?wScalar, y: wTensor) !void {
+    try validations.eql_tensors(x, y);
+    if (alpha == null and beta == null) return w_errors.InvalidValue;
+
+    const dtype = x.dtype;
+    const real_scalar: wScalar = try get_scalar(alpha, dtype);
+
     const allocator = command_queue.allocator;
-    const kernel = try w_kernel.get_cl_no_vector_no_complex_single_kernel_per_dtype(
+    const kernel = try w_kernel.get_cl_kernel(
         command_queue, x, .AXPY, "axpy", axpy_cl_kernel, null
     );
 
@@ -58,16 +68,25 @@ pub fn axpy(command_queue: wCommandQueue, x: wTensor, alpha: wScalar, y: wTensor
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
-    const alpha_dtype = dtypes.get_dtype_size(dtype);
+    const scalar_size = dtypes.get_dtype_size(dtype);
+
+    var global: u64 = x.number_of_vectors;
+    var work_items: u64 = x.work_item_for_all_vectors[command_queue.wekua_id];
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
-    try set_arg(kernel, 2, alpha_dtype, &alpha);
+    try set_arg(kernel, 2, scalar_size, &real_scalar);
+    if (x.is_complex) {
+        const imag_scalar: wScalar = try get_scalar(beta, dtype);
+        global /= 2;
+        work_items /= 2;
+        try set_arg(kernel, 3, scalar_size, &imag_scalar);
+    }
 
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
-        cmd, kernel, null, @as([*]const u64, @ptrCast(&x.number_of_vectors))[0..1],
-        @as([*]const u64, @ptrCast(&x.work_item_for_all_vectors[command_queue.wekua_id]))[0..1],
+        cmd, kernel, null, @as([*]const u64, @ptrCast(&global))[0..1],
+        @as([*]const u64, @ptrCast(&work_items))[0..1],
         null, &new_event
     );
     errdefer {

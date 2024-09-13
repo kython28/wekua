@@ -11,4 +11,5 @@ pub const errors = error {
     UnqualTensorsDtype,
     UnqualTensorsDimension,
     UnqualTensorsShape,
+    UnqualTensorsAttribute
 };

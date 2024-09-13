@@ -29,9 +29,39 @@ fn release_events_array(allocator: std.mem.Allocator, user_data: ?*anyopaque) vo
     }
 }
 
-inline fn get_kernel_index(_: bool, _: bool, dtype: wTensorDtype, dom: bool) usize {
-    return 2 * @as(usize, @intFromEnum(dtype)) + @intFromBool(dom);
+fn get_kernel(command_queue: wCommandQueue, tensor: wTensor, dom: bool) !cl.kernel.cl_kernel {
+    const dtype = tensor.dtype;
+    const kernels_set = try w_kernel.get_kernel(command_queue, .ToReal, dtypes.number_of_dtypes * 2);
+    const index: usize = 2 * @as(usize, @intFromEnum(dtype)) + @intFromBool(dom);
+    if (kernels_set.kernels.?[index]) |v| return v;
+
+    var kernel: cl.kernel.cl_kernel = undefined;
+    var program: cl.program.cl_program = undefined;
+
+    const allocator = command_queue.allocator;
+    const extra_args: []u8 = try std.fmt.allocPrint(
+        allocator, "-DOFFSET={d}", .{@intFromBool(dom)}
+    );
+    defer allocator.free(extra_args);
+
+    try w_kernel.compile_kernel(
+        command_queue, .{
+            .dtype = dtype,
+            .is_complex = false,
+            .vectors_enabled = false,
+            .kernel_name = "to_real",
+            .extra_args = extra_args
+        },
+        &kernel, &program,
+        to_real_cl_kernel
+    );
+
+    kernels_set.kernels.?[index] = kernel;
+    kernels_set.programs.?[index] = program;
+
+    return kernel;
 }
+
 
 pub fn to_real(
     command_queue: wCommandQueue, src: wTensor, dst: wTensor, dom: bool
@@ -41,22 +71,7 @@ pub fn to_real(
     if (dst.is_complex) return w_errors.InvalidValue;
 
 
-    const allocator = command_queue.allocator;
-    const extra_args: []u8 = try std.fmt.allocPrint(
-        allocator, "-DOFFSET={d}", .{@intFromBool(dom)} // TODO
-    );
-    defer allocator.free(extra_args);
-    
-    const kernel = try w_kernel.create_and_get_kernel(
-        command_queue, .ToReal, to_real_cl_kernel, .{
-            .dtype = src.dtype,
-            .is_complex = false,
-            .vectors_enabled = false,
-            .kernel_name = "to_real",
-            .extra_args = extra_args
-        }, false, false, dtypes.number_of_dtypes * 2, get_kernel_index, dom
-    );
-
+    const kernel = try get_kernel(command_queue, src, dom);
     const cmd = command_queue.cmd;
 
     const src_prev_events = w_event.acquire_tensor(src, .read);
@@ -65,6 +80,7 @@ pub fn to_real(
     const dst_prev_events = w_event.acquire_tensor(dst, .write);
     defer dst.mutex.unlock();
 
+    const allocator = command_queue.allocator;
     const prev_events = try w_event.concatenate_events(allocator, &.{src_prev_events, dst_prev_events});
     errdefer {
         if (prev_events) |v| allocator.free(v);
