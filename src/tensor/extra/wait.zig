@@ -18,9 +18,9 @@ pub fn wait(tensor: wTensor) !void {
     const tensor_mutex = &tensor.mutex;
     defer tensor_mutex.unlock();
 
-    if (prev_events) |_| {
+    if (prev_events) |events| {
         const te: w_event.wTensorEvent = @alignCast(@ptrCast(tensor.events.last.?.data.?));
-        if (te.finalized) return;
+        if (te.events_finalized == events.len) return;
 
         var cond = std.Thread.Condition{};
         try te.callbacks.append(&utils.signal_condition_callback);

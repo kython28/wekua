@@ -10,6 +10,7 @@ fn run_wekua_test(
     randprg: std.Random
 ) !f64 {
     const alpha: wekua.tensor.wScalar = .{.float64 = randprg.float(f64)};
+    try wekua.blas.axpy(cmd, x, alpha, null, y);
 
     // TODO: Discover where is getting stuck
     var total_diff: f64 = 0.0;

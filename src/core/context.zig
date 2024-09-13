@@ -34,11 +34,6 @@ fn release_previous_event(node: wLinkedList.Node, tensor_event: wTensorEvent) !b
         node.prev = null;
     }
 
-    if (tensor_event.callbacks.items.len > 0) {
-        for (tensor_event.callbacks.items, tensor_event.user_datas.items) |c, d| {
-            c(allocator, d);
-        }
-    }
     tensor_event.finalized = true;
     t_event_condition.broadcast();
     return true;
@@ -64,6 +59,11 @@ fn deal_with_new_tensor_event(
     };
 
     if (finished) {
+        if (tensor_event.callbacks.items.len > 0) {
+            for (tensor_event.callbacks.items, tensor_event.user_datas.items) |c, d| {
+                c(allocator, d);
+            }
+        }
         const released = try release_previous_event(node, tensor_event);
         if (released) {
             allocator.destroy(ctx_queue_node);
@@ -77,8 +77,9 @@ fn deal_with_new_tensor_event(
 
 fn deal_with_old_tensor_events(pending_events: *wLinkedList) !void {
     var node: ?wLinkedList.Node = pending_events.first;
-    var stop_node: ?wLinkedList.Node = null;
-    while (node != null) {
+    var index: usize = 0;
+    var length: usize = pending_events.len;
+    while (index < length) {
         const tensor_event_queue_node: wLinkedList.Node = @alignCast(@ptrCast(node.?.data.?));
         const tensor_event: wTensorEvent = @alignCast(@ptrCast(tensor_event_queue_node.data.?));
         const mutex = tensor_event.mutex;
@@ -104,13 +105,15 @@ fn deal_with_old_tensor_events(pending_events: *wLinkedList) !void {
 
             pending_events.allocator.destroy(node.?);
             pending_events.len -= 1;
+            length -= 1;
+            index = 0;
 
-            stop_node = next_node;
             node = next_node orelse pending_events.first;
+            continue;
         }else{
-            if (next_node == stop_node) break;
             node = next_node orelse pending_events.first;
         }
+        index += 1;
     }
 }
 
