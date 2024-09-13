@@ -33,4 +33,18 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
+
+    const benchmark = b.addExecutable(.{
+        .name = "benchmark",
+        .root_source_file = b.path("benchmark/main.zig"),
+        .target = target,
+        .optimize = optimize
+    });
+    benchmark.root_module.addImport("wekua", wekua_module);
+
+    const run_benchmark = b.addRunArtifact(benchmark);
+    run_benchmark.has_side_effects = true;
+
+    const run_benchmark_step = b.step("benchmark", "Run benchmark");
+    run_benchmark_step.dependOn(&run_benchmark.step);
 }
