@@ -4,7 +4,7 @@ const cl = wekua.opencl;
 const utils = @import("utils.zig");
 
 pub const name: []const u8 = "AXPY";
-pub const starting_point: u64 = 2048;
+pub const starting_point: u64 = 4096;
 
 const niterations = 1000;
 
