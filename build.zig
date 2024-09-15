@@ -41,6 +41,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize
     });
     benchmark.root_module.addImport("wekua", wekua_module);
+    benchmark.addIncludePath(.{ .cwd_relative = "/usr/include/"});
+    benchmark.linkSystemLibrary("wekua");
 
     const run_benchmark = b.addRunArtifact(benchmark);
     run_benchmark.has_side_effects = true;
