@@ -2,139 +2,22 @@ const std = @import("std");
 const cl = @import("opencl");
 const command_queue = @import("command_queue.zig");
 
-const wLinkedList = @import("../utils/linked_list.zig");
-const w_tensor_event = @import("../tensor/utils/event.zig");
-const wTensorEvent = w_tensor_event.wTensorEvent;
-
 const wQueue = @import("../utils/queue.zig");
+const w_event = @import("event.zig");
 
 const _wcontext = struct {
     allocator: std.mem.Allocator,
     ctx: cl.context.cl_context,
     command_queues: []command_queue.wCommandQueue,
 
-    worker: std.Thread,
-    queue: wQueue
+    events_worker: std.Thread,
+    queue: wQueue,
+
+    releasing_events_worker: std.Thread,
+    releasing_events_queue: wQueue
 };
 
 pub const wContext = *_wcontext;
-
-fn release_previous_event(node: wLinkedList.Node, tensor_event: wTensorEvent) !bool {
-    const allocator = tensor_event.allocator;
-    const t_event_condition = tensor_event.condition;
-    if (node.prev) |prev_node| {
-        const prev_tensor_event: wTensorEvent = @alignCast(@ptrCast(prev_node.data.?));
-        if (!prev_tensor_event.finalized) {
-            return false;
-        }
-
-        try w_tensor_event.release_tensor_event(prev_tensor_event);
-        allocator.destroy(prev_node);
-
-        node.prev = null;
-    }
-
-    tensor_event.finalized = true;
-    t_event_condition.broadcast();
-    return true;
-}
-
-fn deal_with_new_tensor_event(
-    allocator: std.mem.Allocator, ctx_queue_node: wLinkedList.Node, data: *anyopaque, pending_events: *wLinkedList
-) !void {
-    const node: wLinkedList.Node = @alignCast(@ptrCast(data));
-    const tensor_event: wTensorEvent = @alignCast(@ptrCast(node.data.?));
-    const mutex = tensor_event.mutex;
-
-    mutex.lock();
-    defer mutex.unlock();
-
-    tensor_event.events_finalized += 1;
-    const finished: bool = switch (tensor_event.event_type) {
-        .read => blk: {
-            const cond: bool = (tensor_event.events_finalized == tensor_event.read_events.?.items.len);
-            break :blk cond;
-        },
-        .write => true
-    };
-
-    if (finished) {
-        if (tensor_event.callbacks.items.len > 0) {
-            for (tensor_event.callbacks.items, tensor_event.user_datas.items) |c, d| {
-                c(allocator, d);
-            }
-        }
-        const released = try release_previous_event(node, tensor_event);
-        if (released) {
-            allocator.destroy(ctx_queue_node);
-        }else{
-            pending_events.append_node(ctx_queue_node);
-        }
-    }else{
-        allocator.destroy(ctx_queue_node);
-    }
-}
-
-fn deal_with_old_tensor_events(pending_events: *wLinkedList) !void {
-    var node: ?wLinkedList.Node = pending_events.first;
-    var index: usize = 0;
-    var length: usize = pending_events.len;
-    while (index < length) {
-        const tensor_event_queue_node: wLinkedList.Node = @alignCast(@ptrCast(node.?.data.?));
-        const tensor_event: wTensorEvent = @alignCast(@ptrCast(tensor_event_queue_node.data.?));
-        const mutex = tensor_event.mutex;
-
-        mutex.lock();
-        defer mutex.unlock();
-
-        const next_node = node.?.next;
-        const released = try release_previous_event(tensor_event_queue_node, tensor_event);
-        if (released) {
-            const prev_node = node.?.prev;
-            if (prev_node) |pn| {
-                pn.next = next_node;
-            }else{
-                pending_events.first = next_node;
-            }
-
-            if (next_node) |nn| {
-                nn.prev = prev_node;
-            }else{
-                pending_events.last = prev_node;
-            }
-
-            pending_events.allocator.destroy(node.?);
-            pending_events.len -= 1;
-            length -= 1;
-            index = 0;
-
-            node = next_node orelse pending_events.first;
-            continue;
-        }else{
-            node = next_node orelse pending_events.first;
-        }
-        index += 1;
-    }
-}
-
-fn context_events_worker(allocator: std.mem.Allocator, queue: *wQueue) void {
-    var pending_events: wLinkedList = wLinkedList.init(allocator);
-
-    while (true) {
-        const last_node: ?wLinkedList.Node = queue.get_node(true) catch unreachable;
-        if (last_node == null) break;
-
-        const cl_user_data: ?*anyopaque = last_node.?.data;
-        if (cl_user_data) |v| {
-            deal_with_new_tensor_event(allocator, last_node.?, v, &pending_events) catch unreachable;
-        }else{
-            allocator.destroy(last_node.?);
-            break;
-        }
-
-        deal_with_old_tensor_events(&pending_events) catch unreachable;
-    }
-}
 
 pub fn create(
     allocator: std.mem.Allocator,
@@ -154,6 +37,71 @@ pub fn create_from_device_type(
     device_type: cl.device.enums.device_type
 ) !wContext {
     const cl_ctx = try cl.context.create_from_type(properties, device_type, null, null);
+    errdefer cl.context.release(cl_ctx) catch unreachable;
+
+    const context = try create_from_cl_context(allocator, cl_ctx);
+    return context;
+}
+
+pub fn create_from_best_device(
+    allocator: std.mem.Allocator,
+    properties: ?[]const cl.context.cl_context_properties,
+    device_type: cl.device.enums.device_type
+) !wContext {
+    const platforms = try cl.platform.get_all(allocator);
+    defer cl.platform.release_list(allocator, platforms);
+
+    var best_device: ?cl.device.cl_device_id = null;
+    var best_score: u64 = 0;
+    for (platforms) |plat| {
+        var num_devices: u32 = undefined;
+        try cl.device.get_ids(plat.id.?, device_type, null, &num_devices);
+        if (num_devices == 0) continue;
+        
+        const devices = try allocator.alloc(cl.device.cl_device_id, num_devices);
+        defer {
+            for (devices) |dev| {
+                if (dev != best_device) {
+                    cl.device.release(dev) catch unreachable;
+                }
+            }
+            allocator.free(devices);
+        }
+
+        try cl.device.get_ids(plat.id.?, device_type, devices, null);
+        var device_choosen_in_this_iteration: bool = false;
+        for (devices) |device| {
+            var clock_freq: u32 = undefined;
+            try cl.device.get_info(
+                device, cl.device.enums.device_info.max_clock_frequency, @sizeOf(u32), &clock_freq, null
+            );
+
+            var max_work_group_size: u64 = undefined;
+            try cl.device.get_info(
+                device, cl.device.enums.device_info.max_work_group_size, @sizeOf(u64), &max_work_group_size, null
+            );
+
+            var compute_units: u32 = undefined;
+            try cl.device.get_info(
+                device, cl.device.enums.device_info.partition_max_sub_devices, @sizeOf(u32),
+                &compute_units, null
+            );
+
+            const score: u64 = clock_freq * max_work_group_size * compute_units;
+            if (score > best_score or best_device == null) {
+                if (best_device) |dev| {
+                    if (!device_choosen_in_this_iteration) try cl.device.release(dev);
+                    device_choosen_in_this_iteration = true;
+                }
+                best_device = device;
+                best_score = score;
+            }
+        }
+    }
+
+    if (best_device == null) return error.DeviceNotFound;
+
+    const cl_ctx = try cl.context.create(properties, &.{best_device.?}, null, null);
     errdefer cl.context.release(cl_ctx) catch unreachable;
 
     const context = try create_from_cl_context(allocator, cl_ctx);
@@ -183,8 +131,19 @@ pub fn create_from_cl_context(
     context.ctx = cl_ctx;
     context.command_queues = try command_queue.create_multiple(allocator, context, devices);
     context.queue = wQueue.init(allocator);
+    context.releasing_events_queue = wQueue.init(allocator);
 
-    context.worker = try std.Thread.spawn(.{}, context_events_worker, .{allocator, &context.queue});
+    context.events_worker = try std.Thread.spawn(
+        .{}, w_event.context_events_worker, .{allocator, &context.queue, &context.releasing_events_queue}
+    );
+    errdefer {
+        context.queue.release();
+        context.events_worker.join();
+    }
+
+    context.releasing_events_worker = try std.Thread.spawn(
+        .{}, w_event.context_releasing_events_worker, .{allocator, &context.releasing_events_queue}
+    );
     return context;
 }
 
@@ -192,7 +151,10 @@ pub fn release(context: wContext) void {
     const allocator = context.allocator;
 
     context.queue.release();
-    context.worker.join();
+    context.events_worker.join();
+
+    context.releasing_events_queue.release();
+    context.releasing_events_worker.join();
 
     cl.context.release(context.ctx) catch unreachable;
     command_queue.release_multiple(allocator, context.command_queues);

@@ -4,11 +4,42 @@ const cl = wekua.opencl;
 const utils = @import("utils.zig");
 
 pub const name: []const u8 = "AXPY";
+pub const starting_point: u64 = 2048;
 
-const niterations = 10000;
+const niterations = 1000;
+
+fn run_openblas_test(allocator: std.mem.Allocator, size: usize) !f64 {
+    const x: []f64 = try allocator.alloc(f64, size);
+    defer allocator.free(x);
+
+    const y: []f64 = try allocator.alloc(f64, size);
+    defer allocator.free(y);
+
+    const randprg = std.crypto.random;
+    for (x, y) |*v1, *v2| {
+        v1.* = randprg.float(f64);
+        v2.* = randprg.float(f64);
+    }
+
+    var total_diff: f64 = 0.0;
+    const start_ts = std.time.microTimestamp();
+    for (0..niterations) |i| {
+        const alpha = -10 + randprg.float(f64)*20.0;
+
+        if (i%2 == 0) {
+            utils.openblas.cblas_daxpy(@intCast(size), alpha, x.ptr, 1, y.ptr, 1);
+        }else{
+            utils.openblas.cblas_daxpy(@intCast(size), alpha, y.ptr, 1, x.ptr, 1);
+        }
+    }
+    const end_ts = std.time.microTimestamp();
+    total_diff += @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
+
+    return total_diff;
+}
 
 fn run_old_wekua_test(allocator: std.mem.Allocator, size: usize) !f64 {
-    const ctx: utils.wekua_c.wekuaContext = utils.wekua_c.createSomeWekuaContext(@intFromEnum(cl.device.enums.device_type.cpu), 1, 1)
+    const ctx: utils.wekua_c.wekuaContext = utils.wekua_c.createSomeWekuaContext(@intFromEnum(cl.device.enums.device_type.cpu), 1, 0)
         orelse return error.OutOfMemory;
     defer utils.wekua_c.freeWekuaContext(ctx);
 
@@ -50,7 +81,7 @@ fn run_old_wekua_test(allocator: std.mem.Allocator, size: usize) !f64 {
 }
 
 fn run_wekua_test(allocator: std.mem.Allocator, size: usize) !f64 {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.cpu);
+    const ctx = try wekua.context.create_from_best_device(allocator, null, cl.device.enums.device_type.cpu);
     defer wekua.context.release(ctx);
     const randprg = std.crypto.random;
     const cmd = ctx.command_queues[0];
@@ -90,6 +121,7 @@ fn run_wekua_test(allocator: std.mem.Allocator, size: usize) !f64 {
 }
 
 const tests = .{
+    .{"OpenBLAS", run_openblas_test},
     .{"Wekua (C)", run_old_wekua_test},
     .{"wekua (Zig)", run_wekua_test}
 };
@@ -106,7 +138,7 @@ pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
             .name = test_name
         };
 
-        var size: u64 = 64;
+        var size: u64 = starting_point;
         for (&report.avg_times_per_bactch) |*t| {
             t.* = try test_func(allocator, size);
             size *= 2;

@@ -12,23 +12,21 @@ const wTensor = dtypes.wTensor;
 
 const utils = @import("io/utils.zig");
 
-pub fn wait(tensor: wTensor) !void {
-    const prev_events = w_event.acquire_tensor(tensor, .read);
+inline fn check(tensor_event: w_event.wTensorEvent) bool {
+    return switch (tensor_event.event_type) {
+        .read => (tensor_event.events_finalized < tensor_event.read_events.?.items.len),
+        .write => (tensor_event.events_finalized < 1)
+    };
+}
 
+pub fn wait(tensor: wTensor) !void {
     const tensor_mutex = &tensor.mutex;
+    const tensor_cond = &tensor.condition;
+    tensor_mutex.lock();
     defer tensor_mutex.unlock();
 
-    if (prev_events) |events| {
-        const te: w_event.wTensorEvent = @alignCast(@ptrCast(tensor.events.last.?.data.?));
-        if (te.events_finalized == events.len) return;
-
-        var cond = std.Thread.Condition{};
-        try te.callbacks.append(&utils.signal_condition_callback);
-        errdefer {
-            _ = te.callbacks.pop();
-        }
-        try te.user_datas.append(&cond);
-
-        cond.wait(tensor_mutex);
+    const te: w_event.wTensorEvent = @alignCast(@ptrCast(tensor.events.last.?.data.?));
+    while (check(te)) {
+        tensor_cond.wait(tensor_mutex);
     }
 }

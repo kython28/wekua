@@ -48,11 +48,45 @@ pub fn get_node(self: *wQueue, wait: bool) !?wLinkedList.Node {
         self.cond.wait(&self.mutex);
     }
 
-    const last_node = try self.queue.pop_node();
+    const last_node = try self.queue.popleft_node();
     return last_node;
 }
 
 pub fn get(self: *wQueue, wait: bool) !?*anyopaque {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+    defer self.cond.signal();
+
+    if (!wait and self.queue.last == null) return null;
+
+    while (self.queue.last == null) {
+        if (self.releasing) return null;
+
+        self.cond.wait(&self.mutex);
+    }
+
+    const data = try self.queue.popleft();
+    return data;
+}
+
+pub fn get_last_node(self: *wQueue, wait: bool) !?wLinkedList.Node {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+    defer self.cond.signal();
+
+    if (!wait and self.queue.last == null) return null;
+
+    while (self.queue.last == null) {
+        if (self.releasing) return null;
+
+        self.cond.wait(&self.mutex);
+    }
+
+    const last_node = try self.queue.pop_node();
+    return last_node;
+}
+
+pub fn get_last(self: *wQueue, wait: bool) !?*anyopaque {
     self.mutex.lock();
     defer self.mutex.unlock();
     defer self.cond.signal();
