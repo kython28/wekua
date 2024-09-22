@@ -295,18 +295,15 @@ void complex_mul_vector_scalar(wk *a, wk *b, wks c, wks d){
 }
 #endif
 
-void complex_mul_scalar_scalar(wks *a, wks *b, wks c, wks d){
-	wks k1, k2, k3, aa, bb;
+#define COMPLEX_MUL_K(T) \
+	T k1, k2, k3;
 
-	aa = a[0]; bb = b[0];
-
-	k1 = c*(aa + bb);
-	k2 = aa*(d - c);
-	k3 = bb*(c + d);
-
-	a[0] = k1 - k3;
-	b[0] = k1 + k2;
-}
+#define COMPLEX_MUL(a, b, c, d) \
+	k1 = c*(a + b); \
+	k2 = a*(d - c); \
+	k3 = b*(c + d); \
+	a = k1 - k3; \
+	b = k1 + k2; \
 
 void calc_inv_complex(wk *a, wk *b){
 	wk c, d, aa, bb;
