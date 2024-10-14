@@ -40,9 +40,9 @@ pub fn get_node(self: *wQueue, wait: bool) !?wLinkedList.Node {
     defer self.mutex.unlock();
     defer self.cond.signal();
 
-    if (!wait and self.queue.last == null) return null;
+    if (!wait and self.queue.first == null) return null;
 
-    while (self.queue.last == null) {
+    while (self.queue.first == null) {
         if (self.releasing) return null;
 
         self.cond.wait(&self.mutex);
@@ -57,9 +57,9 @@ pub fn get(self: *wQueue, wait: bool) !?*anyopaque {
     defer self.mutex.unlock();
     defer self.cond.signal();
 
-    if (!wait and self.queue.last == null) return null;
+    if (!wait and self.queue.first == null) return null;
 
-    while (self.queue.last == null) {
+    while (self.queue.first == null) {
         if (self.releasing) return null;
 
         self.cond.wait(&self.mutex);

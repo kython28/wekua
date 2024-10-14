@@ -1,6 +1,8 @@
 const std = @import("std");
 const cl = @import("opencl");
 
+const work_items = @import("../utils/work_items.zig");
+
 const w_command_queue = @import("../core/command_queue.zig");
 const wCommandQueue = w_command_queue.wCommandQueue;
 
@@ -99,23 +101,53 @@ pub fn gemm(
     if ((alpha == null and alphai == null) or (beta == null and betai == null)) return w_errors.InvalidValue;
     try validate_tensors(A, B, C, opA, opB);
 
-    const dtype = x.dtype;
-    const real_scalar: wScalar = try get_scalar(alpha, dtype);
+    const dtype = A.dtype;
+    const real_alpha_scalar: wScalar = try get_scalar(alpha, dtype);
+    const imag_alpha_scalar: wScalar = try get_scalar(alpha, dtype);
+
+    const dims = C.vl_shape;
+    const ndim = dims.len;
+    var global_items: [3]u64 = .{
+        dims[ndim - 2], dims[ndim - 1] / (1 + @as(u64, @intFromBool(C.is_complex))), 1
+    };
+
+    if (ndim > 2) {
+        for (dims[0..(ndim - 2)]) |v| global_items[2] *= v;
+    }
+
+    const use_optimized_gemm: bool = (
+        (@intFromBool(A.vectors_enabled)&@intFromBool(B.vectors_enabled)&@intFromBool(C.vectors_enabled)) == 1 and
+        (global_items[0]%2) == 0 and (global_items[1]%2) == 0
+    );
+
+    if (use_optimized_gemm) {
+        inline for (global_items[0..2]) |*v| v.* /= 2;
+    }
+
+    var local_work_items: [3]u64 = undefined;
+    try work_items.get(
+        &global_items, &local_work_items, command_queue.max_work_group_size
+    );
 
     const allocator = command_queue.allocator;
     const kernel = try w_kernel.get_cl_kernel(
-        command_queue, x, .AXPY, "axpy", axpy_cl_kernel, null
+        command_queue, A, .GEMM, "gemm", gemm_cl_kernel, null
     );
 
     const cmd = command_queue.cmd;
 
-    const x_prev_events = w_event.acquire_tensor(x, .read);
-    defer x.mutex.unlock();
+    const a_prev_events = w_event.acquire_tensor(A, .read);
+    defer A.mutex.unlock();
 
-    const y_prev_events = w_event.acquire_tensor(y, .write);
-    defer y.mutex.unlock();
+    const b_prev_events = w_event.acquire_tensor(B, .read);
+    defer B.mutex.unlock();
 
-    const prev_events = try w_event.concatenate_events(allocator, &.{x_prev_events, y_prev_events});
+    const c_prev_events = w_event.acquire_tensor(C, .write);
+    defer C.mutex.unlock();
+
+    const prev_events = try w_event.concatenate_events(allocator, &.{
+        a_prev_events, b_prev_events, c_prev_events
+    });
     errdefer {
         if (prev_events) |v| allocator.free(v);
     }
@@ -124,8 +156,8 @@ pub fn gemm(
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
     const scalar_size = dtypes.get_dtype_size(dtype);
 
-    var global: u64 = x.number_of_vectors;
-    var work_items: u64 = x.work_item_for_all_vectors[command_queue.wekua_id];
+    var global: u64 = C.number_of_vectors;
+    var work_items: u64 = A.work_item_for_all_vectors[command_queue.wekua_id];
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));

@@ -16,6 +16,7 @@ pub const wKernelsID = enum (u16) {
     ToReal = 4,
 
     AXPY = 5,
+    GEMM = 6
 };
 
 pub const total_number_of_kernels: u16 = @intCast(@typeInfo(wKernelsID).Enum.fields.len);

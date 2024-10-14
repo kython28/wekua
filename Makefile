@@ -12,6 +12,8 @@ ifeq ($(MODE), debug)
 	DEBUG_FLAGS = -O0 -g -fsanitize=address -fno-omit-frame-pointer
 else ifeq ($(MODE), debug-nvidia)
 	DEBUG_FLAGS = -O0 -g -fsanitize=address -fsanitize-recover=address
+else ifeq ($(MODE), debug-no-sanitize)
+	DEBUG_FLAGS = -O0 -g
 else ifeq ($(MODE), analyze)
 	COMMON_CFLAGS = -fPIC -Werror
 	ifeq ($(CC), gcc)
