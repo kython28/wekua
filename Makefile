@@ -21,8 +21,10 @@ else ifeq ($(MODE), analyze)
 	else
 		DEBUG_FLAGS = -O0 -g -Wno-unused-command-line-argument --analyze --analyze -Xclang -analyzer-config -Xclang crosscheck-with-z3=true
 	endif
+else ifeq ($(MODE), release-with-debug)
+	DEBUG_FLAGS = -O3 -g -D_FORTIFY_SOURCE=3
 else
-	DEBUG_FLAGS = -O2 -D_FORTIFY_SOURCE=3
+	DEBUG_FLAGS = -O3 -D_FORTIFY_SOURCE=3
 endif
 
 main: $(archives)
