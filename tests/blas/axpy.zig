@@ -4,7 +4,7 @@ const std = @import("std");
 
 inline fn get_random_number(comptime T: type, randprg: std.Random) T {
     if (T == f32 or T == f64) {
-        return randprg.float(T);
+        return -1 + randprg.float(T) * 2;
     }else{
         return randprg.int(T);
     }
@@ -70,12 +70,12 @@ fn test_axpy(
     try wekua.tensor.io.write_to_buffer(w_cmd, tensor, numbers1);
     try wekua.tensor.io.write_to_buffer(w_cmd, tensor2, numbers3);
     if (is_complex) {
+        const eps: T = @floatCast(comptime std.math.floatEps(f32));
         for (0..(tensor.number_of_elements_without_padding/2)) |i| {
             const index = i*2;
             var expected = complex_mul(T, numbers1[index], numbers1[index + 1], alpha, beta);
             expected[0] += numbers2[index];
             expected[1] += numbers2[index + 1];
-            const eps = comptime std.math.floatEps(T);
             try std.testing.expectApproxEqAbs(expected[0], numbers3[index], eps);
             try std.testing.expectApproxEqAbs(expected[1], numbers3[index + 1], eps);
         }
