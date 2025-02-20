@@ -38,7 +38,7 @@ pub fn write_to_buffer(command_queue: wCommandQueue, tensor: wTensor, buffer: an
     const tensor_mutex = &tensor.mutex;
     errdefer tensor_mutex.unlock();
 
-    const child_type = @typeInfo(@TypeOf(buffer)).Pointer.child;
+    const child_type = @typeInfo(@TypeOf(buffer)).pointer.child;
     const buffer_as_bytes = @as([*]child_type, @ptrCast(buffer.ptr))[0..(buffer.len * @sizeOf(child_type))];
 
     var new_event: cl.event.cl_event = undefined;

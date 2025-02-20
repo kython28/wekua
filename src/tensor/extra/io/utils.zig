@@ -7,15 +7,15 @@ const w_errors = @import("../../utils/errors.zig");
 
 pub fn check_buffer_type(dtype: wTensorDtype, buffer: anytype) !void {
     const buffer_type_info = @typeInfo(@TypeOf(buffer));
-    if (buffer_type_info != .Pointer) {
+    if (buffer_type_info != .pointer) {
         @panic("Buffer have to be a Slice");
     }
 
-    if (buffer_type_info.Pointer.size != .Slice) {
+    if (buffer_type_info.pointer.size != .slice) {
         @panic("Buffer have to be a Slice");
     }
 
-    const buffer_dtype = comptime dtypes.get_wekua_dtype_from_zig_type(buffer_type_info.Pointer.child);
+    const buffer_dtype = comptime dtypes.get_wekua_dtype_from_zig_type(buffer_type_info.pointer.child);
     if (buffer_dtype != dtype) {
         return w_errors.errors.InvalidBuffer;
     }

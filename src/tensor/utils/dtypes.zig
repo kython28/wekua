@@ -21,7 +21,7 @@ pub const wTensorDtype = enum (u8) {
     float64 = 9
 };
 
-pub const number_of_dtypes: usize = @typeInfo(wTensorDtype).Enum.fields.len;
+pub const number_of_dtypes: usize = @typeInfo(wTensorDtype).@"enum".fields.len;
 
 pub const wScalar = union(wTensorDtype) {
     int8: i8,
@@ -59,7 +59,7 @@ pub fn create_scalar(value: anytype) wScalar {
     const T = @TypeOf(value);
     const dtype = comptime get_wekua_dtype_from_zig_type(T);
     var new_scalar = initialize_scalar(dtype, undefined);
-    const tensor_dtype_fields = @typeInfo(wTensorDtype).Enum.fields;
+    const tensor_dtype_fields = @typeInfo(wTensorDtype).@"enum".fields;
     inline for (tensor_dtype_fields) |field| {
         if (@field(wTensorDtype, field.name) == dtype) {
             @field(new_scalar, field.name) = value;

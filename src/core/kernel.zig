@@ -19,8 +19,8 @@ pub const wKernelsID = enum (u16) {
     GEMM = 6
 };
 
-pub const total_number_of_kernels: u16 = @intCast(@typeInfo(wKernelsID).Enum.fields.len);
-pub const total_number_of_headers: u16 = @as(u16, @intCast(@typeInfo(wTensorDtype).Enum.fields.len)) * 2 * 2;
+pub const total_number_of_kernels: u16 = @intCast(@typeInfo(wKernelsID).@"enum".fields.len);
+pub const total_number_of_headers: u16 = @as(u16, @intCast(@typeInfo(wTensorDtype).@"enum".fields.len)) * 2 * 2;
 
 pub const _w_kernel = struct {
     kernels: ?[]?cl.kernel.cl_kernel,

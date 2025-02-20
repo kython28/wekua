@@ -49,7 +49,7 @@ fn get_device_info(allocator: std.mem.Allocator, cmd: wCommandQueue, device: cl.
 
     var device_type: u64 = undefined;
     try cl.device.get_info(
-        device, device_info_enum.vendor_id, @sizeOf(u64), &device_type, null
+        device, device_info_enum.type, @sizeOf(u64), &device_type, null
     );
     cmd.device_type = @enumFromInt(device_type);
 

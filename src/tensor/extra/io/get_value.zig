@@ -15,7 +15,7 @@ const wTensorDtype = dtypes.wTensorDtype;
 const utils = @import("utils.zig");
 
 fn write_value_to_scalar(pattern: []u8, scalar: *wScalar, dtype: wTensorDtype) void {
-    const tensor_dtype_fields = @typeInfo(wTensorDtype).Enum.fields;
+    const tensor_dtype_fields = @typeInfo(wTensorDtype).@"enum".fields;
     scalar.* = blk: inline for (tensor_dtype_fields) |field| {
         if (@field(wTensorDtype, field.name) == dtype) {
             var new_scalar: wScalar = dtypes.initialize_scalar(dtype, undefined);
