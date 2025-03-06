@@ -142,18 +142,18 @@ pub fn empty(context: wContext, shape: []const u64, config: wCreateTensorConfig)
         work_items_like_matrix,
         work_items_like_matrix_without_vectors
     ) |cmd, *wa, *wv, *wmv, *wm| {
-        try work_items.get(
+        work_items.get(
             @as([*]const u64, @ptrCast(&number_of_elements))[0..1], @as([*]u64, @ptrCast(wa))[0..1],
             cmd.max_work_group_size
         );
 
-        try work_items.get(
+        work_items.get(
             @as([*]const u64, @ptrCast(&number_of_vectors))[0..1], @as([*]u64, @ptrCast(wv))[0..1],
             cmd.max_work_group_size
         );
 
-        try work_items.get(shape_like_matrix, wmv, cmd.max_work_group_size);
-        try work_items.get(shape_like_matrix_without_vectors, wm, cmd.max_work_group_size);
+        work_items.get(shape_like_matrix, wmv, cmd.max_work_group_size);
+        work_items.get(shape_like_matrix_without_vectors, wm, cmd.max_work_group_size);
     }
 
     const size: usize = number_of_elements * dtypes.get_dtype_size(dtype);

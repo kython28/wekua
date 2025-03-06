@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn get(global_work_items: []const u64, local_work_items: []u64, max_work_group_size: u64) error{LengthsNotMatching}!void {
+pub fn get(global_work_items: []const u64, local_work_items: []u64, max_work_group_size: u64) void {
     const max_per_cu: u64 = @intFromFloat(
         std.math.pow(
             f64, @as(f64, @floatFromInt(max_work_group_size)), 1.0 / @as(f64, @floatFromInt(global_work_items.len))

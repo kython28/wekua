@@ -1,12 +1,13 @@
 .{
-    .name = "wekua",
+    .name = .wekua,
     .version = "1.0.0",
     .minimum_zig_version = "0.14.0",
+    .fingerprint = 0xad57344ffb79f575,
 
     .dependencies = .{
         .@"zig-opencl" = .{
-            .url = "https://github.com/kython28/zig-opencl/archive/refs/tags/v0.4.5.tar.gz",
-            .hash = "1220eac65e067d5d50cfffc9440a428dd0f007df5be14c238d80dfbd4c545d7e10b7",
+            .url = "https://github.com/kython28/zig-opencl/archive/refs/tags/v0.4.6.tar.gz",
+            .hash = "zigopencl-0.4.6-z-Vhw1ySAgDvQCNmB6n7jkUo1i6whoFwlqBNfG0YgPn9",
         },
     },
 

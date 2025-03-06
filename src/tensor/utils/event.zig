@@ -54,7 +54,7 @@ pub fn get_prev_events(tensor: wTensor, event_type: wTensorEventType) ?[]const c
     if (event_type == .write) {
         return switch (tensor_event.event_type) {
             .read => tensor_event.read_events.?.items,
-            .write => @as([*]cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1]
+            .write => @as([*]const cl.event.cl_event, @ptrCast(&tensor_event.write_event.?))[0..1]
         };
     }
 
