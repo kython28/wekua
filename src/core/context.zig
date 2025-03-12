@@ -1,45 +1,41 @@
 const std = @import("std");
 const cl = @import("opencl");
-const command_queue = @import("command_queue.zig");
+const wCommandQueue = @import("command_queue.zig");
 
 const wQueue = @import("../utils/queue.zig");
 const w_event = @import("event.zig");
 
-const _wcontext = struct {
-    allocator: std.mem.Allocator,
-    ctx: cl.context.cl_context,
-    command_queues: []command_queue.wCommandQueue,
+allocator: std.mem.Allocator,
+ctx: cl.context.cl_context,
+command_queues: []wCommandQueue,
 
-    events_worker: std.Thread,
-    queue: wQueue,
+events_worker: std.Thread,
+queue: wQueue,
 
-    releasing_events_worker: std.Thread,
-    releasing_events_queue: wQueue
-};
+releasing_events_worker: std.Thread,
+releasing_events_queue: wQueue,
 
-pub const wContext = *_wcontext;
-
-pub fn create(
+pub fn init(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     devices: []cl.device.cl_device_id
-) !wContext {
+) !*wContext {
     const cl_ctx = try cl.context.create(properties, devices, null, null);
     errdefer cl.context.release(cl_ctx) catch unreachable;
 
-    const context = try create_from_cl_context(allocator, cl_ctx);
+    const context = try init_from_cl_context(allocator, cl_ctx);
     return context;
 }
 
-pub fn create_from_device_type(
+pub fn init_from_device_type(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     device_type: cl.device.enums.device_type
-) !wContext {
+) !*wContext {
     const cl_ctx = try cl.context.create_from_type(properties, device_type, null, null);
     errdefer cl.context.release(cl_ctx) catch unreachable;
 
-    const context = try create_from_cl_context(allocator, cl_ctx);
+    const context = try init_from_cl_context(allocator, cl_ctx);
     return context;
 }
 
@@ -47,7 +43,7 @@ pub fn create_from_best_device(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     device_type: cl.device.enums.device_type
-) !wContext {
+) !*wContext {
     const platforms = try cl.platform.get_all(allocator);
     defer cl.platform.release_list(allocator, platforms);
 
@@ -104,15 +100,15 @@ pub fn create_from_best_device(
     const cl_ctx = try cl.context.create(properties, &.{best_device.?}, null, null);
     errdefer cl.context.release(cl_ctx) catch unreachable;
 
-    const context = try create_from_cl_context(allocator, cl_ctx);
+    const context = try init_from_cl_context(allocator, cl_ctx);
     return context;
 }
 
-pub fn create_from_cl_context(
+pub fn init_from_cl_context(
     allocator: std.mem.Allocator,
     cl_ctx: cl.context.cl_context
-) !wContext {
-    const context: wContext = try allocator.create(_wcontext);
+) !*wContext {
+    var context = try allocator.create(wContext);
     errdefer allocator.destroy(context);
 
     var number_of_devices: u32 = undefined;
@@ -129,7 +125,7 @@ pub fn create_from_cl_context(
 
     context.allocator = allocator;
     context.ctx = cl_ctx;
-    context.command_queues = try command_queue.create_multiple(allocator, context, devices);
+    context.command_queues = try wCommandQueue.init_multiples(allocator, context, devices);
     context.queue = wQueue.init(allocator);
     context.releasing_events_queue = wQueue.init(allocator);
 
@@ -147,7 +143,7 @@ pub fn create_from_cl_context(
     return context;
 }
 
-pub fn release(context: wContext) void {
+pub fn release(context: *wContext) void {
     const allocator = context.allocator;
 
     context.queue.release();
@@ -157,8 +153,9 @@ pub fn release(context: wContext) void {
     context.releasing_events_worker.join();
 
     cl.context.release(context.ctx) catch unreachable;
-    command_queue.release_multiple(allocator, context.command_queues);
+    wCommandQueue.deinit_multiples(allocator, context.command_queues);
 
     allocator.destroy(context);
 }
 
+const wContext = @This();

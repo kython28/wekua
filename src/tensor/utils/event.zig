@@ -2,9 +2,8 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const wLinkedList = @import("../../utils/linked_list.zig");
-const wTensor = @import("dtypes.zig").wTensor;
-const command_queue_m = @import("../../core/command_queue.zig");
-const wCommandQueue = command_queue_m.wCommandQueue;
+const Tensor = @import("../main.zig");
+const CommandQueue = @import("../../core/command_queue.zig");
 
 const wQueue = @import("../../utils/queue.zig");
 
@@ -26,7 +25,7 @@ const w_event_callback_data = struct {
 const _w_tensor_event = struct {
     ctx_queue: *wQueue,
     allocator: std.mem.Allocator,
-    command_queue: wCommandQueue,
+    command_queue: *const CommandQueue,
 
     read_events: ?*clEventArray,
     write_event: ?cl.event.cl_event,
@@ -44,7 +43,7 @@ const _w_tensor_event = struct {
 
 pub const wTensorEvent = *_w_tensor_event;
 
-pub fn get_prev_events(tensor: wTensor, event_type: wTensorEventType) ?[]const cl.event.cl_event {
+pub fn get_prev_events(tensor: Tensor, event_type: wTensorEventType) ?[]const cl.event.cl_event {
     const tensor_events = tensor.events;
     var node = tensor_events.last;
 
@@ -80,7 +79,7 @@ pub fn get_prev_events(tensor: wTensor, event_type: wTensorEventType) ?[]const c
     return events;
 }
 
-pub fn acquire_tensor(tensor: wTensor, event_type: wTensorEventType) ?[]const cl.event.cl_event {
+pub fn acquire_tensor(tensor: Tensor, event_type: wTensorEventType) ?[]const cl.event.cl_event {
     const mutex = &tensor.mutex; 
     mutex.lock();
 
@@ -130,7 +129,7 @@ fn tensor_event_callback(_: cl.event.cl_event, event_command_status: i32, user_d
 
 }
 
-fn push_new_event_to_callback(event: cl.event.cl_event, tensors: []const wTensor, ctx_queue: *wQueue) !void {
+fn push_new_event_to_callback(event: cl.event.cl_event, tensors: []const Tensor, ctx_queue: *wQueue) !void {
     const ctx_queue_ll = &ctx_queue.queue;
     const allocator = ctx_queue_ll.allocator;
     const data: *w_event_callback_data = try allocator.create(w_event_callback_data);
@@ -159,7 +158,7 @@ fn push_new_event_to_callback(event: cl.event.cl_event, tensors: []const wTensor
 }
 
 fn create_new_tensor_event(
-    command_queue: wCommandQueue, tensor: wTensor,
+    command_queue: CommandQueue, tensor: Tensor,
     callback: ?*const event_callback, user_data: ?*anyopaque,
     events: *wLinkedList, event: cl.event.cl_event,
     event_type: wTensorEventType
@@ -241,7 +240,7 @@ fn create_new_tensor_event(
     }
 }
 
-fn pop_event_from_tensor(tensor: wTensor, event_type: wTensorEventType, has_callback: bool) !void {
+fn pop_event_from_tensor(tensor: Tensor, event_type: wTensorEventType, has_callback: bool) !void {
     const events = &tensor.events;
 
     if (events.last) |node| {
@@ -298,7 +297,7 @@ pub fn release_tensor_event(tensor_event: wTensorEvent) !void {
 }
 
 fn register_new_event_to_tensor(
-    command_queue: wCommandQueue, tensor: wTensor,
+    command_queue: CommandQueue, tensor: Tensor,
     callback: ?*const event_callback, user_data: ?*anyopaque,
     event: cl.event.cl_event, event_type: wTensorEventType
 ) !void {
@@ -346,7 +345,7 @@ fn register_new_event_to_tensor(
 }
 
 pub fn register_new_event_to_single_tensor(
-    command_queue: wCommandQueue, tensor: wTensor,
+    command_queue: CommandQueue, tensor: Tensor,
     callback: ?*const event_callback, user_data: ?*anyopaque,
     event: cl.event.cl_event, event_type: wTensorEventType
 ) !void {
@@ -356,7 +355,7 @@ pub fn register_new_event_to_single_tensor(
 }
 
 pub fn register_new_event_to_multiple_tensors(
-    command_queue: wCommandQueue, tensors: []const wTensor,
+    command_queue: CommandQueue, tensors: []const Tensor,
     callback: ?*const event_callback, user_data: ?*anyopaque,
     event: cl.event.cl_event, events_type: []const wTensorEventType
 ) !void {

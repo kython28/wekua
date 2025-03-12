@@ -3,13 +3,14 @@ const cl = @import("opencl");
 const std = @import("std");
 
 
-fn create_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreateTensorConfig) !void {
+fn create_and_release(comptime T: type, allocator: std.mem.Allocator, config: wekua.CreateTensorConfig) !void {
     const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer wekua.context.release(ctx);
 
     const shape_expected: []const u64 = &[_]u64{20, 10};
-    const tensor = try wekua.tensor.empty(ctx, shape_expected, config);
-    defer wekua.tensor.release(tensor);
+
+    const tensor = try wekua.Tensor(T).empty(ctx, shape_expected, config);
+    defer tensor.release();
 
     if (config.is_complex) {
         try std.testing.expect(tensor.is_complex);
@@ -28,14 +29,13 @@ fn create_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreate
 }
 
 fn test_tensor_creation(allocator: std.mem.Allocator) !void {
-    try create_and_release(allocator, .{
-        .dtype = .float32
-    });
+    inline for (wekua.tensor.SupportedTypes) |T| {
+        try create_and_release(T, allocator, .{});
 
-    try create_and_release(allocator, .{
-        .dtype = .float32,
-        .is_complex = true
-    });
+        try create_and_release(T, allocator, .{
+            .is_complex = true
+        });
+    }
 }
 
 test "create and release" {

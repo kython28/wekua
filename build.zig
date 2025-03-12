@@ -50,4 +50,7 @@ pub fn build(b: *std.Build) void {
 
     const run_benchmark_step = b.step("benchmark", "Run benchmark");
     run_benchmark_step.dependOn(&run_benchmark.step);
+
+    const run_check_step = b.step("check", "ZLS");
+    run_check_step.dependOn(&lib_unit_tests.step);
 }
