@@ -42,18 +42,6 @@ fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, co
     }
 }
 
-// test "create and release" {
-fn test_create_and_release(allocator: std.mem.Allocator, ctx: *wekua.core.Context) !void {
-    ctx.allocator = allocator;
-    inline for (wekua.tensor.SupportedTypes) |T| {
-        try create_and_release(T, ctx, .{});
-
-        try create_and_release(T, ctx, .{
-            .is_complex = true
-        });
-    }
-}
-
 test "create and release" {
     const allocator = std.testing.allocator;
 
