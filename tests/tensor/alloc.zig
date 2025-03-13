@@ -2,14 +2,17 @@ const wekua = @import("wekua");
 const cl = @import("opencl");
 const std = @import("std");
 
-
-fn create_and_release(comptime T: type, ctx: *const wekua.core.Context, config: wekua.CreateTensorConfig,) !void {
-    const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{20, 10}, config);
+fn create_and_release(
+    comptime T: type,
+    ctx: *const wekua.core.Context,
+    config: wekua.CreateTensorConfig,
+) !void {
+    const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{ 20, 10 }, config);
     tensor.release();
 }
 
 fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, config: wekua.CreateTensorConfig) !void {
-    const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{20, 10}, config);
+    const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{ 20, 10 }, config);
     defer tensor.release();
 
     const w_cmd = ctx.command_queues[0];
@@ -21,12 +24,17 @@ fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, co
 
     try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null, false);
 
-
     var event_to_map: cl.event.cl_event = undefined;
     const map: []u8 = try cl.buffer.map(
-        []u8, cmd, tensor.buffer, false,
+        []u8,
+        cmd,
+        tensor.buffer,
+        false,
         @intFromEnum(cl.buffer.enums.map_flags.read),
-        0, tensor.size, events_to_wait, &event_to_map
+        0,
+        tensor.size,
+        events_to_wait,
+        &event_to_map,
     );
     defer {
         var event_to_unmap: cl.event.cl_event = undefined;
@@ -51,9 +59,7 @@ test "create and release" {
     inline for (wekua.tensor.SupportedTypes) |T| {
         try create_and_release(T, ctx, .{});
 
-        try create_and_release(T, ctx, .{
-            .is_complex = true
-        });
+        try create_and_release(T, ctx, .{ .is_complex = true });
     }
 }
 
@@ -66,8 +72,6 @@ test "create, check and release" {
     inline for (wekua.tensor.SupportedTypes) |T| {
         try create_check_and_release(T, ctx, .{});
 
-        try create_check_and_release(T, ctx, .{
-            .is_complex = true
-        });
+        try create_check_and_release(T, ctx, .{ .is_complex = true });
     }
 }
