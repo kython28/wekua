@@ -22,7 +22,7 @@ fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, co
     const custom_event = try cl.event.create_user_event(ctx.ctx);
     defer cl.event.set_user_event_status(custom_event, .complete) catch unreachable;
 
-    try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null, false);
+    try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null, true);
 
     var event_to_map: cl.event.cl_event = undefined;
     const map: []u8 = try cl.buffer.map(

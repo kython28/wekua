@@ -7,7 +7,7 @@ const Context = core.Context;
 const EventManager = @import("event_manager.zig");
 const utils = @import("../utils/utils.zig");
 
-// pub const Fill = @import("fill.zig");
+pub const fill = @import("fill.zig");
 // pub const Memory = @import("memory/main.zig");
 // const Random = @import("random/main.zig");
 // usingnamespace @import("transpose.zig");

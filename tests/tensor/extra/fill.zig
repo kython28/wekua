@@ -5,25 +5,21 @@ const std = @import("std");
 const allocator = std.testing.allocator;
 
 fn check_elements(
-    ctx: wekua.context.wContext,
-    w_cmd: wekua.command_queue.wCommandQueue,
-    tensor: wekua.tensor.wTensor,
-    expect_value_real: u64,
-    expect_value_imag: u64
+    comptime T: type,
+    ctx: wekua.Context,
+    w_cmd: wekua.core.CommandQueue,
+    tensor: wekua.Tensor(T),
+    expect_value_real: T,
+    expect_value_imag: T
 ) !void {
     const cmd = w_cmd.cmd;
 
-    const events_to_wait = wekua.tensor.event.acquire_tensor(tensor, .read);
-    const custom_event = cl.event.create_user_event(ctx.ctx) catch |err| {
-        tensor.mutex.unlock();
-        return err;
-    };
+    const events_to_wait = tensor.events_manager.getPrevEvents(.read);
+    const custom_event = cl.event.create_user_event(ctx.ctx);
     defer cl.event.set_user_event_status(custom_event, .complete) catch unreachable;
 
-    wekua.tensor.event.register_new_event_to_single_tensor(w_cmd, tensor, null, null, custom_event, .read) catch |err| {
-        tensor.mutex.unlock();
-        return err;
-    };
+    tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null, true);
+    wekua.tensor.event.register_new_event_to_single_tensor(w_cmd, tensor, null, null, custom_event, .read);
     tensor.mutex.unlock();
 
     if (events_to_wait) |e| {
@@ -58,31 +54,19 @@ fn check_elements(
     }
 }
 
-test "try to fill with exceptions" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
-    defer wekua.tensor.release(tensor);
-
-    const w_cmd = ctx.command_queues[0];
-    try std.testing.expectError(
-        wekua.tensor.errors.InvalidScalarDtype,
-        wekua.tensor.extra.fill(w_cmd, tensor, .{ .uint32 = 1 }, null)
-    );
-    try std.testing.expectError(
-        wekua.tensor.errors.TensorIsnotComplex,
-        wekua.tensor.extra.fill(w_cmd, tensor, null, .{ .uint8 = 19 })
-    );
-}
-
 // test "fill and check" {
-fn fill_and_check(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
+fn fill_and_check(comptime T: type, ctx: *const wekua.core.Context, tensor: wekua.Tensor(T)) !void {
     const w_cmd = ctx.command_queues[0];
-    const scalar: wekua.tensor.wScalar = .{.uint64 = 64};
-    try wekua.tensor.extra.fill(w_cmd, tensor, scalar, null);
 
-    try check_elements(ctx, w_cmd, tensor, scalar.uint64, 0);
+    const value: T = switch (@typeInfo(T)) {
+        .int => std.crypto.random.int(T),
+        .float => std.crypto.random.float(T),
+        else => unreachable
+    };
+
+    try wekua.tensor.fill.constant(T, tensor, w_cmd, value, null);
+
+    try check_elements(T, ctx, w_cmd, tensor, value, 0);
 }
 
 fn fill_multiple_and_check(_: std.mem.Allocator, ctx: wekua.context.wContext, tensor: wekua.tensor.wTensor) !void {
@@ -149,37 +133,40 @@ fn fill_complex_multiple_and_check2(_: std.mem.Allocator, ctx: wekua.context.wCo
 }
 
 test "fill and check" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
+    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer ctx.release();
 
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, .{.dtype = wekua.tensor.wTensorDtype.uint64});
-    defer wekua.tensor.release(tensor);
+    inline for (wekua.tensor.SupportedTypes) |T| {
+        const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{20, 10}, .{});
+        defer tensor.release();
 
-    try fill_and_check(allocator, ctx, tensor);
-    try fill_multiple_and_check(allocator, ctx, tensor);
-    try fill_multiple_and_check2(allocator, ctx, tensor);
+        try fill_and_check(allocator, ctx, tensor);
+        try fill_multiple_and_check(allocator, ctx, tensor);
+        try fill_multiple_and_check2(allocator, ctx, tensor);
+    }
 
-    try std.testing.checkAllAllocationFailures(allocator, fill_and_check, .{ctx, tensor});
-    try std.testing.checkAllAllocationFailures(allocator, fill_multiple_and_check, .{ctx, tensor});
-    try std.testing.checkAllAllocationFailures(allocator, fill_multiple_and_check2, .{ctx, tensor});
-}
 
-test "fill complex and check" {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
+//     try std.testing.checkAllAllocationFailures(allocator, fill_and_check, .{ctx, tensor});
+//     try std.testing.checkAllAllocationFailures(allocator, fill_multiple_and_check, .{ctx, tensor});
+//     try std.testing.checkAllAllocationFailures(allocator, fill_multiple_and_check2, .{ctx, tensor});
+// }
 
-    const config: wekua.tensor.wCreateTensorConfig = .{
-        .dtype = wekua.tensor.wTensorDtype.uint64,
-        .is_complex = true
-    };
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
-    defer wekua.tensor.release(tensor);
+// test "fill complex and check" {
+//     const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
+//     defer wekua.context.release(ctx);
 
-    try fill_complex_and_check(allocator, ctx, tensor);
-    try fill_complex_multiple_and_check(allocator, ctx, tensor);
-    try fill_complex_multiple_and_check2(allocator, ctx, tensor);
+//     const config: wekua.tensor.wCreateTensorConfig = .{
+//         .dtype = wekua.tensor.wTensorDtype.uint64,
+//         .is_complex = true
+//     };
+//     const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
+//     defer wekua.tensor.release(tensor);
 
-    try std.testing.checkAllAllocationFailures(allocator, fill_complex_and_check, .{ctx, tensor});
-    try std.testing.checkAllAllocationFailures(allocator, fill_complex_multiple_and_check, .{ctx, tensor});
-    try std.testing.checkAllAllocationFailures(allocator, fill_complex_multiple_and_check2, .{ctx, tensor});
+//     try fill_complex_and_check(allocator, ctx, tensor);
+//     try fill_complex_multiple_and_check(allocator, ctx, tensor);
+//     try fill_complex_multiple_and_check2(allocator, ctx, tensor);
+
+//     try std.testing.checkAllAllocationFailures(allocator, fill_complex_and_check, .{ctx, tensor});
+//     try std.testing.checkAllAllocationFailures(allocator, fill_complex_multiple_and_check, .{ctx, tensor});
+//     try std.testing.checkAllAllocationFailures(allocator, fill_complex_multiple_and_check2, .{ctx, tensor});
 }
