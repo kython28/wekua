@@ -1,19 +1,10 @@
 const std = @import("std");
 const cl = @import("opencl");
-const wCommandQueue = @import("command_queue.zig");
-
-const wQueue = @import("../utils/queue.zig");
-const w_event = @import("event.zig");
+const CommandQueue = @import("command_queue.zig");
 
 allocator: std.mem.Allocator,
 ctx: cl.context.cl_context,
-command_queues: []wCommandQueue,
-
-events_worker: std.Thread,
-queue: wQueue,
-
-releasing_events_worker: std.Thread,
-releasing_events_queue: wQueue,
+command_queues: []CommandQueue,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -125,35 +116,16 @@ pub fn init_from_cl_context(
 
     context.allocator = allocator;
     context.ctx = cl_ctx;
-    context.command_queues = try wCommandQueue.init_multiples(allocator, context, devices);
-    context.queue = wQueue.init(allocator);
-    context.releasing_events_queue = wQueue.init(allocator);
+    context.command_queues = try CommandQueue.init_multiples(allocator, context, devices);
 
-    context.events_worker = try std.Thread.spawn(
-        .{}, w_event.context_events_worker, .{allocator, &context.queue, &context.releasing_events_queue}
-    );
-    errdefer {
-        context.queue.release();
-        context.events_worker.join();
-    }
-
-    context.releasing_events_worker = try std.Thread.spawn(
-        .{}, w_event.context_releasing_events_worker, .{allocator, &context.releasing_events_queue}
-    );
     return context;
 }
 
 pub fn release(context: *wContext) void {
     const allocator = context.allocator;
 
-    context.queue.release();
-    context.events_worker.join();
-
-    context.releasing_events_queue.release();
-    context.releasing_events_worker.join();
-
     cl.context.release(context.ctx) catch unreachable;
-    wCommandQueue.deinit_multiples(allocator, context.command_queues);
+    CommandQueue.deinit_multiples(allocator, context.command_queues);
 
     allocator.destroy(context);
 }

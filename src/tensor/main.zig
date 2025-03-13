@@ -4,22 +4,20 @@ const std = @import("std");
 const core = @import("../core/main.zig");
 const Context = core.Context;
 
-const w_event = @import("utils/event.zig");
+const EventManager = @import("event_manager.zig");
 const utils = @import("../utils/utils.zig");
 
-pub const Fill = @import("fill.zig");
-pub const Memory = @import("memory/main.zig");
+// pub const Fill = @import("fill.zig");
+// pub const Memory = @import("memory/main.zig");
 // const Random = @import("random/main.zig");
 // usingnamespace @import("transpose.zig");
 // const convertions = @import("convertions/main.zig");
-
-const TensorEventLinkedList = @import("../utils/linked_list.zig").LinkedList(w_event.wTensorEvent);
 
 pub const Errors = error{
     InvalidValue,
 };
 
-pub const SupportedTypes = .{i8, u8, i16, u16, i32, u32, i64, u64, f32, f64};
+pub const SupportedTypes = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
 
 pub const CreateConfig = struct {
     cl_mem_flags: cl.buffer.cl_mem_flags = @intFromEnum(cl.buffer.enums.mem_flags.read_write),
@@ -32,6 +30,13 @@ pub fn Tensor(comptime T: type) type {
     switch (T) {
         i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 => {},
         else => @compileError("Type not supported"),
+    }
+
+    comptime var type_index: usize = 0;
+    inline for (SupportedTypes, 0..) |t, i| {
+        if (T == t) {
+            type_index = i;
+        }
     }
 
     return struct {
@@ -66,14 +71,11 @@ pub fn Tensor(comptime T: type) type {
         work_items_like_matrix: [][2]u64,
         work_items_like_matrix_without_vectors: [][2]u64,
 
-        mutex: std.Thread.Mutex,
-        condition: std.Thread.Condition,
-        events: TensorEventLinkedList,
+        events_manager: EventManager,
 
         const this = @This();
 
-
-        fn create_pitch_buffer(context: *const Context, tensor: *this, pitchs: []const u64) !void {
+        fn createPitchBuffer(self: *this, context: *const Context, pitchs: []const u64) !void {
             const pitchs_as_bytes = @as([*]const u8, @ptrCast(pitchs.ptr))[0..(pitchs.len * @sizeOf(u64))];
             const pitchs_buffer = try cl.buffer.create(
                 context.ctx,
@@ -81,11 +83,10 @@ pub fn Tensor(comptime T: type) type {
                 pitchs_as_bytes.len,
                 null,
             );
-            tensor.pitchs_buffer = pitchs_buffer;
+            self.pitchs_buffer = pitchs_buffer;
             errdefer cl.buffer.release(pitchs_buffer) catch unreachable;
 
-            const prev_events = w_event.acquire_tensor(tensor, .write);
-            defer tensor.mutex.unlock();
+            const prev_events = self.events_manager.getPrevEvents(.write);
 
             var new_event: cl.event.cl_event = undefined;
             const command_queue = context.command_queues[0];
@@ -104,7 +105,7 @@ pub fn Tensor(comptime T: type) type {
                 cl.event.release(new_event) catch unreachable;
             }
 
-            try w_event.register_new_event_to_single_tensor(command_queue, tensor, null, null, new_event, .write);
+            try self.events_manager.appendNewEvent(.write, prev_events, new_event, null, true);
         }
 
         pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
@@ -115,9 +116,8 @@ pub fn Tensor(comptime T: type) type {
             errdefer allocator.destroy(tensor);
 
             tensor.context = context;
-            tensor.events = TensorEventLinkedList.init(allocator);
-            tensor.mutex = std.Thread.Mutex{};
-            tensor.condition = std.Thread.Condition{};
+            try tensor.events_manager.init(allocator);
+            errdefer tensor.events_manager.deinit();
 
             tensor.shape = try allocator.alloc(u64, shape.len);
             errdefer allocator.free(tensor.shape);
@@ -127,18 +127,16 @@ pub fn Tensor(comptime T: type) type {
                 d.* = s;
             }
 
-            const dtype = config.dtype;
             const is_complex = config.is_complex;
             const vectors_enabled = if (is_complex) false else config.vectors_enabled;
 
-            tensor.dtype = dtype;
             tensor.is_complex = is_complex;
             tensor.vectors_enabled = vectors_enabled;
 
             var vector_width: u64 = 1;
             if (vectors_enabled) {
                 for (command_queues) |cmd| {
-                    const cw: u64 = @intCast(cmd.vector_widths[@intFromEnum(dtype)]);
+                    const cw: u64 = @intCast(cmd.vector_widths[type_index]);
                     vector_width = @max(cw, vector_width);
                 }
             }
@@ -228,55 +226,41 @@ pub fn Tensor(comptime T: type) type {
                 utils.calculate_work_items(shape_like_matrix_without_vectors, wm, cmd.max_work_group_size);
             }
 
-            const size: usize = number_of_elements * @sizeOf(T);
+            const size = number_of_elements * @sizeOf(T);
             tensor.size = size;
 
             tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
             errdefer cl.buffer.release(tensor.buffer) catch unreachable;
 
-            try create_pitch_buffer(context, tensor, pitchs);
+            try tensor.createPitchBuffer(context, pitchs);
             return tensor;
         }
 
-        pub fn release(tensor: *this) void {
-            const allocator = tensor.context.allocator;
+        pub fn release(self: *this) void {
+            const allocator = self.context.allocator;
 
-            const events = &tensor.events;
-            events.first = null;
+            self.events_manager.deinit();
 
-            tensor.mutex.lock();
-            if (events.last) |last_node| {
-                const tensor_event: w_event.wTensorEvent = @alignCast(@ptrCast(last_node.data.?));
-                while (!tensor_event.finalized) {
-                    tensor_event.condition.wait(&tensor.mutex);
-                }
-                w_event.release_tensor_event(tensor_event) catch unreachable;
-                allocator.destroy(last_node);
-                events.last = null;
-            }
-            tensor.mutex.unlock();
+            cl.buffer.release(self.buffer) catch unreachable;
+            cl.buffer.release(self.pitchs_buffer) catch unreachable;
 
-            cl.buffer.release(tensor.buffer) catch unreachable;
-            cl.buffer.release(tensor.pitchs_buffer) catch unreachable;
-
-            allocator.free(tensor.shape);
-            allocator.free(tensor.vl_shape);
-            allocator.free(tensor.pitchs);
-            allocator.free(tensor.work_item_for_all_elements);
-            allocator.free(tensor.work_item_for_all_vectors);
-            allocator.free(tensor.work_items_like_matrix);
-            allocator.free(tensor.work_items_like_matrix_without_vectors);
-            allocator.destroy(tensor);
+            allocator.free(self.shape);
+            allocator.free(self.vl_shape);
+            allocator.free(self.pitchs);
+            allocator.free(self.work_item_for_all_elements);
+            allocator.free(self.work_item_for_all_vectors);
+            allocator.free(self.work_items_like_matrix);
+            allocator.free(self.work_items_like_matrix_without_vectors);
+            allocator.destroy(self);
         }
 
         pub fn alloc(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
             const tensor = try empty(context, shape, config);
             errdefer tensor.release();
 
-            const prev_events = w_event.acquire_tensor(tensor, .write);
-            defer tensor.mutex.unlock();
+            const prev_events = tensor.events_manager.getPrevEvents(.write);
 
-            const zero: u64 = 0;
+            const zero: T = 0;
             const command_queue = context.command_queues[0];
             const cmd = command_queue.cmd;
 
@@ -296,14 +280,7 @@ pub fn Tensor(comptime T: type) type {
                 cl.event.release(new_event) catch unreachable;
             }
 
-            try w_event.register_new_event_to_single_tensor(
-                command_queue,
-                tensor,
-                null,
-                null,
-                new_event,
-                .write,
-            );
+            try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null, true);
             return tensor;
         }
     };

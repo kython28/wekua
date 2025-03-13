@@ -3,10 +3,7 @@ const cl = @import("opencl");
 const std = @import("std");
 
 
-fn create_and_release(comptime T: type, allocator: std.mem.Allocator, config: wekua.CreateTensorConfig) !void {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
+fn create_and_release(comptime T: type, ctx: *const wekua.core.Context, config: wekua.CreateTensorConfig) !void {
     const shape_expected: []const u64 = &[_]u64{20, 10};
 
     const tensor = try wekua.Tensor(T).empty(ctx, shape_expected, config);
@@ -28,11 +25,12 @@ fn create_and_release(comptime T: type, allocator: std.mem.Allocator, config: we
     try std.testing.expectEqualSlices(u64, shape_expected, tensor.shape);
 }
 
-fn test_tensor_creation(allocator: std.mem.Allocator) !void {
+fn test_tensor_creation(allocator: std.mem.Allocator, ctx: *wekua.core.Context) !void {
+    ctx.allocator = allocator;
     inline for (wekua.tensor.SupportedTypes) |T| {
-        try create_and_release(T, allocator, .{});
+        try create_and_release(T, ctx, .{});
 
-        try create_and_release(T, allocator, .{
+        try create_and_release(T, ctx, .{
             .is_complex = true
         });
     }
@@ -40,10 +38,19 @@ fn test_tensor_creation(allocator: std.mem.Allocator) !void {
 
 test "create and release" {
     const allocator = std.testing.allocator;
-    try test_tensor_creation(allocator);
+
+    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer ctx.release();
+
+    try test_tensor_creation(allocator, ctx);
 }
 
 test "create and fail" {
     const allocator = std.testing.allocator;
-    try std.testing.checkAllAllocationFailures(allocator, test_tensor_creation, .{});
+
+    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer ctx.release();
+    defer ctx.allocator = allocator;
+
+    try std.testing.checkAllAllocationFailures(allocator, test_tensor_creation, .{ctx});
 }

@@ -3,50 +3,34 @@ const cl = @import("opencl");
 const std = @import("std");
 
 
-fn create_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreateTensorConfig) !void {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
-    wekua.tensor.release(tensor);
+fn create_and_release(comptime T: type, ctx: *const wekua.core.Context, config: wekua.CreateTensorConfig,) !void {
+    const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{20, 10}, config);
+    tensor.release();
 }
 
-fn create_check_and_release(allocator: std.mem.Allocator, config: wekua.tensor.wCreateTensorConfig) !void {
-    const ctx = try wekua.context.create_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer wekua.context.release(ctx);
-
-    const tensor = try wekua.tensor.alloc(ctx, &[_]u64{20, 10}, config);
-    defer wekua.tensor.release(tensor);
+fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, config: wekua.CreateTensorConfig) !void {
+    const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{20, 10}, config);
+    defer tensor.release();
 
     const w_cmd = ctx.command_queues[0];
     const cmd = w_cmd.cmd;
 
-    const events_to_wait = wekua.tensor.event.acquire_tensor(tensor, .read);
-    const custom_event = cl.event.create_user_event(ctx.ctx) catch |err| {
-        tensor.mutex.unlock();
-        return err;
-    };
+    const events_to_wait = tensor.events_manager.getPrevEvents(.read);
+    const custom_event = try cl.event.create_user_event(ctx.ctx);
     defer cl.event.set_user_event_status(custom_event, .complete) catch unreachable;
 
-    wekua.tensor.event.register_new_event_to_single_tensor(w_cmd, tensor, null, null, custom_event, .read) catch |err| {
-        tensor.mutex.unlock();
-        return err;
-    };
-    tensor.mutex.unlock();
+    try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null, false);
 
-    if (events_to_wait) |e| {
-        try cl.event.wait_for_many(e);
-    }
 
     var event_to_map: cl.event.cl_event = undefined;
-    const map: []u64 = try cl.buffer.map(
-        []u64, cmd, tensor.buffer, false,
+    const map: []u8 = try cl.buffer.map(
+        []u8, cmd, tensor.buffer, false,
         @intFromEnum(cl.buffer.enums.map_flags.read),
-        0, tensor.size, null, &event_to_map
+        0, tensor.size, events_to_wait, &event_to_map
     );
     defer {
         var event_to_unmap: cl.event.cl_event = undefined;
-        cl.buffer.unmap([]u64, cmd, tensor.buffer, map, null, &event_to_unmap) catch unreachable;
+        cl.buffer.unmap([]u8, cmd, tensor.buffer, map, null, &event_to_unmap) catch unreachable;
         cl.event.wait(event_to_unmap) catch unreachable;
         cl.event.release(event_to_unmap) catch unreachable;
         cl.event.release(event_to_map) catch unreachable;
@@ -59,38 +43,43 @@ fn create_check_and_release(allocator: std.mem.Allocator, config: wekua.tensor.w
 }
 
 // test "create and release" {
-fn test_create_and_release(allocator: std.mem.Allocator) !void {
-    try create_and_release(allocator, .{
-        .dtype = .float32
-    });
+fn test_create_and_release(allocator: std.mem.Allocator, ctx: *wekua.core.Context) !void {
+    ctx.allocator = allocator;
+    inline for (wekua.tensor.SupportedTypes) |T| {
+        try create_and_release(T, ctx, .{});
 
-    try create_and_release(allocator, .{
-        .dtype = .float32,
-        .is_complex = true
-    });
+        try create_and_release(T, ctx, .{
+            .is_complex = true
+        });
+    }
 }
-
-// test "create, check and release" {
-fn test_create_check_and_release(allocator: std.mem.Allocator) !void {
-    try create_check_and_release(allocator, .{
-        .dtype = .uint64
-    });
-
-    try create_check_and_release(allocator, .{
-        .dtype = .uint64,
-        .is_complex = true
-    });
-}
-
 
 test "create and release" {
     const allocator = std.testing.allocator;
-    try test_create_and_release(allocator);
-    try std.testing.checkAllAllocationFailures(allocator, test_create_and_release, .{});
+
+    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer ctx.release();
+
+    inline for (wekua.tensor.SupportedTypes) |T| {
+        try create_and_release(T, ctx, .{});
+
+        try create_and_release(T, ctx, .{
+            .is_complex = true
+        });
+    }
 }
 
 test "create, check and release" {
     const allocator = std.testing.allocator;
-    try test_create_and_release(allocator);
-    try std.testing.checkAllAllocationFailures(allocator, test_create_check_and_release, .{});
+
+    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer ctx.release();
+
+    inline for (wekua.tensor.SupportedTypes) |T| {
+        try create_check_and_release(T, ctx, .{});
+
+        try create_check_and_release(T, ctx, .{
+            .is_complex = true
+        });
+    }
 }
