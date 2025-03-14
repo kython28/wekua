@@ -20,9 +20,9 @@ fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, co
 
     const events_to_wait = tensor.events_manager.getPrevEvents(.read);
     const custom_event = try cl.event.create_user_event(ctx.ctx);
-    defer cl.event.set_user_event_status(custom_event, .complete) catch unreachable;
+    defer cl.event.set_user_event_status(custom_event, .complete) catch |err| @panic(@errorName(err));
 
-    try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null, true);
+    try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null);
 
     var event_to_map: cl.event.cl_event = undefined;
     const map: []u8 = try cl.buffer.map(
@@ -40,8 +40,8 @@ fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, co
         var event_to_unmap: cl.event.cl_event = undefined;
         cl.buffer.unmap([]u8, cmd, tensor.buffer, map, null, &event_to_unmap) catch unreachable;
         cl.event.wait(event_to_unmap) catch unreachable;
-        cl.event.release(event_to_unmap) catch unreachable;
-        cl.event.release(event_to_map) catch unreachable;
+        cl.event.release(event_to_unmap);
+        cl.event.release(event_to_map);
     }
 
     try cl.event.wait(event_to_map);

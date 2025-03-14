@@ -12,7 +12,7 @@ pub fn init(
     devices: []cl.device.cl_device_id
 ) !*wContext {
     const cl_ctx = try cl.context.create(properties, devices, null, null);
-    errdefer cl.context.release(cl_ctx) catch unreachable;
+    errdefer cl.context.release(cl_ctx);
 
     const context = try init_from_cl_context(allocator, cl_ctx);
     return context;
@@ -24,7 +24,7 @@ pub fn init_from_device_type(
     device_type: cl.device.enums.device_type
 ) !*wContext {
     const cl_ctx = try cl.context.create_from_type(properties, device_type, null, null);
-    errdefer cl.context.release(cl_ctx) catch unreachable;
+    errdefer cl.context.release(cl_ctx);
 
     const context = try init_from_cl_context(allocator, cl_ctx);
     return context;
@@ -49,7 +49,7 @@ pub fn create_from_best_device(
         defer {
             for (devices) |dev| {
                 if (dev != best_device) {
-                    cl.device.release(dev) catch unreachable;
+                    cl.device.release(dev);
                 }
             }
             allocator.free(devices);
@@ -77,7 +77,7 @@ pub fn create_from_best_device(
             const score: u64 = clock_freq * max_work_group_size * compute_units;
             if (score > best_score or best_device == null) {
                 if (best_device) |dev| {
-                    if (!device_choosen_in_this_iteration) try cl.device.release(dev);
+                    if (!device_choosen_in_this_iteration) cl.device.release(dev);
                     device_choosen_in_this_iteration = true;
                 }
                 best_device = device;
@@ -89,7 +89,7 @@ pub fn create_from_best_device(
     if (best_device == null) return error.DeviceNotFound;
 
     const cl_ctx = try cl.context.create(properties, &.{best_device.?}, null, null);
-    errdefer cl.context.release(cl_ctx) catch unreachable;
+    errdefer cl.context.release(cl_ctx);
 
     const context = try init_from_cl_context(allocator, cl_ctx);
     return context;
@@ -124,7 +124,7 @@ pub fn init_from_cl_context(
 pub fn release(context: *wContext) void {
     const allocator = context.allocator;
 
-    cl.context.release(context.ctx) catch unreachable;
+    cl.context.release(context.ctx);
     CommandQueue.deinit_multiples(allocator, context.command_queues);
 
     allocator.destroy(context);

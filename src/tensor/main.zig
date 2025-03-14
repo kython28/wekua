@@ -84,7 +84,7 @@ pub fn Tensor(comptime T: type) type {
                 null,
             );
             self.pitchs_buffer = pitchs_buffer;
-            errdefer cl.buffer.release(pitchs_buffer) catch unreachable;
+            errdefer cl.buffer.release(pitchs_buffer);
 
             const prev_events = self.events_manager.getPrevEvents(.write);
 
@@ -101,11 +101,13 @@ pub fn Tensor(comptime T: type) type {
                 &new_event,
             );
             errdefer {
-                cl.event.wait(new_event) catch unreachable;
-                cl.event.release(new_event) catch unreachable;
+                cl.event.wait(new_event) catch |err| {
+                    std.debug.panic("Unexpected error while waiting for event: {s}", .{@errorName(err)});
+                };
+                cl.event.release(new_event);
             }
 
-            try self.events_manager.appendNewEvent(.write, prev_events, new_event, null, true);
+            try self.events_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
 
         pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
@@ -230,7 +232,7 @@ pub fn Tensor(comptime T: type) type {
             tensor.size = size;
 
             tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
-            errdefer cl.buffer.release(tensor.buffer) catch unreachable;
+            errdefer cl.buffer.release(tensor.buffer);
 
             try tensor.createPitchBuffer(context, pitchs);
             return tensor;
@@ -241,8 +243,8 @@ pub fn Tensor(comptime T: type) type {
 
             self.events_manager.deinit();
 
-            cl.buffer.release(self.buffer) catch unreachable;
-            cl.buffer.release(self.pitchs_buffer) catch unreachable;
+            cl.buffer.release(self.buffer);
+            cl.buffer.release(self.pitchs_buffer);
 
             allocator.free(self.shape);
             allocator.free(self.vl_shape);
@@ -276,11 +278,13 @@ pub fn Tensor(comptime T: type) type {
                 &new_event,
             );
             errdefer {
-                cl.event.wait(new_event) catch unreachable;
-                cl.event.release(new_event) catch unreachable;
+                cl.event.wait(new_event) catch |err| {
+                    std.debug.panic("Unexpected error while waiting for event: {s}", .{@errorName(err)});
+                };
+                cl.event.release(new_event);
             }
 
-            try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null, true);
+            try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
             return tensor;
         }
     };

@@ -118,7 +118,7 @@ const Event = struct {
 
     pub fn clear(self: *Event) void {
         for (self.events[0..self.events_count]) |event| {
-            cl.event.release(event) catch unreachable;
+            cl.event.release(event);
         }
 
         self.operation = .none;
@@ -201,7 +201,7 @@ const EventsBatch = struct {
 
     pub fn clear(self: *EventsBatch) void {
         for (self.prev_events[0..@intCast(self.prev_events_len)]) |e| {
-            cl.event.release(e) catch unreachable;
+            cl.event.release(e);
         }
 
         for (self.events[0..self.events_num]) |*event| {
@@ -222,7 +222,9 @@ const EventsBatch = struct {
             defer self.mutex.lock();
 
             for (self.events[0..events_num]) |*event| {
-                event.waitForEvents() catch unreachable;
+                event.waitForEvents() catch |err| {
+                    std.debug.panic("Unexpected error while waiting for events finalization: {s}", .{@errorName(err)});
+                };
             }
         }
         self.mutex.unlock();
@@ -310,14 +312,14 @@ fn getNewBatch(self: *TensorEventManager, prev_events: ?[]const cl.event.cl_even
     return new_batch;
 }
 
-pub fn appendNewEvent(
+fn addEventToBatch(
     self: *TensorEventManager,
     new_op: Operation,
     prev_cl_events: ?[]const cl.event.cl_event,
     new_cl_event: cl.event.cl_event,
     user_callback: ?UserCallback,
-    register_callback: bool,
-) !void {
+    comptime register_callback: bool,
+) !*Event {
     var batch = self.batch;
     batch.mutex.lock();
     defer batch.mutex.unlock();
@@ -342,20 +344,21 @@ pub fn appendNewEvent(
             }
 
             event = &batch.events[events_num];
-            continue :loop try event.appendNewEvent(new_op, new_cl_event, user_callback);
+            const new_result = try event.appendNewEvent(new_op, new_cl_event, user_callback);
+            continue :loop new_result; 
         },
         .success_and_full => {
             events_num += 1;
         },
     }
-    errdefer event.pop(user_callback != null);
 
     batch.events_num = events_num;
     errdefer {
-        if (events_num > 0) {
+        if (event.operation == .none or !event.full()) {
             batch.events_num -= 1;
         }
     }
+    errdefer event.pop(user_callback != null);
 
     if (register_callback) {
         batch.mutex.unlock();
@@ -363,6 +366,18 @@ pub fn appendNewEvent(
 
         try cl.event.set_callback(new_cl_event, .complete, &eventCallback, event);
     }
+
+    return event;
+}
+
+pub inline fn appendNewEvent(
+    self: *TensorEventManager,
+    new_op: Operation,
+    prev_cl_events: ?[]const cl.event.cl_event,
+    new_cl_event: cl.event.cl_event,
+    user_callback: ?UserCallback,
+) !void {
+    _ = try self.addEventToBatch(new_op, prev_cl_events, new_cl_event, user_callback, true);
 }
 
 const TensorEventManager = @This();

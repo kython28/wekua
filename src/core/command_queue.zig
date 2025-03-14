@@ -73,7 +73,7 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
 
 pub fn init(self: *CommandQueue, allocator: std.mem.Allocator, ctx: *const Context, device: cl.device.cl_device_id) !void {
     const cmd: cl.command_queue.cl_command_queue = try cl.command_queue.create(ctx.ctx, device, 0);
-    errdefer cl.command_queue.release(cmd) catch unreachable;
+    errdefer cl.command_queue.release(cmd);
 
     self.allocator = allocator;
     self.ctx = ctx;
@@ -117,7 +117,7 @@ pub fn init_multiples(allocator: std.mem.Allocator, ctx: *Context, devices: []cl
 }
 
 pub fn deinit(self: *CommandQueue) void {
-    cl.command_queue.release(self.cmd) catch unreachable;
+    cl.command_queue.release(self.cmd);
     const allocator = self.allocator;
 
     const kernels = self.kernels;
@@ -126,7 +126,7 @@ pub fn deinit(self: *CommandQueue) void {
             if (v.kernels) |cl_kernels| {
                 for (cl_kernels) |cl_kernel| {
                     if (cl_kernel) |clk| {
-                        cl.kernel.release(clk) catch unreachable;
+                        cl.kernel.release(clk);
                     }
                 }
                 allocator.free(cl_kernels);
@@ -135,7 +135,7 @@ pub fn deinit(self: *CommandQueue) void {
             if (v.programs) |cl_programs| {
                 for (cl_programs) |cl_program| {
                     if (cl_program) |clp| {
-                        cl.program.release(clp) catch unreachable;
+                        cl.program.release(clp);
                     }
                 }
                 allocator.free(cl_programs);
@@ -146,7 +146,7 @@ pub fn deinit(self: *CommandQueue) void {
     }
 
     for (self.headers.programs.?) |program| {
-        if (program) |v| cl.program.release(v) catch unreachable;
+        if (program) |v| cl.program.release(v);
     }
     allocator.free(self.headers.programs.?);
     allocator.destroy(self.headers);
