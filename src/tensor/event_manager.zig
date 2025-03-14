@@ -3,12 +3,7 @@ const builtin = @import("builtin");
 
 const cl = @import("opencl");
 
-
-
-pub const UserCallback = struct {
-    func: *const fn (user_data: ?*anyopaque) void,
-    data: ?*anyopaque
-};
+pub const UserCallback = struct { func: *const fn (user_data: ?*anyopaque) void, data: ?*anyopaque };
 
 pub const UserCallbackArray = std.ArrayList(UserCallback);
 
@@ -58,7 +53,7 @@ const Event = struct {
         const current_operation = self.operation;
         if (current_operation == .none) {
             self.operation = operation;
-        }else if (operation != current_operation or self.full() or self.finalized()) {
+        } else if (operation != current_operation or self.full() or self.finalized()) {
             return AppendResult.full;
         }
         errdefer {
@@ -153,13 +148,13 @@ const EventsBatch = struct {
         self.mutex = .{};
 
         if (prev_events) |pv| {
-            if (pv.len > MaxEventsPerSet*2) return error.EventsArrayTooLong;
+            if (pv.len > MaxEventsPerSet * 2) return error.EventsArrayTooLong;
 
             for (pv) |e| try cl.event.retain(e);
 
             @memcpy(self.prev_events[0..pv.len], pv);
             self.prev_events_len = @intCast(pv.len);
-        }else{
+        } else {
             self.prev_events_len = 0;
         }
 
@@ -267,7 +262,11 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
     return event.toSlice();
 }
 
-fn eventCallback(_: cl.event.cl_event, event_command_status: i32, user_data: ?*anyopaque) callconv(.C) void {
+fn singleCompletionEventCallback(
+    _: cl.event.cl_event,
+    event_command_status: i32,
+    user_data: ?*anyopaque,
+) callconv(.C) void {
     const event_status: cl.event.enums.execution_status = @enumFromInt(event_command_status);
     if (event_status != .complete) unreachable;
 
@@ -345,7 +344,7 @@ fn addEventToBatch(
 
             event = &batch.events[events_num];
             const new_result = try event.appendNewEvent(new_op, new_cl_event, user_callback);
-            continue :loop new_result; 
+            continue :loop new_result;
         },
         .success_and_full => {
             events_num += 1;
@@ -364,7 +363,7 @@ fn addEventToBatch(
         batch.mutex.unlock();
         defer batch.mutex.lock();
 
-        try cl.event.set_callback(new_cl_event, .complete, &eventCallback, event);
+        try cl.event.set_callback(new_cl_event, .complete, &singleCompletionEventCallback, event);
     }
 
     return event;
