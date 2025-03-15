@@ -1,18 +1,15 @@
 const std = @import("std");
 const cl = @import("opencl");
 
-const CommandQueue = @import("../../core/main.zig").CommandQueue;
+const core = @import("../../core/main.zig");
 
-const w_event = @import("../utils/event.zig");
 const w_tensor = @import("../main.zig");
 const Tensor = w_tensor.Tensor;
-
-const utils = @import("utils.zig");
 
 pub fn putValue(
     comptime T: type,
     tensor: *Tensor(T),
-    command_queue: *const CommandQueue,
+    command_queue: *const core.CommandQueue,
     coor: []const u64,
     real_scalar: ?T,
     imag_scalar: ?T,
@@ -27,19 +24,7 @@ pub fn putValue(
         return w_tensor.Errors.TensorDoesNotSupportComplexNumbers;
     }
 
-    const allocator = command_queue.allocator;
-
-    const Resources = packed struct {
-        size: usize,
-        pattern: [2]T,
-    };
-
-    const resources = try allocator.create(Resources);
-    errdefer allocator.free(resources);
-
-    resources.size = @sizeOf(Resources);
-
-    const pattern: []T = &resources.pattern;
+    var pattern: [2]T = undefined;
 
     pattern[0] = real_scalar orelse 0;
     pattern[1] = imag_scalar orelse 0;
@@ -56,31 +41,33 @@ pub fn putValue(
     offset += coor[last_index] * (1 + @as(usize, @intCast(@intFromBool(is_complex))));
     offset *= @sizeOf(T);
 
-    const prev_events = w_event.acquire_tensor(tensor, .write);
-    defer tensor.mutex.unlock();
+    const prev_events = tensor.events_manager.getPrevEvents(.write);
 
     var new_event: cl.event.cl_event = undefined;
-    try cl.buffer.write(
-        command_queue.cmd,
-        tensor.buffer,
-        false,
-        offset,
-        @sizeOf(T) * (1 + @as(usize, is_complex)),
-        pattern.ptr,
-        prev_events,
-        &new_event,
-    );
-    errdefer {
-        cl.event.wait(new_event) catch unreachable;
-        cl.event.release(new_event) catch unreachable;
+    {
+        try cl.buffer.write(
+            command_queue.cmd,
+            tensor.buffer,
+            false,
+            offset,
+            @sizeOf(T) * (1 + @as(usize, is_complex)),
+            &pattern,
+            prev_events,
+            &new_event,
+        );
+        errdefer |err| {
+            cl.event.wait(new_event) catch |err2| {
+                std.debug.panic(
+                    "An error ocurred ({s}) while waiting for new event and dealing with another error ({s})", .{
+                        @errorName(err2), @errorName(err)
+                    }
+                );
+            };
+            cl.event.release(new_event);
+        }
+
+        try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
     }
 
-    try w_event.register_new_event_to_single_tensor(
-        command_queue,
-        tensor,
-        &utils.release_temporal_resource_callback,
-        resources,
-        new_event,
-        .write,
-    );
+    try tensor.wait();
 }

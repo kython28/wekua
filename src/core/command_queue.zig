@@ -2,7 +2,7 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const Context = @import("context.zig");
-const kernel = @import("kernel.zig");
+// const kernel = @import("kernel.zig");
 
 allocator: std.mem.Allocator,
 ctx: *const Context,
@@ -13,8 +13,8 @@ device_name: []u8,
 device_vendor_id: u32,
 device_type: cl.device.enums.device_type,
 
-kernels: [kernel.total_number_of_kernels]?kernel.wKernel,
-headers: kernel.wKernel,
+// kernels: [kernel.total_number_of_kernels]?kernel.wKernel,
+// headers: kernel.wKernel,
 
 local_mem_type: cl.device.cl_device_local_mem_type,
 compute_units: u32,
@@ -81,17 +81,17 @@ pub fn init(self: *CommandQueue, allocator: std.mem.Allocator, ctx: *const Conte
     self.device = device;
     self.wekua_id = 0;
 
-    const headers = try allocator.create(kernel._w_kernel);
-    errdefer allocator.destroy(headers);
-    headers.kernels = null;
+    // const headers = try allocator.create(kernel._w_kernel);
+    // errdefer allocator.destroy(headers);
+    // headers.kernels = null;
 
-    headers.programs = try allocator.alloc(?cl.program.cl_program, kernel.total_number_of_headers);
-    @memset(headers.programs.?, null);
-    errdefer allocator.free(headers.programs.?);
+    // headers.programs = try allocator.alloc(?cl.program.cl_program, kernel.total_number_of_headers);
+    // @memset(headers.programs.?, null);
+    // errdefer allocator.free(headers.programs.?);
 
-    self.headers = headers;
+    // self.headers = headers;
 
-    @memset(&self.kernels, null);
+    // @memset(&self.kernels, null);
     try self.get_device_info(allocator, device);
 }
 
@@ -119,36 +119,36 @@ pub fn init_multiples(allocator: std.mem.Allocator, ctx: *Context, devices: []cl
 pub fn deinit(self: *CommandQueue) void {
     const allocator = self.allocator;
 
-    const kernels = self.kernels;
-    for (kernels) |w_kernel| {
-        if (w_kernel) |v| {
-            if (v.kernels) |cl_kernels| {
-                for (cl_kernels) |cl_kernel| {
-                    if (cl_kernel) |clk| {
-                        cl.kernel.release(clk);
-                    }
-                }
-                allocator.free(cl_kernels);
-            }
+    // const kernels = self.kernels;
+    // for (kernels) |w_kernel| {
+    //     if (w_kernel) |v| {
+    //         if (v.kernels) |cl_kernels| {
+    //             for (cl_kernels) |cl_kernel| {
+    //                 if (cl_kernel) |clk| {
+    //                     cl.kernel.release(clk);
+    //                 }
+    //             }
+    //             allocator.free(cl_kernels);
+    //         }
 
-            if (v.programs) |cl_programs| {
-                for (cl_programs) |cl_program| {
-                    if (cl_program) |clp| {
-                        cl.program.release(clp);
-                    }
-                }
-                allocator.free(cl_programs);
-            }
+    //         if (v.programs) |cl_programs| {
+    //             for (cl_programs) |cl_program| {
+    //                 if (cl_program) |clp| {
+    //                     cl.program.release(clp);
+    //                 }
+    //             }
+    //             allocator.free(cl_programs);
+    //         }
 
-            allocator.destroy(v);
-        }
-    }
+    //         allocator.destroy(v);
+    //     }
+    // }
 
-    for (self.headers.programs.?) |program| {
-        if (program) |v| cl.program.release(v);
-    }
-    allocator.free(self.headers.programs.?);
-    allocator.destroy(self.headers);
+    // for (self.headers.programs.?) |program| {
+    //     if (program) |v| cl.program.release(v);
+    // }
+    // allocator.free(self.headers.programs.?);
+    // allocator.destroy(self.headers);
 
     allocator.free(self.device_name);
 

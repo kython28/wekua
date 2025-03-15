@@ -1,18 +1,15 @@
 const std = @import("std");
 const cl = @import("opencl");
 
-const CommandQueue = @import("../../core/main.zig").CommandQueue;
+const core = @import("../../core/main.zig");
 
-const w_event = @import("../utils/event.zig");
 const w_tensor = @import("../main.zig");
 const Tensor = w_tensor.Tensor;
-
-const utils = @import("utils.zig");
 
 pub fn getValue(
     comptime T: type,
     tensor: *Tensor(T),
-    command_queue: *const CommandQueue,
+    command_queue: *const core.CommandQueue,
     coor: []const u64,
     real_scalar: ?*T,
     imag_scalar: ?*T,
@@ -43,39 +40,36 @@ pub fn getValue(
     offset += coor[last_index] * (1 + @as(usize, @intCast(@intFromBool(is_complex))));
     offset *= @sizeOf(T);
 
-    const prev_events = w_event.acquire_tensor(tensor, .read);
-    const tensor_mutex = &tensor.mutex;
-    errdefer tensor_mutex.unlock();
+    const prev_events = tensor.events_manager.getPrevEvents(.read);
 
     var new_event: cl.event.cl_event = undefined;
     var buf: [2]T = undefined;
+    {
+        try cl.buffer.read(
+            command_queue.cmd,
+            tensor.buffer,
+            false,
+            offset,
+            buf_size,
+            &buf,
+            prev_events,
+            &new_event,
+        );
+        errdefer |err| {
+            cl.event.wait(new_event) catch |err2| {
+                std.debug.panic(
+                    "An error ocurred ({s}) while waiting for new event and dealing with another error ({s})", .{
+                        @errorName(err2), @errorName(err)
+                    }
+                );
+            };
+            cl.event.release(new_event);
+        }
 
-    try cl.buffer.read(
-        command_queue.cmd,
-        tensor.buffer,
-        false,
-        offset,
-        buf_size,
-        &buf,
-        prev_events,
-        &new_event,
-    );
-    errdefer {
-        cl.event.wait(new_event) catch unreachable;
-        cl.event.release(new_event) catch unreachable;
+        try tensor.events_manager.appendNewEvent(.read, prev_events, new_event, null);
     }
 
-    var cond = std.Thread.Condition{};
-    try w_event.register_new_event_to_single_tensor(
-        command_queue,
-        tensor,
-        &utils.signal_condition_callback,
-        &cond,
-        new_event,
-        .read,
-    );
-    cond.wait(tensor_mutex);
-    tensor_mutex.unlock();
+    try tensor.wait();
 
     if (real_scalar) |scalar| {
         scalar.* = buf[0];

@@ -287,5 +287,12 @@ pub fn Tensor(comptime T: type) type {
             try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
             return tensor;
         }
+
+        pub fn wait(self: *this) !void {
+            const prev_events = self.events_manager.getPrevEvents(.write);
+            if (prev_events) |pv| {
+                try cl.event.wait_for_many(pv);
+            }
+        }
     };
 }
