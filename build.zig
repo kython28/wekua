@@ -13,7 +13,8 @@ pub fn build(b: *std.Build) void {
     const wekua_module = b.addModule("wekua", .{
         .root_source_file = b.path("src/wekua.zig"),
         .target = target,
-        .optimize = optimize
+        .optimize = optimize,
+        .single_threaded = false
     });
     wekua_module.addImport("opencl", opencl_module);
 
@@ -23,7 +24,8 @@ pub fn build(b: *std.Build) void {
     const lib_unit_tests = b.addTest(.{
         .root_source_file = b.path(test_file),
         .target = target,
-        .optimize = optimize
+        .optimize = optimize,
+        .sanitize_thread = true,
     });
     lib_unit_tests.root_module.addImport("wekua", wekua_module);
     lib_unit_tests.root_module.addImport("opencl", opencl_module);

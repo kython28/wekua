@@ -124,9 +124,9 @@ pub fn init_from_cl_context(
 pub fn release(context: *wContext) void {
     const allocator = context.allocator;
 
-    cl.context.release(context.ctx);
     CommandQueue.deinit_multiples(allocator, context.command_queues);
 
+    cl.context.release(context.ctx);
     allocator.destroy(context);
 }
 

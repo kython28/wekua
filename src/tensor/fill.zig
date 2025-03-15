@@ -3,10 +3,6 @@ const cl = @import("opencl");
 
 const core = @import("../core/main.zig");
 const CommandQueue = core.CommandQueue;
-const utils = @import("../utils/utils.zig");
-
-// const w_event = @import("utils/event.zig");
-// const w_errors = @import("utils/errors.zig");
 
 const w_tensor = @import("main.zig");
 const Tensor = w_tensor.Tensor;
@@ -19,8 +15,8 @@ pub fn constant(
     imag_scalar: ?T,
 ) !void {
     const is_complex = tensor.is_complex;
-    if (imag_scalar != null and is_complex) |_| {
-        return w_tensor.wTensorErrors.TensorDoesNotSupportComplexNumbers;
+    if (imag_scalar != null and !is_complex) {
+        return w_tensor.Errors.InvalidValue;
     }
 
     var pattern: [2]T = undefined;
@@ -34,19 +30,25 @@ pub fn constant(
     try cl.buffer.fill(
         command_queue.cmd,
         tensor.buffer,
-        pattern.ptr,
-        @sizeOf(T) * (1 + @as(usize, is_complex)),
+        &pattern,
+        @sizeOf(T) * (1 + @as(usize, @intFromBool(is_complex))),
         0,
         tensor.size,
         prev_events,
         &new_event,
     );
-    errdefer {
-        cl.event.wait(new_event) catch unreachable;
-        cl.event.release(new_event) catch unreachable;
+    errdefer |err| {
+        cl.event.wait(new_event) catch |err2| {
+            std.debug.panic(
+                "An error ocurred ({s}) while waiting for new event and dealing with another error ({s})", .{
+                    @errorName(err2), @errorName(err)
+                }
+            );
+        };
+        cl.event.release(new_event);
     }
 
-    try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null, true);
+    try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
 }
 
 pub inline fn one(

@@ -150,7 +150,16 @@ const EventsBatch = struct {
         if (prev_events) |pv| {
             if (pv.len > MaxEventsPerSet * 2) return error.EventsArrayTooLong;
 
-            for (pv) |e| try cl.event.retain(e);
+            var index: usize = 0;
+            errdefer {
+                for (pv[0..index]) |e   | {
+                    cl.event.release(e);
+                }
+            }
+
+            while (index < pv.len) : (index += 1) {
+                try cl.event.retain(pv[index]);
+            }
 
             @memcpy(self.prev_events[0..pv.len], pv);
             self.prev_events_len = @intCast(pv.len);
@@ -194,6 +203,39 @@ const EventsBatch = struct {
         return null;
     }
 
+    pub fn clearAndAddNewPrevEvents(self: *EventsBatch, new_prev_events: ?[]const cl.event.cl_event) !void {
+        for (self.prev_events[0..@intCast(self.prev_events_len)]) |e| {
+            cl.event.release(e);
+        }
+
+        if (new_prev_events) |pv| {
+            if (pv.len > MaxEventsPerSet * 2) return error.EventsArrayTooLong;
+
+            var index: usize = 0;
+            errdefer {
+                for (pv[0..index]) |e   | {
+                    cl.event.release(e);
+                }
+            }
+
+            while (index < pv.len) : (index += 1) {
+                try cl.event.retain(pv[index]);
+            }
+
+            @memcpy(self.prev_events[0..pv.len], pv);
+            self.prev_events_len = @intCast(pv.len);
+        }
+
+        for (self.events[0..self.events_num]) |*event| {
+            event.clear();
+        }
+
+        self.prev_events_len = 0;
+
+        self.events_num = 0;
+        self.events_finalized = 0;
+    }
+
     pub fn clear(self: *EventsBatch) void {
         for (self.prev_events[0..@intCast(self.prev_events_len)]) |e| {
             cl.event.release(e);
@@ -210,19 +252,19 @@ const EventsBatch = struct {
     }
 
     pub fn release(self: *EventsBatch) void {
-        self.mutex.lock();
         while (!self.finalized()) {
             const events_num = self.events_num;
-            self.mutex.unlock();
-            defer self.mutex.lock();
-
             for (self.events[0..events_num]) |*event| {
+                if (event.finalized()) continue;
+
+                self.mutex.unlock();
+                defer self.mutex.lock();
+
                 event.waitForEvents() catch |err| {
                     std.debug.panic("Unexpected error while waiting for events finalization: {s}", .{@errorName(err)});
                 };
             }
         }
-        self.mutex.unlock();
 
         self.clear();
         self.allocator.destroy(self);
@@ -244,6 +286,7 @@ pub fn init(self: *TensorEventManager, allocator: std.mem.Allocator) !void {
 }
 
 pub fn deinit(self: *TensorEventManager) void {
+    self.batch.mutex.lock();
     self.batch.release();
 }
 
@@ -254,12 +297,37 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
     batch.mutex.lock();
     defer batch.mutex.unlock();
 
-    if (batch.empty()) {
+    const events_num = batch.events_num;
+    if (events_num == batch.events_finalized) {
+        batch.clear();
+        return null;
+    }
+
+    if (events_num == EventsBatchLenght) {
+        const event: *Event = &batch.events[events_num - 1];
+        return event.toSlice();
+    }
+
+    const event: *Event = &batch.events[events_num];
+    switch (event.operation) {
+        .read => switch (new_op) {
+            .write => {
+                batch.events_num += 1;
+                return event.toSlice();
+            },
+            .read => {},
+            else => unreachable
+        },
+        .write => unreachable,
+        .none => {}
+    }
+
+    if (events_num == 0) {
         return batch.getPrevEvents();
     }
 
-    const event: *Event = &batch.events[batch.events_num - 1];
-    return event.toSlice();
+    const prev_event = &batch.events[events_num - 1];
+    return prev_event.toSlice();
 }
 
 fn singleCompletionEventCallback(
@@ -280,7 +348,7 @@ fn singleCompletionEventCallback(
     if (data.finalized()) {
         data.execute_callbacks();
 
-        if (!data.full()) {
+        if (!data.full() and data == &batch.events[batch.events_num]) {
             batch.events_num += 1;
         }
 
@@ -295,6 +363,11 @@ fn singleCompletionEventCallback(
 
 fn getNewBatch(self: *TensorEventManager, prev_events: ?[]const cl.event.cl_event) !*EventsBatch {
     const old_batch = self.batch;
+
+    if (old_batch.finalized()) {
+        try old_batch.clearAndAddNewPrevEvents(prev_events);
+        return old_batch;
+    }
 
     const allocator = self.allocator;
     const new_batch = try allocator.create(EventsBatch);
@@ -323,9 +396,7 @@ fn addEventToBatch(
     batch.mutex.lock();
     defer batch.mutex.unlock();
 
-    if (batch.finalized()) {
-        batch.clear();
-    } else if (batch.full()) {
+    if (batch.full()) {
         batch = try self.getNewBatch(prev_cl_events);
     }
 

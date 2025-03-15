@@ -117,7 +117,6 @@ pub fn init_multiples(allocator: std.mem.Allocator, ctx: *Context, devices: []cl
 }
 
 pub fn deinit(self: *CommandQueue) void {
-    cl.command_queue.release(self.cmd);
     const allocator = self.allocator;
 
     const kernels = self.kernels;
@@ -152,6 +151,11 @@ pub fn deinit(self: *CommandQueue) void {
     allocator.destroy(self.headers);
 
     allocator.free(self.device_name);
+
+    cl.command_queue.finish(self.cmd) catch |err| {
+        std.debug.panic("An error ocurred while executing clFinish: {s}", .{@errorName(err)});
+    };
+    cl.command_queue.release(self.cmd);
 }
 
 pub fn deinit_multiples(allocator: std.mem.Allocator, command_queues: []CommandQueue) void {
