@@ -16,11 +16,11 @@ pub fn getValue(
 ) !void {
     const is_complex = tensor.is_complex;
     if (coor.len != tensor.shape.len) {
-        return w_tensor.wTensorErrors.InvalidCoordinates;
+        return w_tensor.Errors.InvalidCoordinates;
     } else if (real_scalar == null and imag_scalar == null) {
-        return w_tensor.wTensorErrors.InvalidValue;
+        return w_tensor.Errors.InvalidValue;
     } else if (imag_scalar != null and !is_complex) {
-        return w_tensor.wTensorErrors.TensorDoesNotSupportComplexNumbers;
+        return w_tensor.Errors.TensorDoesNotSupportComplexNumbers;
     }
 
     var buf_size: usize = @sizeOf(T);

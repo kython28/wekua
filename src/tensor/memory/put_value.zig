@@ -38,7 +38,7 @@ pub fn putValue(
         stride /= v;
         offset += c * stride;
     }
-    offset += coor[last_index] * (1 + @as(usize, @intCast(@intFromBool(is_complex))));
+    offset += coor[last_index] * (1 + @as(usize, @intFromBool(is_complex)));
     offset *= @sizeOf(T);
 
     const prev_events = tensor.events_manager.getPrevEvents(.write);
@@ -50,7 +50,7 @@ pub fn putValue(
             tensor.buffer,
             false,
             offset,
-            @sizeOf(T) * (1 + @as(usize, is_complex)),
+            @sizeOf(T) * (1 + @as(usize, @intFromBool(is_complex))),
             &pattern,
             prev_events,
             &new_event,

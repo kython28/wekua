@@ -348,7 +348,7 @@ fn singleCompletionEventCallback(
     if (data.finalized()) {
         data.execute_callbacks();
 
-        if (!data.full() and data == &batch.events[batch.events_num]) {
+        if (!batch.full() and !data.full() and data == &batch.events[batch.events_num]) {
             batch.events_num += 1;
         }
 

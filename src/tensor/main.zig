@@ -8,13 +8,16 @@ const EventManager = @import("event_manager.zig");
 const utils = @import("../utils/utils.zig");
 
 pub const fill = @import("fill.zig");
-// pub const Memory = @import("memory/main.zig");
+pub const memory = @import("memory/main.zig");
 // const Random = @import("random/main.zig");
 // usingnamespace @import("transpose.zig");
 // const convertions = @import("convertions/main.zig");
 
 pub const Errors = error{
     InvalidValue,
+    InvalidCoordinates,
+    TensorDoesNotSupportComplexNumbers,
+
 };
 
 pub const SupportedTypes = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
