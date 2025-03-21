@@ -126,3 +126,65 @@ test "fill and get random complex value" {
         }
     }
 }
+
+test "read from and write to buffer" {
+    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer ctx.release();
+
+    const randprg = std.crypto.random;
+    inline for (wekua.tensor.SupportedTypes) |T| {
+        const tensor = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
+        defer tensor.release();
+
+        var buffer1: [25]T = undefined;
+        var buffer2: [25]T = undefined;
+        for (&buffer1) |*v| {
+            v.* = switch (@typeInfo(T)) {
+                .int => randprg.int(T),
+                .float => randprg.float(T),
+                else => unreachable
+            };
+        }
+
+        const w_cmd = &ctx.command_queues[0];
+        try wekua.tensor.memory.readFromBuffer(T, tensor, w_cmd, &buffer1);
+        try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, &buffer2);
+
+        for (&buffer1, &buffer2) |v1, v2| {
+            try std.testing.expectEqual(v1, v2);
+        }
+    }
+}
+
+test "copy" {
+    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
+    defer ctx.release();
+
+    const randprg = std.crypto.random;
+    inline for (wekua.tensor.SupportedTypes) |T| {
+        const tensor = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
+        defer tensor.release();
+
+        const tensor2 = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
+        defer tensor2.release();
+
+        var buffer1: [25]T = undefined;
+        var buffer2: [25]T = undefined;
+        for (&buffer1) |*v| {
+            v.* = switch (@typeInfo(T)) {
+                .int => randprg.int(T),
+                .float => randprg.float(T),
+                else => unreachable
+            };
+        }
+
+        const w_cmd = &ctx.command_queues[0];
+        try wekua.tensor.memory.readFromBuffer(T, tensor, w_cmd, &buffer1);
+        try wekua.tensor.memory.copy(T, w_cmd, tensor, tensor2);
+        try wekua.tensor.memory.writeToBuffer(T, tensor2, w_cmd, &buffer2);
+
+        for (&buffer1, &buffer2) |v1, v2| {
+            try std.testing.expectEqual(v1, v2);
+        }
+    }
+}

@@ -4,7 +4,7 @@ const std = @import("std");
 const core = @import("../core/main.zig");
 const Context = core.Context;
 
-const EventManager = @import("event_manager.zig");
+pub const EventManager = @import("event_manager.zig");
 const utils = @import("../utils/utils.zig");
 
 pub const fill = @import("fill.zig");
@@ -17,7 +17,9 @@ pub const Errors = error{
     InvalidValue,
     InvalidCoordinates,
     TensorDoesNotSupportComplexNumbers,
-
+    InvalidBuffer,
+    UnqualTensorsAttribute,
+    UnqualTensorsShape,
 };
 
 pub const SupportedTypes = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };

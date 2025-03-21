@@ -1,7 +1,7 @@
-const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("../../core/main.zig");
+const helpers = @import("../helpers.zig");
 
 const w_tensor = @import("../main.zig");
 const Tensor = w_tensor.Tensor;
@@ -55,21 +55,11 @@ pub fn getValue(
             prev_events,
             &new_event,
         );
-        errdefer |err| {
-            cl.event.wait(new_event) catch |err2| {
-                std.debug.panic(
-                    "An error ocurred ({s}) while waiting for new event and dealing with another error ({s})", .{
-                        @errorName(err2), @errorName(err)
-                    }
-                );
-            };
-            cl.event.release(new_event);
-        }
+        errdefer |err| helpers.release_event(new_event, err);
 
         try tensor.events_manager.appendNewEvent(.read, prev_events, new_event, null);
     }
 
-    // std.log.warn("Waiting for new event", .{});
     try tensor.wait();
 
     if (real_scalar) |scalar| {

@@ -3,7 +3,13 @@ const builtin = @import("builtin");
 
 const cl = @import("opencl");
 
-pub const UserCallback = struct { func: *const fn (user_data: ?*anyopaque) void, data: ?*anyopaque };
+const w_tensor = @import("main.zig");
+const Tensor = w_tensor.Tensor;
+
+pub const UserCallback = struct {
+    func: *const fn (user_data: ?*anyopaque) void,
+    data: ?*anyopaque,
+};
 
 pub const UserCallbackArray = std.ArrayList(UserCallback);
 
@@ -26,6 +32,12 @@ const MaxEventsPerSetInt = switch (builtin.mode) {
     .ReleaseFast, .ReleaseSafe => u16,
 };
 
+const EventsSet = struct {
+    allocator: std.mem.Allocator,
+    events: []*Event,
+    user_callback: ?UserCallback,
+};
+
 const Event = struct {
     operation: Operation,
 
@@ -42,6 +54,11 @@ const Event = struct {
         self.events_count = 0;
         self.events_finalized = 0;
         self.index = @intCast(index);
+    }
+
+    pub inline fn getParent(self: *Event) *EventsBatch {
+        const ptr: usize = @intFromPtr(self) - @offsetOf(EventsBatch, "events") - @as(usize, self.index) * @sizeOf(Event);
+        return @ptrFromInt(ptr);
     }
 
     pub fn append(
@@ -101,7 +118,7 @@ const Event = struct {
         return self.events[0..self.events_count];
     }
 
-    pub fn execute_callbacks(self: *const Event) void {
+    pub fn executeCallbacks(self: *const Event) void {
         for (self.callbacks.items) |*callback| {
             callback.func(callback.data);
         }
@@ -332,6 +349,32 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
     return prev_event.toSlice();
 }
 
+pub fn concat(
+    allocator: std.mem.Allocator,
+    events_array: []const ?[]const cl.event.cl_event,
+) !?[]cl.event.cl_event {
+    var total_events: usize = 0;
+    for (events_array) |events| {
+        if (events) |v| {
+            total_events += v.len;
+        }
+    }
+
+    if (total_events == 0) return null;
+
+    const new_array = try allocator.alloc(cl.event.cl_event, total_events);
+    errdefer allocator.free(new_array);
+
+    var offset: usize = 0;
+    for (events_array) |v| {
+        const events = v orelse continue;
+        @memcpy(new_array[offset..(offset + events.len)], events);
+        offset += events.len;
+    }
+
+    return new_array;
+}
+
 fn singleCompletionEventCallback(
     _: cl.event.cl_event,
     event_command_status: i32,
@@ -341,14 +384,13 @@ fn singleCompletionEventCallback(
     if (event_status != .complete) unreachable;
 
     const event: *Event = @alignCast(@ptrCast(user_data.?));
-    const ptr: usize = @intFromPtr(event) - @offsetOf(EventsBatch, "events") - @as(usize, event.index) * @sizeOf(Event);
-    const batch: *EventsBatch = @ptrFromInt(ptr);
+    const batch: *EventsBatch = event.getParent();
 
     batch.mutex.lock();
 
     event.events_finalized += 1;
     if (event.finalized()) {
-        event.execute_callbacks();
+        event.executeCallbacks();
 
         if (!batch.full() and !event.full() and event == &batch.events[batch.events_num]) {
             batch.events_num += 1;
@@ -361,6 +403,38 @@ fn singleCompletionEventCallback(
     }
 
     batch.mutex.unlock();
+}
+
+fn multipleCompletionEventCallback(
+    cl_event: cl.event.cl_event,
+    event_command_status: i32,
+    user_data: ?*anyopaque,
+) callconv(.C) void {
+    const event_status: cl.event.enums.execution_status = @enumFromInt(event_command_status);
+    if (event_status != .complete) unreachable;
+
+    const set: *EventsSet = @alignCast(@ptrCast(user_data.?));
+    const events = set.events;
+    for (events) |event| {
+        @call(
+            .always_inline,
+            singleCompletionEventCallback,
+            .{
+                cl_event,
+                @intFromEnum(cl.event.enums.execution_status.complete),
+                event,
+            },
+        );
+    }
+    const user_callback = set.user_callback;
+
+    if (user_callback) |v| {
+        v.func(v.data);
+    }
+
+    const allocator = set.allocator;
+    allocator.free(events);
+    allocator.destroy(set);
 }
 
 fn getNewBatch(self: *TensorEventManager, prev_events: ?[]const cl.event.cl_event) !*EventsBatch {
@@ -450,6 +524,77 @@ pub inline fn appendNewEvent(
     user_callback: ?UserCallback,
 ) !void {
     _ = try self.addEventToBatch(new_op, prev_cl_events, new_cl_event, user_callback, true);
+}
+
+pub fn appendNewEventToMultipleTensor(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    new_ops: []const Operation,
+    tensors: []const *Tensor(T),
+    prev_cl_events: ?[]const cl.event.cl_event,
+    new_cl_event: cl.event.cl_event,
+    user_callback: ?UserCallback,
+) !void {
+    if (new_ops.len == 0) {
+        return;
+    }
+
+    if (new_ops.len != tensors.len) {
+        @panic("`new_ops` and `tensors` arrays have different lenghts");
+    }
+
+    var ref_counter: usize = 1;
+    errdefer {
+        for (1..ref_counter) |_| {
+            cl.event.release(new_cl_event);
+        }
+    }
+
+    while (ref_counter < new_ops.len) {
+        try cl.event.retain(new_cl_event);
+        ref_counter += 1;
+    }
+
+    const events = try allocator.alloc(*Event, new_ops.len);
+    errdefer allocator.free(events);
+
+    var events_added: usize = 0;
+    errdefer {
+        for (events[0..events_added]) |event| {
+            const batch = event.getParent();
+            batch.mutex.lock();
+            defer batch.mutex.unlock();
+
+            event.pop(false);
+            if (event.operation == .none or !event.full()) {
+                batch.events_num -= 1;
+            }
+        }
+    }
+
+    for (new_ops, tensors, events) |new_op, tensor, *event| {
+        event.* = try addEventToBatch(
+            &tensor.events_manager,
+            new_op,
+            prev_cl_events,
+            new_cl_event,
+            null,
+            false,
+        );
+
+        events_added += 1;
+    }
+
+    const set = try allocator.create(EventsSet);
+    errdefer allocator.destroy(set);
+
+    set.* = .{
+        .events = events,
+        .allocator = allocator,
+        .user_callback = user_callback,
+    };
+
+    try cl.event.set_callback(new_cl_event, .complete, &multipleCompletionEventCallback, set);
 }
 
 const TensorEventManager = @This();

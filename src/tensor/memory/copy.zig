@@ -1,29 +1,33 @@
 const std = @import("std");
 const cl = @import("opencl");
 
-const CommandQueue = @import("../../core/main.zig").CommandQueue;
+const core = @import("../../core/main.zig");
+const CommandQueue = core.CommandQueue;
 
-const w_event = @import("../utils/event.zig");
+const helpers = @import("../helpers.zig");
+
 const w_tensor = @import("../main.zig");
 const Tensor = w_tensor.Tensor;
 
-const utils = @import("utils.zig");
-
 const validations = @import("../utils/validations.zig");
 
-const copy_resources = struct { prev_events: []cl.event.cl_event };
+const CopyData = struct {
+    allocator: std.mem.Allocator,
+    prev_events: []cl.event.cl_event,
+};
 
-fn release_events_array(allocator: std.mem.Allocator, user_data: ?*anyopaque) void {
-    if (user_data) |data| {
-        const resources: *copy_resources = @ptrCast(@alignCast(data));
-        allocator.free(resources.prev_events);
-        allocator.destroy(resources);
-    }
+fn release_resources(ptr: ?*anyopaque) void {
+    const maybe_data: ?*CopyData = @alignCast(@ptrCast(ptr));
+    const data = maybe_data orelse return;
+
+    const allocator = data.allocator;
+    allocator.free(data.prev_events);
+    allocator.destroy(data);
 }
 
 fn copy_tensor_with_different_row_pitch(
     comptime T: type,
-    command_queue: CommandQueue,
+    command_queue: *const CommandQueue,
     src: *Tensor(T),
     dst: *Tensor(T),
 ) !void {
@@ -40,23 +44,32 @@ fn copy_tensor_with_different_row_pitch(
     const src_row_pitch = src.row_pitch * @sizeOf(T);
     const dst_row_pitch = dst.row_pitch * @sizeOf(T);
 
-    const src_prev_events = w_event.acquire_tensor(src, .read);
-    defer src.mutex.unlock();
-
-    const dst_prev_events = w_event.acquire_tensor(dst, .write);
-    defer dst.mutex.unlock();
+    const src_prev_events = src.events_manager.getPrevEvents(.read);
+    const dst_prev_events = dst.events_manager.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const prev_events = try w_event.concatenate_events(
-        allocator,
-        &.{
-            src_prev_events,
-            dst_prev_events,
-        },
-    );
+    const prev_events = try w_tensor.EventManager.concat(allocator, &.{ src_prev_events, dst_prev_events });
     errdefer {
         if (prev_events) |v| {
             allocator.free(v);
+        }
+    }
+
+    var copy_data: ?*CopyData = null;
+    if (prev_events) |pv| {
+        const ptr = try allocator.create(CopyData);
+        errdefer allocator.destroy(ptr);
+
+        ptr.* = .{
+            .allocator = allocator,
+            .prev_events = pv,
+        };
+
+        copy_data = ptr;
+    }
+    errdefer {
+        if (copy_data) |ptr| {
+            allocator.destroy(ptr);
         }
     }
 
@@ -75,30 +88,16 @@ fn copy_tensor_with_different_row_pitch(
         prev_events,
         &new_event,
     );
-    errdefer {
-        cl.event.wait(new_event) catch unreachable;
-        cl.event.release(new_event) catch unreachable;
-    }
+    errdefer |err| helpers.release_event(new_event, err);
 
-    try cl.event.retain(new_event);
-    errdefer cl.event.release(new_event) catch unreachable;
-
-    var resources: ?*copy_resources = null;
-    if (prev_events) |v| {
-        resources = try allocator.create(copy_resources);
-        resources.?.prev_events = v;
-    }
-    errdefer {
-        if (resources) |v| allocator.destroy(v);
-    }
-
-    try w_event.register_new_event_to_multiple_tensors(
-        command_queue,
-        &.{ src, dst },
-        &release_events_array,
-        resources,
-        new_event,
+    try w_tensor.EventManager.appendNewEventToMultipleTensor(
+        T,
+        allocator,
         &.{ .read, .write },
+        &.{ src, dst },
+        prev_events,
+        new_event,
+        .{ .data = copy_data, .func = &release_resources },
     );
 }
 
@@ -108,19 +107,31 @@ fn copy_tensor_with_same_row_pitch(
     src: *Tensor(T),
     dst: *Tensor(T),
 ) !void {
-    const src_prev_events = w_event.acquire_tensor(src, .read);
-    defer src.mutex.unlock();
-
-    const dst_prev_events = w_event.acquire_tensor(dst, .write);
-    defer dst.mutex.unlock();
+    const src_prev_events = src.events_manager.getPrevEvents(.read);
+    const dst_prev_events = dst.events_manager.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const prev_events = try w_event.concatenate_events(
-        allocator,
-        &.{ src_prev_events, dst_prev_events },
-    );
+    const prev_events = try w_tensor.EventManager.concat(allocator, &.{ src_prev_events, dst_prev_events });
     errdefer {
         if (prev_events) |v| allocator.free(v);
+    }
+
+    var copy_data: ?*CopyData = null;
+    if (prev_events) |pv| {
+        const ptr = try allocator.create(CopyData);
+        errdefer allocator.destroy(ptr);
+
+        ptr.* = .{
+            .allocator = allocator,
+            .prev_events = pv,
+        };
+
+        copy_data = ptr;
+    }
+    errdefer {
+        if (copy_data) |ptr| {
+            allocator.destroy(ptr);
+        }
     }
 
     const size = src.size;
@@ -136,30 +147,16 @@ fn copy_tensor_with_same_row_pitch(
         &new_event,
     );
 
-    errdefer {
-        cl.event.wait(new_event) catch unreachable;
-        cl.event.release(new_event) catch unreachable;
-    }
+    errdefer |err| helpers.release_event(new_event, err);
 
-    try cl.event.retain(new_event);
-    errdefer cl.event.release(new_event) catch unreachable;
-
-    var resources: ?*copy_resources = null;
-    if (prev_events) |v| {
-        resources = try allocator.create(copy_resources);
-        resources.?.prev_events = v;
-    }
-    errdefer {
-        if (resources) |v| allocator.destroy(v);
-    }
-
-    try w_event.register_new_event_to_multiple_tensors(
-        command_queue,
-        &.{ src, dst },
-        &release_events_array,
-        resources,
-        new_event,
+    try w_tensor.EventManager.appendNewEventToMultipleTensor(
+        T,
+        allocator,
         &.{ .read, .write },
+        &.{ src, dst },
+        prev_events,
+        new_event,
+        .{ .data = copy_data, .func = &release_resources },
     );
 }
 
