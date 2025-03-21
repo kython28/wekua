@@ -292,10 +292,10 @@ pub fn Tensor(comptime T: type) type {
         }
 
         pub fn wait(self: *this) !void {
-            const prev_events = self.events_manager.getPrevEvents(.write);
-            if (prev_events) |pv| {
-                try cl.event.wait_for_many(pv);
-            }
+            // std.log.warn("Requesting waiting", .{});
+            const prev_events = self.events_manager.getPrevEvents(.write) orelse return;
+            // std.log.warn("Waiting for {any}", .{prev_events});
+            try cl.event.wait_for_many(prev_events);
         }
     };
 }

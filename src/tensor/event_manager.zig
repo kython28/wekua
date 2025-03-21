@@ -44,7 +44,7 @@ const Event = struct {
         self.index = @intCast(index);
     }
 
-    pub inline fn appendNewEvent(
+    pub fn append(
         self: *Event,
         operation: Operation,
         event: cl.event.cl_event,
@@ -152,7 +152,7 @@ const EventsBatch = struct {
 
             var index: usize = 0;
             errdefer {
-                for (pv[0..index]) |e   | {
+                for (pv[0..index]) |e| {
                     cl.event.release(e);
                 }
             }
@@ -197,8 +197,9 @@ const EventsBatch = struct {
     }
 
     pub inline fn getPrevEvents(self: *const EventsBatch) ?[]const cl.event.cl_event {
-        if (self.prev_events_len > 0) {
-            return self.prev_events[0..@intCast(self.prev_events_len)];
+        const prev_events_len = self.prev_events_len;
+        if (prev_events_len > 0) {
+            return self.prev_events[0..@intCast(prev_events_len)];
         }
         return null;
     }
@@ -213,7 +214,7 @@ const EventsBatch = struct {
 
             var index: usize = 0;
             errdefer {
-                for (pv[0..index]) |e   | {
+                for (pv[0..index]) |e| {
                     cl.event.release(e);
                 }
             }
@@ -298,11 +299,6 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
     defer batch.mutex.unlock();
 
     const events_num = batch.events_num;
-    if (events_num == batch.events_finalized) {
-        batch.clear();
-        return null;
-    }
-
     if (events_num == EventsBatchLenght) {
         const event: *Event = &batch.events[events_num - 1];
         return event.toSlice();
@@ -316,10 +312,16 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
                 return event.toSlice();
             },
             .read => {},
-            else => unreachable
+            else => unreachable,
         },
         .write => unreachable,
-        .none => {}
+        .none => {},
+    }
+
+    if (event.finalized() and events_num == batch.events_finalized) {
+        batch.events_num += 1;
+        batch.clear();
+        return null;
     }
 
     if (events_num == 0) {
@@ -338,17 +340,17 @@ fn singleCompletionEventCallback(
     const event_status: cl.event.enums.execution_status = @enumFromInt(event_command_status);
     if (event_status != .complete) unreachable;
 
-    const data: *Event = @alignCast(@ptrCast(user_data.?));
-    const ptr: usize = @intFromPtr(data) - @offsetOf(EventsBatch, "events") - @as(usize, data.index) * @sizeOf(Event);
+    const event: *Event = @alignCast(@ptrCast(user_data.?));
+    const ptr: usize = @intFromPtr(event) - @offsetOf(EventsBatch, "events") - @as(usize, event.index) * @sizeOf(Event);
     const batch: *EventsBatch = @ptrFromInt(ptr);
 
     batch.mutex.lock();
 
-    data.events_finalized += 1;
-    if (data.finalized()) {
-        data.execute_callbacks();
+    event.events_finalized += 1;
+    if (event.finalized()) {
+        event.execute_callbacks();
 
-        if (!batch.full() and !data.full() and data == &batch.events[batch.events_num]) {
+        if (!batch.full() and !event.full() and event == &batch.events[batch.events_num]) {
             batch.events_num += 1;
         }
 
@@ -402,7 +404,7 @@ fn addEventToBatch(
 
     var events_num = batch.events_num;
     var event: *Event = &batch.events[events_num];
-    loop: switch (try event.appendNewEvent(new_op, new_cl_event, user_callback)) {
+    loop: switch (try event.append(new_op, new_cl_event, user_callback)) {
         .success => {},
         .full => {
             events_num += 1;
@@ -414,7 +416,7 @@ fn addEventToBatch(
             }
 
             event = &batch.events[events_num];
-            const new_result = try event.appendNewEvent(new_op, new_cl_event, user_callback);
+            const new_result = try event.append(new_op, new_cl_event, user_callback);
             continue :loop new_result;
         },
         .success_and_full => {
@@ -424,11 +426,11 @@ fn addEventToBatch(
 
     batch.events_num = events_num;
     errdefer {
+        event.pop(user_callback != null);
         if (event.operation == .none or !event.full()) {
             batch.events_num -= 1;
         }
     }
-    errdefer event.pop(user_callback != null);
 
     if (register_callback) {
         batch.mutex.unlock();

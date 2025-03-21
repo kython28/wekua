@@ -69,6 +69,7 @@ pub fn getValue(
         try tensor.events_manager.appendNewEvent(.read, prev_events, new_event, null);
     }
 
+    // std.log.warn("Waiting for new event", .{});
     try tensor.wait();
 
     if (real_scalar) |scalar| {
