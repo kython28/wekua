@@ -15,8 +15,8 @@ const random_cl_kernel: []const u8 = @embedFile("kernels/fill.cl");
 
 pub fn fill(
     comptime T: type,
+    command_queue: *const CommandQueue,
     tensor: *Tensor(T),
-    command_queue: *CommandQueue,
     seed: ?u64,
 ) !void {
     const kernel = try KernelsSet.getClNoVectorKernel(
@@ -34,14 +34,12 @@ pub fn fill(
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
-    const shape = tensor.shape;
 
     const global_seed = seed orelse @as(u64, @bitCast(std.time.timestamp()));
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, @sizeOf(u64), @ptrCast(&tensor.row_pitch));
-    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&shape[shape.len - 1]));
-    try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&global_seed));
+    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&global_seed));
 
     // TODO: Adapt code to use views
     var new_event: cl.event.cl_event = undefined;

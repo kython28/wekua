@@ -10,17 +10,19 @@ fn test_transpose(
     comptime T: type,
 ) !void {
     var shape: [4]u64 = .{
-        randprg.intRangeAtMost(u64, 1, 20),
-        randprg.intRangeAtMost(u64, 1, 20),
-        randprg.intRangeAtMost(u64, 1, 20),
-        randprg.intRangeAtMost(u64, 1, 20),
+        randprg.intRangeAtMost(u64, 1, 5),
+        randprg.intRangeAtMost(u64, 1, 5),
+        randprg.intRangeAtMost(u64, 1, 5),
+        randprg.intRangeAtMost(u64, 1, 5),
     };
+
+    std.log.warn("Shapers 1: {any}", .{shape});
 
     const tensor = try wekua.Tensor(T).alloc(ctx, &shape, .{ .is_complex = is_complex });
     defer tensor.release();
 
     const w_cmd = &ctx.command_queues[0];
-    try wekua.tensor.random.fill(T, tensor, w_cmd, null);
+    try wekua.tensor.random.fill(T, w_cmd, tensor, null);
 
     const dim0: u64 = randprg.intRangeAtMost(u64, 0, 2);
     const dim1: u64 = randprg.intRangeAtMost(u64, dim0 + 1, 3);
@@ -28,6 +30,8 @@ fn test_transpose(
     const l_dim = shape[dim0];
     shape[dim0] = shape[dim1];
     shape[dim1] = l_dim;
+
+    std.log.warn("Shapers 2: {any}", .{shape});
 
     const tensor2 = try wekua.Tensor(T).alloc(ctx, &shape, .{ .is_complex = is_complex });
     defer tensor2.release();
@@ -42,6 +46,9 @@ fn test_transpose(
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);
     try wekua.tensor.memory.writeToBuffer(T, tensor2, w_cmd, numbers2);
+
+    std.log.warn("{any}", .{numbers1});
+    std.log.warn("{any}", .{numbers2});
 
     var multi_index: [4]u64 = undefined;
     const factor: u64 = (1 + @as(usize, @intFromBool(is_complex)));

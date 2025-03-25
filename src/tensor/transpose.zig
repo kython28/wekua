@@ -13,7 +13,7 @@ const transpose_cl_kernel: []const u8 = @embedFile("kernels/transpose.cl");
 
 pub fn transpose(
     comptime T: type,
-    command_queue: *CommandQueue,
+    command_queue: *const CommandQueue,
     result_tensor: *Tensor(T),
     tensor: *Tensor(T),
     dim0: u64,
@@ -87,11 +87,16 @@ pub fn transpose(
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitchs_buffer));
+
     try set_arg(kernel, 2, cl_mem_size, @ptrCast(&result_tensor.buffer));
     try set_arg(kernel, 3, cl_mem_size, @ptrCast(&result_tensor.pitchs_buffer));
-    try set_arg(kernel, 4, u64_size, @ptrCast(&dim0_));
-    try set_arg(kernel, 5, u64_size, @ptrCast(&dim1_));
-    try set_arg(kernel, 6, u64_size, @ptrCast(&ndim));
+
+    try set_arg(kernel, 4, u64_size, @ptrCast(&tensor.row_pitch));
+    try set_arg(kernel, 5, u64_size, @ptrCast(&tensor.shape_like_matrix_without_vectors[1]));
+
+    try set_arg(kernel, 6, u64_size, @ptrCast(&dim0_));
+    try set_arg(kernel, 7, u64_size, @ptrCast(&dim1_));
+    try set_arg(kernel, 8, u64_size, @ptrCast(&ndim));
 
     // TODO: Adapt code to use views
     var new_event: cl.event.cl_event = undefined;

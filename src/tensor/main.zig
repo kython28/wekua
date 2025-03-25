@@ -134,6 +134,8 @@ pub fn Tensor(comptime T: type) type {
             tensor.is_complex = is_complex;
             tensor.vectors_enabled = vectors_enabled;
 
+            const multiplier: usize = if (is_complex) 2 else 1;
+
             var vector_width: u64 = 1;
             if (vectors_enabled) {
                 for (command_queues) |cmd| {
@@ -147,47 +149,51 @@ pub fn Tensor(comptime T: type) type {
             tensor.vl_shape = vl_shape;
 
             const last_element_index = shape.len - 1;
-            var row_pitch: u64 = shape[last_element_index];
+            var row_pitch: u64 = shape[last_element_index] * multiplier;
             if (vectors_enabled and vector_width > 1) {
                 row_pitch += vector_width - @mod(row_pitch, vector_width);
             }
-            if (is_complex) row_pitch *= 2;
+
             const row_pitch_for_vectors = row_pitch / vector_width;
             tensor.row_pitch = row_pitch;
             tensor.row_pitch_for_vectors = row_pitch_for_vectors;
 
+            @memcpy(vl_shape[0..last_element_index], shape[0..last_element_index]);
             vl_shape[last_element_index] = row_pitch_for_vectors;
 
-            var number_of_elements: u64 = 1;
+            var number_of_elements: u64 = multiplier;
             for (shape[0..last_element_index]) |e| number_of_elements *= e;
-            tensor.number_of_elements_without_padding = number_of_elements * shape[last_element_index] * (1 + @as(u64, @intFromBool(is_complex)));
+
+            const number_of_elements_without_padding = number_of_elements * shape[last_element_index];
+            tensor.number_of_elements_without_padding = number_of_elements_without_padding;
+
             number_of_elements *= row_pitch;
             tensor.number_of_elements = number_of_elements;
 
             const number_of_vectors = number_of_elements / vector_width;
             tensor.number_of_vectors = number_of_vectors;
 
-            const pitchs = try allocator.alloc(u64, shape.len);
-            errdefer allocator.free(pitchs);
-            tensor.pitchs = pitchs;
+            const pitches = try allocator.alloc(u64, shape.len);
+            errdefer allocator.free(pitches);
+            tensor.pitchs = pitches;
 
             var pitch: u64 = number_of_elements;
-            for (shape[0..last_element_index], pitchs[0..last_element_index]) |e, *p| {
+            for (shape[0..last_element_index], pitches[0..last_element_index]) |e, *p| {
                 pitch /= e;
                 p.* = pitch;
             }
-            pitchs[last_element_index] = if (is_complex) 2 else 1;
+            pitches[last_element_index] = multiplier;
 
-            const work_item_for_all_elements: []u64 = try allocator.alloc(u64, command_queues.len);
+            const work_item_for_all_elements = try allocator.alloc(u64, command_queues.len);
             errdefer allocator.free(work_item_for_all_elements);
 
-            const work_item_for_all_vectors: []u64 = try allocator.alloc(u64, command_queues.len);
+            const work_item_for_all_vectors = try allocator.alloc(u64, command_queues.len);
             errdefer allocator.free(work_item_for_all_vectors);
 
-            const work_items_like_matrix: [][2]u64 = try allocator.alloc([2]u64, command_queues.len);
+            const work_items_like_matrix = try allocator.alloc([2]u64, command_queues.len);
             errdefer allocator.free(work_items_like_matrix);
 
-            const work_items_like_matrix_without_vectors: [][2]u64 = try allocator.alloc([2]u64, command_queues.len);
+            const work_items_like_matrix_without_vectors = try allocator.alloc([2]u64, command_queues.len);
             errdefer allocator.free(work_items_like_matrix_without_vectors);
 
             tensor.work_item_for_all_elements = work_item_for_all_elements;
@@ -197,12 +203,12 @@ pub fn Tensor(comptime T: type) type {
 
             const rows = number_of_elements / row_pitch;
             const shape_like_matrix: []u64 = &tensor.shape_like_matrix;
-            const shape_like_matrix_without_vectors: []u64 = &tensor.shape_like_matrix_without_vectors;
             shape_like_matrix[0] = rows;
-            shape_like_matrix[1] = row_pitch_for_vectors / (1 + @as(u64, @intFromBool(is_complex)));
+            shape_like_matrix[1] = vl_shape[last_element_index];
 
+            const shape_like_matrix_without_vectors: []u64 = &tensor.shape_like_matrix_without_vectors;
             shape_like_matrix_without_vectors[0] = rows;
-            shape_like_matrix_without_vectors[1] = row_pitch / (1 + @as(u64, @intFromBool(is_complex)));
+            shape_like_matrix_without_vectors[1] = shape[last_element_index];
 
             for (
                 command_queues,
@@ -233,7 +239,7 @@ pub fn Tensor(comptime T: type) type {
             tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
             errdefer cl.buffer.release(tensor.buffer);
 
-            try tensor.createPitchBuffer(context, pitchs);
+            try tensor.createPitchBuffer(context, pitches);
             return tensor;
         }
 

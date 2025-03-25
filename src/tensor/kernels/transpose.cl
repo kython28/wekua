@@ -1,11 +1,22 @@
 #include "wekua.h"
 
 __kernel void transpose(
-	__global const wks *A, __global const ulong *pitches_A,
-	__global wks *B, __global const ulong *pitches_B,
-	const ulong dim0, const ulong dim1, const ulong ndim
+	__global const wks *restrict A,
+    __global const ulong *restrict pitches_A,
+
+	__global wks *restrict B,
+    __global const ulong *restrict pitches_B,
+
+    const ulong A_row_pitch,
+    const ulong A_cols,
+
+	const ulong dim0,
+    const ulong dim1,
+    const ulong ndim
 ) {
 	ulong index = get_global_id(0);
+    if ((index % A_row_pitch) >= A_cols) return;
+
 	const wks value = A[index];
 
 	ulong b_index = 0;
@@ -13,6 +24,7 @@ __kernel void transpose(
 		const ulong dim_pitch = pitches_A[x];
 		const ulong remaining = index % dim_pitch;
 		const ulong dim_index = (index - remaining) / dim_pitch;
+
 		if (x == dim0) {
 			b_index += dim_index * pitches_B[dim1];
 		}else if (x == dim1) {
@@ -20,7 +32,8 @@ __kernel void transpose(
 		}else{
 			b_index += dim_index * pitches_B[x];
 		}
-		index -= dim_index * dim_pitch;
+
+		index = remaining;
 	}
 	B[b_index + index] = value;
 }

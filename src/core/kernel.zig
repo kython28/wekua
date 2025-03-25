@@ -202,10 +202,10 @@ pub fn compileKernel(
 }
 
 pub fn getKernelSet(
-    command_queue: *CommandQueue,
+    command_queue: *const CommandQueue,
     kernel_id: KernelsID,
     comptime number_of_cl_kernels: usize,
-) !*KernelSet {
+) !*const KernelSet {
     const kernels_set = &command_queue.kernels[@intFromEnum(kernel_id)];
     if (kernels_set.initialized) {
         return kernels_set;
@@ -223,16 +223,17 @@ pub fn getKernelSet(
 
     @memset(cl_programs, null);
 
-    kernels_set.kernels = cl_kernels;
-    kernels_set.programs = cl_programs;
-    kernels_set.initialized = true;
+    const mutable_cl_kernels_set: *KernelSet = @constCast(kernels_set);
+    mutable_cl_kernels_set.kernels = cl_kernels;
+    mutable_cl_kernels_set.programs = cl_programs;
+    mutable_cl_kernels_set.initialized = true;
 
     return kernels_set;
 }
 
 pub fn createAndGetKernel(
     comptime T: type,
-    command_queue: *CommandQueue,
+    command_queue: *const CommandQueue,
     kernel_id: KernelsID,
     kernel_source: []const u8,
     options: CompileOptions,
@@ -298,7 +299,7 @@ pub fn getClKernel(
 
 pub fn getClNoVectorKernel(
     comptime T: type,
-    command_queue: *CommandQueue,
+    command_queue: *const CommandQueue,
     tensor: *const Tensor(T),
     kernel_id: KernelsID,
     kernel_name: []const u8,

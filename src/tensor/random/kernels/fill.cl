@@ -54,10 +54,9 @@ ulong xxhash64(ulong index, ulong global_seed) {
 }
 
 __kernel void random(
-    __global wks *numbers,
+    __global wks *restrict numbers,
 
 	const ulong row_pitch,
-    const ulong col,
     const ulong global_seed
 ) {
 	const ulong i = get_global_id(0);
@@ -68,21 +67,11 @@ __kernel void random(
 #if com == 1
 	const ulong index = i*row_pitch + j*2;
 
-	if (j >= col) {
-		numbers[index] = 0.0;
-		numbers[index + 1] = 0.0;
-	}else{
-		numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
-		numbers[index + 1] = xxhash64(index + 1, global_seed)/((wks)ULONG_MAX);
-	}
-
+    numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
+    numbers[index + 1] = xxhash64(index + 1, global_seed)/((wks)ULONG_MAX);
 #else
 	const ulong index = i*row_pitch + j;
-	if (j >= col) {
-		numbers[index] = 0.0;
-	}else{
-		numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
-	}
+    numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
 #endif
 
 #elif dtype >= 6
@@ -90,35 +79,26 @@ __kernel void random(
 #if com == 1
 	const ulong index = i*row_pitch + j*2;
 
-	if (j >= col) {
-		numbers[index] = 0;
-		numbers[index + 1] = 0;
-    }else{
-        const uwks real_value = (uwks) xxhash64(index, global_seed) & WK_UINT_MAX;
-        const uwks imag_value = (uwks) xxhash64(index + 1, global_seed) & WK_UINT_MAX;
+    const uwks real_value = (uwks) xxhash64(index, global_seed) & WK_UINT_MAX;
+    const uwks imag_value = (uwks) xxhash64(index + 1, global_seed) & WK_UINT_MAX;
 
 #if WKS_IS_UNSIGNED
-		numbers[index] = real_value;
-		numbers[index + 1] = imag_value;
+    numbers[index] = real_value;
+    numbers[index + 1] = imag_value;
 #else
-		numbers[index] =  *((wks*)&real_value);
-		numbers[index + 1] =  *((wks*)&imag_value);
+    numbers[index] =  *((wks*)&real_value);
+    numbers[index + 1] =  *((wks*)&imag_value);
 #endif
-	}
 
 #else
 	const ulong index = i*row_pitch + j;
-	if (j >= col) {
-		numbers[index] = 0;
-	}else{
-        const uwks real_value = (uwks) xxhash64(index, global_seed);
+    const uwks real_value = (uwks) xxhash64(index, global_seed);
 
 #if WKS_IS_UNSIGNED
-        numbers[index] = real_value;
+    numbers[index] = real_value;
 #else
-        numbers[index] =  *((wks*)&real_value);
+    numbers[index] =  *((wks*)&real_value);
 #endif
-    }
 
 #endif
 
@@ -127,35 +107,26 @@ __kernel void random(
 #if com == 1
 	const ulong index = i*row_pitch + j*2;
 
-	if (j >= col) {
-		numbers[index] = 0;
-		numbers[index + 1] = 0;
-	}else{
-        const uwks real_value = (uwks) (xxhash64(index, global_seed) & (WK_UINT_MAX - 1));
-        const uwks imag_value = (uwks) (xxhash64(index + 1, global_seed) & (WK_UINT_MAX - 1));
+    const uwks real_value = (uwks) (xxhash64(index, global_seed) & (WK_UINT_MAX - 1));
+    const uwks imag_value = (uwks) (xxhash64(index + 1, global_seed) & (WK_UINT_MAX - 1));
 
 #if WKS_IS_UNSIGNED
-        numbers[index] = real_value;
-        numbers[index + 1] = imag_value;
+    numbers[index] = real_value;
+    numbers[index + 1] = imag_value;
 #else
-        numbers[index] =  *((wks*)&real_value);
-        numbers[index + 1] =  *((wks*)&imag_value);
+    numbers[index] =  *((wks*)&real_value);
+    numbers[index + 1] =  *((wks*)&imag_value);
 #endif
-    }
 
 #else
 	const ulong index = i*row_pitch + j;
-	if (j >= col) {
-		numbers[index] = 0;
-	}else{
-        const uwks real_value = (uwks) (xxhash64(index, global_seed) & (WK_UINT_MAX - 1));
+    const uwks real_value = (uwks) (xxhash64(index, global_seed) & (WK_UINT_MAX - 1));
 
 #if WKS_IS_UNSIGNED
-        numbers[index] = real_value;
+    numbers[index] = real_value;
 #else
-        numbers[index] =  *((wks*)&real_value);
+    numbers[index] =  *((wks*)&real_value);
 #endif
-    }
 
 #endif
 
