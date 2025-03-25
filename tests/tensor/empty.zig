@@ -27,7 +27,7 @@ fn create_and_release(comptime T: type, ctx: *const wekua.core.Context, config: 
 
 fn test_tensor_creation(allocator: std.mem.Allocator, ctx: *wekua.core.Context) !void {
     ctx.allocator = allocator;
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         try create_and_release(T, ctx, .{});
 
         try create_and_release(T, ctx, .{

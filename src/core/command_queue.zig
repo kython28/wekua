@@ -2,7 +2,7 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const Context = @import("context.zig");
-// const kernel = @import("kernel.zig");
+const KernelsSet = @import("kernel.zig");
 
 allocator: std.mem.Allocator,
 ctx: *const Context,
@@ -13,8 +13,8 @@ device_name: []u8,
 device_vendor_id: u32,
 device_type: cl.device.enums.device_type,
 
-// kernels: [kernel.total_number_of_kernels]?kernel.wKernel,
-// headers: kernel.wKernel,
+kernels: [KernelsSet.total_number_of_kernels]KernelsSet,
+headers: KernelsSet,
 
 local_mem_type: cl.device.cl_device_local_mem_type,
 compute_units: u32,
@@ -68,12 +68,24 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
 
     try cl.device.get_info(device, device_info_enum.max_compute_units, @sizeOf(u32), &self.compute_units, null);
 
-    try cl.device.get_info(device, device_info_enum.max_work_group_size, @sizeOf(u64), &self.max_work_group_size, null);
+    try cl.device.get_info(
+        device,
+        device_info_enum.max_work_group_size,
+        @sizeOf(u64),
+        &self.max_work_group_size,
+        null,
+    );
 }
 
-pub fn init(self: *CommandQueue, allocator: std.mem.Allocator, ctx: *const Context, device: cl.device.cl_device_id) !void {
+pub fn init(
+    self: *CommandQueue,
+    ctx: *const Context,
+    device: cl.device.cl_device_id,
+) !void {
     const cmd: cl.command_queue.cl_command_queue = try cl.command_queue.create(ctx.ctx, device, 0);
     errdefer cl.command_queue.release(cmd);
+
+    const allocator = ctx.allocator;
 
     self.allocator = allocator;
     self.ctx = ctx;
@@ -81,34 +93,38 @@ pub fn init(self: *CommandQueue, allocator: std.mem.Allocator, ctx: *const Conte
     self.device = device;
     self.wekua_id = 0;
 
-    // const headers = try allocator.create(kernel._w_kernel);
-    // errdefer allocator.destroy(headers);
-    // headers.kernels = null;
+    self.headers = .{};
 
-    // headers.programs = try allocator.alloc(?cl.program.cl_program, kernel.total_number_of_headers);
-    // @memset(headers.programs.?, null);
-    // errdefer allocator.free(headers.programs.?);
+    self.headers.programs = try allocator.alloc(?cl.program.cl_program, KernelsSet.total_number_of_headers);
+    errdefer allocator.free(self.headers.programs);
 
-    // self.headers = headers;
+    @memset(self.headers.programs, null);
 
-    // @memset(&self.kernels, null);
+    self.headers.initialized = true;
+
+    for (&self.kernels) |*k| {
+        k.* = .{};
+    }
+
     try self.get_device_info(allocator, device);
 }
 
-pub fn init_multiples(allocator: std.mem.Allocator, ctx: *Context, devices: []cl.device.cl_device_id) ![]CommandQueue {
+pub fn init_multiples(
+    allocator: std.mem.Allocator,
+    ctx: *const Context,
+    devices: []cl.device.cl_device_id,
+) ![]CommandQueue {
     var cmd_created: u32 = 0;
     const command_queues: []CommandQueue = try allocator.alloc(CommandQueue, devices.len);
     errdefer {
-        if (cmd_created > 0) {
-            for (command_queues[0..cmd_created]) |*cmd| {
-                cmd.deinit();
-            }
+        for (command_queues[0..cmd_created]) |*cmd| {
+            cmd.deinit();
         }
         allocator.free(command_queues);
     }
 
     for (devices, command_queues, 0..) |device, *wcmd, index| {
-        try wcmd.init(allocator, ctx, device);
+        try wcmd.init(ctx, device);
         wcmd.*.wekua_id = index;
         cmd_created += 1;
     }
@@ -119,36 +135,27 @@ pub fn init_multiples(allocator: std.mem.Allocator, ctx: *Context, devices: []cl
 pub fn deinit(self: *CommandQueue) void {
     const allocator = self.allocator;
 
-    // const kernels = self.kernels;
-    // for (kernels) |w_kernel| {
-    //     if (w_kernel) |v| {
-    //         if (v.kernels) |cl_kernels| {
-    //             for (cl_kernels) |cl_kernel| {
-    //                 if (cl_kernel) |clk| {
-    //                     cl.kernel.release(clk);
-    //                 }
-    //             }
-    //             allocator.free(cl_kernels);
-    //         }
+    const kernels = self.kernels;
+    for (&kernels) |*set| {
+        for (set.kernels) |cl_kernel| {
+            if (cl_kernel) |clk| {
+                cl.kernel.release(clk);
+            }
+        }
+        allocator.free(set.kernels);
 
-    //         if (v.programs) |cl_programs| {
-    //             for (cl_programs) |cl_program| {
-    //                 if (cl_program) |clp| {
-    //                     cl.program.release(clp);
-    //                 }
-    //             }
-    //             allocator.free(cl_programs);
-    //         }
+        for (set.programs) |cl_program| {
+            if (cl_program) |clp| {
+                cl.program.release(clp);
+            }
+        }
+        allocator.free(set.programs);
+    }
 
-    //         allocator.destroy(v);
-    //     }
-    // }
-
-    // for (self.headers.programs.?) |program| {
-    //     if (program) |v| cl.program.release(v);
-    // }
-    // allocator.free(self.headers.programs.?);
-    // allocator.destroy(self.headers);
+    for (self.headers.programs) |program| {
+        if (program) |v| cl.program.release(v);
+    }
+    allocator.free(self.headers.programs);
 
     allocator.free(self.device_name);
 
@@ -163,6 +170,10 @@ pub fn deinit_multiples(allocator: std.mem.Allocator, command_queues: []CommandQ
         cmd.deinit();
     }
     allocator.free(command_queues);
+}
+
+pub inline fn typeIsSupported(self: *const CommandQueue, comptime T: type) bool {
+    return self.vector_widths[Context.getTypeId(T)] > 0;
 }
 
 const CommandQueue = @This();

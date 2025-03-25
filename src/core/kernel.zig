@@ -11,7 +11,7 @@ const Tensor = w_tensor.Tensor;
 const header_content: []const u8 = @embedFile("wekua_cl_lib.h");
 
 pub const KernelsID = enum(u16) {
-    Random = 0,
+    FillRandom = 0,
     RandRange = 1,
     Transpose = 2,
     ToComplex = 3,
@@ -21,10 +21,10 @@ pub const KernelsID = enum(u16) {
 };
 
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;
-pub const total_number_of_headers = w_tensor.SupportedTypes.len * 2 * 2;
+pub const total_number_of_headers = core.SupportedTypes.len * 2 * 2;
 
-kernels: []?cl.kernel.cl_kernel,
-programs: []?cl.program.cl_program,
+kernels: []?cl.kernel.cl_kernel = &.{},
+programs: []?cl.program.cl_program = &.{},
 initialized: bool = false,
 
 pub const CompileOptions = struct {
@@ -34,13 +34,13 @@ pub const CompileOptions = struct {
     extra_args: ?[]const u8 = null,
 };
 
-fn compile_header(
+fn compileHeader(
     comptime T: type,
     command_queue: *const CommandQueue,
     vectors_enabled: bool,
     is_complex: bool,
 ) !cl.program.cl_program {
-    const type_index: u16 = w_tensor.getTypeId(T);
+    const type_index: u16 = core.getTypeId(T);
     const index: u16 = type_index * 4 + @as(u16, @intFromBool(vectors_enabled)) * 2 + @intFromBool(is_complex);
 
     const headers = &command_queue.headers;
@@ -59,7 +59,7 @@ fn compile_header(
     return new_header_prg;
 }
 
-fn show_build_log(program: cl.program.cl_program, command_queue: *const CommandQueue) !void {
+fn showBuildLog(program: cl.program.cl_program, command_queue: *const CommandQueue) !void {
     var msg_len: usize = undefined;
     try cl.program.get_build_info(
         program,
@@ -83,13 +83,13 @@ fn show_build_log(program: cl.program.cl_program, command_queue: *const CommandQ
     );
 
     if (builtin.is_test) {
-        std.log.warn("An error while compiling the kernel: {s}", .{compile_log});
+        std.log.warn("An error while compiling the kernel:\n{s}", .{compile_log});
     } else {
-        std.log.err("An error while compiling the kernel: {s}", .{compile_log});
+        std.log.err("An error while compiling the kernel:\n{s}", .{compile_log});
     }
 }
 
-pub fn compile_kernel(
+pub fn compileKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
     options: CompileOptions,
@@ -106,13 +106,15 @@ pub fn compile_kernel(
     );
     defer cl.program.release(new_program);
 
-    const type_index = w_tensor.getTypeId(T);
+    const type_index = core.getTypeId(T);
     const vector_width = blk: {
         if (options.vectors_enabled and !options.is_complex) {
             break :blk command_queue.vector_widths[type_index];
         }
         break :blk 1;
     };
+
+    if (vector_width == 0) return error.TypeNotSupported;
 
     var args: []u8 = undefined;
     if (options.extra_args) |v| {
@@ -141,7 +143,7 @@ pub fn compile_kernel(
     }
     defer allocator.free(args);
 
-    const header_prg = try compile_header(
+    const header_prg = try compileHeader(
         T,
         command_queue,
         options.vectors_enabled,
@@ -166,7 +168,7 @@ pub fn compile_kernel(
     ) catch |err| {
         switch (err) {
             error.compile_program_failure => {
-                show_build_log(new_program, command_queue) catch |err2| {
+                showBuildLog(new_program, command_queue) catch |err2| {
                     std.log.err("Unexpected error while showing build log: {s}", .{@errorName(err2)});
                     std.log.warn("No able to show build log", .{});
                 };
@@ -186,7 +188,7 @@ pub fn compile_kernel(
     ) catch |err| {
         switch (err) {
             error.link_program_failure => {
-                show_build_log(new_program, command_queue) catch |err2| {
+                showBuildLog(new_program, command_queue) catch |err2| {
                     std.log.err("Unexpected error while showing build log: {s}", .{@errorName(err2)});
                     std.log.warn("No able to show build log", .{});
                 };
@@ -199,8 +201,8 @@ pub fn compile_kernel(
     kernel.* = try cl.kernel.create(program.*, options.kernel_name);
 }
 
-pub fn get_kernel(
-    command_queue: *const CommandQueue,
+pub fn getKernelSet(
+    command_queue: *CommandQueue,
     kernel_id: KernelsID,
     comptime number_of_cl_kernels: usize,
 ) !*KernelSet {
@@ -213,9 +215,12 @@ pub fn get_kernel(
 
     const cl_kernels = try allocator.alloc(?cl.kernel.cl_kernel, number_of_cl_kernels);
     errdefer allocator.free(cl_kernels);
+
     @memset(cl_kernels, null);
 
     const cl_programs = try allocator.alloc(?cl.program.cl_program, number_of_cl_kernels);
+    errdefer allocator.free(cl_programs);
+
     @memset(cl_programs, null);
 
     kernels_set.kernels = cl_kernels;
@@ -225,9 +230,9 @@ pub fn get_kernel(
     return kernels_set;
 }
 
-pub fn create_and_get_kernel(
+pub fn createAndGetKernel(
     comptime T: type,
-    command_queue: *const CommandQueue,
+    command_queue: *CommandQueue,
     kernel_id: KernelsID,
     kernel_source: []const u8,
     options: CompileOptions,
@@ -243,7 +248,7 @@ pub fn create_and_get_kernel(
         @panic("Kernels with vectors are not allowed");
     }
 
-    const kernels_set = try get_kernel(command_queue, kernel_id, number_of_cl_kernels);
+    const kernels_set = try getKernelSet(command_queue, kernel_id, number_of_cl_kernels);
     if (kernels_set.kernels[kernel_index]) |kernel| {
         return kernel;
     }
@@ -251,7 +256,7 @@ pub fn create_and_get_kernel(
     var kernel: cl.kernel.cl_kernel = undefined;
     var program: cl.program.cl_program = undefined;
 
-    try compile_kernel(T, command_queue, options, &kernel, &program, kernel_source);
+    try compileKernel(T, command_queue, options, &kernel, &program, kernel_source);
 
     kernels_set.kernels[kernel_index] = kernel;
     kernels_set.programs[kernel_index] = program;
@@ -259,7 +264,7 @@ pub fn create_and_get_kernel(
     return kernel;
 }
 
-pub fn get_cl_kernel(
+pub fn getClKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
     tensor: *const Tensor(T),
@@ -274,7 +279,7 @@ pub fn get_cl_kernel(
     const kernel_index = (@intFromBool(vectors_enabled) * (2 * w_tensor.SupportedTypes.len) +
         @intFromBool(is_complex) * w_tensor.SupportedTypes.len + @as(usize, @intFromEnum(T)));
 
-    return try create_and_get_kernel(
+    return try createAndGetKernel(
         command_queue,
         kernel_id,
         kernel_source,
@@ -291,26 +296,26 @@ pub fn get_cl_kernel(
     );
 }
 
-pub fn get_cl_no_vector_kernel(
+pub fn getClNoVectorKernel(
     comptime T: type,
-    command_queue: *const CommandQueue,
+    command_queue: *CommandQueue,
     tensor: *const Tensor(T),
     kernel_id: KernelsID,
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.cl_kernel {
-    const dtype = tensor.dtype;
     const is_complex = tensor.is_complex;
 
-    const kernel_index = @intFromBool(is_complex) * w_tensor.SupportedTypes.len + @as(usize, @intFromEnum(T));
+    const type_index: usize = core.getTypeId(T);
+    const kernel_index = @intFromBool(is_complex) * core.SupportedTypes.len + type_index;
 
-    return try create_and_get_kernel(
+    return try createAndGetKernel(
+        T,
         command_queue,
         kernel_id,
         kernel_source,
         .{
-            .dtype = dtype,
             .is_complex = is_complex,
             .vectors_enabled = false,
             .kernel_name = kernel_name,
@@ -318,12 +323,12 @@ pub fn get_cl_no_vector_kernel(
         },
         true,
         false,
-        w_tensor.SupportedTypes.len * 2,
+        core.SupportedTypes.len * 2,
         kernel_index,
     );
 }
 
-pub fn get_cl_no_vector_no_complex_single_kernel_per_dtype(
+pub fn getClNoVectorNoComplexSingleKernelPerDtype(
     comptime T: type,
     command_queue: *const CommandQueue,
     tensor: *const Tensor(T),
@@ -334,7 +339,8 @@ pub fn get_cl_no_vector_no_complex_single_kernel_per_dtype(
 ) !cl.kernel.cl_kernel {
     const dtype = tensor.dtype;
 
-    return try create_and_get_kernel(
+    return try createAndGetKernel(
+        T,
         command_queue,
         kernel_id,
         kernel_source,

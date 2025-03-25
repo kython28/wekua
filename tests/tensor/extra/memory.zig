@@ -32,7 +32,7 @@ test "fill and get random value" {
     defer ctx.release();
 
     const randprg = std.crypto.random;
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         const scalar = switch (@typeInfo(T)) {
             .int => randprg.int(T),
             .float => randprg.float(T),
@@ -86,7 +86,7 @@ test "fill and get random complex value" {
     defer ctx.release();
 
     const randprg = std.crypto.random;
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         const scalar = switch (@typeInfo(T)) {
             .int => randprg.int(T),
             .float => randprg.float(T),
@@ -132,7 +132,7 @@ test "read from and write to buffer" {
     defer ctx.release();
 
     const randprg = std.crypto.random;
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         const tensor = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
         defer tensor.release();
 
@@ -161,7 +161,7 @@ test "copy" {
     defer ctx.release();
 
     const randprg = std.crypto.random;
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         const tensor = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
         defer tensor.release();
 

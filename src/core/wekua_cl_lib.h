@@ -10,9 +10,16 @@
 #define wk_width 1
 #endif
 
+
 #if dtype == 0
 
+#define WK_INT_MAX CHAR_MAX
+#define WK_UINT_MAX UCHAR_MAX
+
+typedef uchar uwks;
 typedef char wks;
+
+#define WKS_IS_UNSIGNED 0
 
 #if wk_width == 1
 typedef char wk;
@@ -30,7 +37,13 @@ typedef char16 wk;
 
 #elif dtype == 1
 
+#define WK_INT_MAX UCHAR_MAX
+#define WK_UINT_MAX UCHAR_MAX
+
+typedef uchar uwks;
 typedef uchar wks;
+
+#define WKS_IS_UNSIGNED 1
 
 #if wk_width == 1
 typedef uchar wk;
@@ -48,7 +61,13 @@ typedef uchar16 wk;
 
 #elif dtype == 2
 
+#define WK_INT_MAX SHRT_MAX
+#define WK_UINT_MAX USHRT_MAX
+
+typedef ushort uwks;
 typedef short wks;
+
+#define WKS_IS_UNSIGNED 0
 
 #if wk_width == 1
 typedef short wk;
@@ -66,7 +85,13 @@ typedef short16 wk;
 
 #elif dtype == 3
 
+#define WK_INT_MAX USHRT_MAX
+#define WK_UINT_MAX USHRT_MAX
+
+typedef ushort uwks;
 typedef ushort wks;
+
+#define WKS_IS_UNSIGNED 1
 
 #if wk_width == 1
 typedef ushort wk;
@@ -84,7 +109,13 @@ typedef ushort16 wk;
 
 #elif dtype == 4
 
+#define WK_INT_MAX INT_MAX
+#define WK_UINT_MAX UINT_MAX
+
+typedef uint uwks;
 typedef int wks;
+
+#define WKS_IS_UNSIGNED 0
 
 #if wk_width == 1
 typedef int wk;
@@ -102,7 +133,13 @@ typedef int16 wk;
 
 #elif dtype == 5
 
+#define WK_INT_MAX UINT_MAX
+#define WK_UINT_MAX UINT_MAX
+
+typedef uint uwks;
 typedef uint wks;
+
+#define WKS_IS_UNSIGNED 1
 
 #if wk_width == 1
 typedef uint wk;
@@ -120,7 +157,13 @@ typedef uint16 wk;
 
 #elif dtype == 6
 
+#define WK_INT_MAX LONG_MAX
+#define WK_UINT_MAX ULONG_MAX
+
+typedef ulong uwks;
 typedef long wks;
+
+#define WKS_IS_UNSIGNED 1
 
 #if wk_width == 1
 typedef long wk;
@@ -138,7 +181,13 @@ typedef long16 wk;
 
 #elif dtype == 7
 
+#define WK_INT_MAX ULONG_MAX
+#define WK_UINT_MAX ULONG_MAX
+
+typedef ulong uwks;
 typedef ulong wks;
+
+#define WKS_IS_UNSIGNED 1
 
 #if wk_width == 1
 typedef ulong wk;

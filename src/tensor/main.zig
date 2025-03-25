@@ -9,7 +9,7 @@ const utils = @import("../utils/utils.zig");
 
 pub const fill = @import("fill.zig");
 pub const memory = @import("memory/main.zig");
-// const Random = @import("random/main.zig");
+pub const Random = @import("random/main.zig");
 // usingnamespace @import("transpose.zig");
 // const convertions = @import("convertions/main.zig");
 
@@ -21,8 +21,6 @@ pub const Errors = error{
     UnqualTensorsAttribute,
     UnqualTensorsShape,
 };
-
-pub const SupportedTypes = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
 
 pub const CreateConfig = struct {
     cl_mem_flags: cl.buffer.cl_mem_flags = @intFromEnum(cl.buffer.enums.mem_flags.read_write),
@@ -37,12 +35,7 @@ pub fn Tensor(comptime T: type) type {
         else => @compileError("Type not supported"),
     }
 
-    comptime var type_index: usize = 0;
-    inline for (SupportedTypes, 0..) |t, i| {
-        if (T == t) {
-            type_index = i;
-        }
-    }
+    const type_index = core.Context.getTypeId(T);
 
     return struct {
         context: *const Context,

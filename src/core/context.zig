@@ -2,6 +2,19 @@ const std = @import("std");
 const cl = @import("opencl");
 const CommandQueue = @import("command_queue.zig");
 
+pub const SupportedTypes: [10]type = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
+
+pub fn getTypeId(comptime T: type) comptime_int {
+    inline for (SupportedTypes, 0..) |t, i| {
+        if (T == t) {
+            return i;
+        }
+    }
+
+    @compileError("Type not supported");
+}
+
+
 allocator: std.mem.Allocator,
 ctx: cl.context.cl_context,
 command_queues: []CommandQueue,

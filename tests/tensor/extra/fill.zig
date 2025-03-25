@@ -166,7 +166,7 @@ test "fill and check" {
     const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer ctx.release();
 
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{20, 10}, .{});
         defer tensor.release();
 

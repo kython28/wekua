@@ -56,7 +56,7 @@ test "create and release" {
     const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer ctx.release();
 
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         try create_and_release(T, ctx, .{});
 
         try create_and_release(T, ctx, .{ .is_complex = true });
@@ -69,7 +69,7 @@ test "create, check and release" {
     const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer ctx.release();
 
-    inline for (wekua.tensor.SupportedTypes) |T| {
+    inline for (wekua.core.SupportedTypes) |T| {
         try create_check_and_release(T, ctx, .{});
 
         try create_check_and_release(T, ctx, .{ .is_complex = true });
