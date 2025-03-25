@@ -1,10 +1,13 @@
-const std = @import("std");
-
-pub fn ravel_multi_index(multi_index: []const u64, shape: []const u64, pitches: ?[]const u64, is_complex: bool) usize {
+pub fn ravelMultiIndex(
+    multi_index: []const u64,
+    shape: []const u64,
+    pitches: ?[]const u64,
+    is_complex: bool,
+) usize {
     if (pitches) |p| {
         var index: u64 = 0;
         for (multi_index, p) |a, b| {
-            index += a*b;
+            index += a * b;
         }
         return index;
     }
@@ -21,7 +24,13 @@ pub fn ravel_multi_index(multi_index: []const u64, shape: []const u64, pitches: 
     return index;
 }
 
-pub fn unravel_index(index: u64, shape: []const u64, pitches: ?[]const u64, multi_index: []u64, is_complex: bool) void {
+pub fn unravelIndex(
+    index: u64,
+    shape: []const u64,
+    pitches: ?[]const u64,
+    multi_index: []u64,
+    is_complex: bool,
+) void {
     if (pitches) |p| {
         var remaining: u64 = index;
         for (p, multi_index) |a, *b| {

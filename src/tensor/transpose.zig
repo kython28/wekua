@@ -1,67 +1,72 @@
-const std = @import("std");
 const cl = @import("opencl");
 
-const w_command_queue = @import("../../core/command_queue.zig");
-const wCommandQueue = w_command_queue.wCommandQueue;
+const core = @import("../core/main.zig");
+const CommandQueue = core.CommandQueue;
+const KernelsSet = core.KernelsSet;
 
-const w_kernel = @import("../../core/kernel.zig");
+const w_tensor = @import("main.zig");
+const Tensor = w_tensor.Tensor;
 
-const w_event = @import("../utils/event.zig");
-const w_errors = @import("../utils/errors.zig").errors;
-const w_copy = @import("io/copy.zig");
-
-const dtypes = @import("../utils/dtypes.zig");
-const wTensor = dtypes.wTensor;
-const wTensorDtype = dtypes.wTensorDtype;
-
-const validations = @import("../utils/validations.zig");
+const helpers = @import("helpers.zig");
 
 const transpose_cl_kernel: []const u8 = @embedFile("kernels/transpose.cl");
 
-const transpose_resources =  struct {
-    prev_events: []cl.event.cl_event
-};
-
-pub fn release_events_array(allocator: std.mem.Allocator, user_data: ?*anyopaque) void {
-    if (user_data) |data| {
-        const resources: *transpose_resources = @ptrCast(@alignCast(data));
-        allocator.free(resources.prev_events);
-        allocator.destroy(resources);
-    }
-}
-
-pub fn transpose(command_queue: wCommandQueue, result_tensor: wTensor, tensor: wTensor, dim0: u64, dim1: u64) !void {
-    try validations.eql_tensors_dtype(tensor, result_tensor);
-    try validations.eql_number_space(tensor, result_tensor);
+pub fn transpose(
+    comptime T: type,
+    command_queue: *CommandQueue,
+    result_tensor: *Tensor(T),
+    tensor: *Tensor(T),
+    dim0: u64,
+    dim1: u64,
+) !void {
+    try helpers.eqlNumberSpace(T, tensor, result_tensor);
 
     const shape_a = result_tensor.shape;
     const shape_b = tensor.shape;
-    if (shape_a.len != shape_b.len) return w_errors.UnqualTensorsDimension;
-    if (dim0 >= shape_a.len or dim1 >= shape_a.len) return w_errors.InvalidValue;
-    if (tensor.number_of_elements_without_padding != result_tensor.number_of_elements_without_padding) {
-        return w_errors.UnqualTensorsDimension;
+    if (shape_a.len != shape_b.len) {
+        return w_tensor.Errors.UnqualTensorsDimension;
+    } else if (dim0 >= shape_a.len or dim1 >= shape_a.len) {
+        return w_tensor.Errors.InvalidValue;
+    } else if (tensor.number_of_elements_without_padding != result_tensor.number_of_elements_without_padding) {
+        return w_tensor.Errors.UnqualTensorsDimension;
+    } else if (shape_a[dim0] != shape_b[dim1] or shape_a[dim1] != shape_b[dim0]) {
+        return w_tensor.Errors.InvalidValue;
     }
-    if (shape_a[dim0] != shape_b[dim1] or shape_a[dim1] != shape_b[dim0]) return w_errors.InvalidValue;
+
     if (dim0 == dim1) {
-        try w_copy.copy(command_queue, tensor, result_tensor);
+        try w_tensor.memory.copy(T, command_queue, tensor, result_tensor);
         return;
     }
 
-    const kernel = try w_kernel.get_cl_no_vector_kernel(
-        command_queue, tensor, .Transpose, "transpose", transpose_cl_kernel, null
+    const kernel = try KernelsSet.getClNoVectorKernel(
+        T,
+        command_queue,
+        tensor,
+        .Transpose,
+        "transpose",
+        transpose_cl_kernel,
+        null,
     );
     const cmd = command_queue.cmd;
 
-    const src_prev_events = w_event.acquire_tensor(tensor, .read);
-    defer tensor.mutex.unlock();
-
-    const dst_prev_events = w_event.acquire_tensor(result_tensor, .write);
-    defer result_tensor.mutex.unlock();
+    const src_prev_events = tensor.events_manager.getPrevEvents(.read);
+    const dst_prev_events = result_tensor.events_manager.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const prev_events = try w_event.concatenate_events(allocator, &.{src_prev_events, dst_prev_events});
+    const prev_events = try w_tensor.EventManager.concat(
+        allocator,
+        &.{
+            src_prev_events,
+            dst_prev_events,
+        },
+    );
     errdefer {
         if (prev_events) |v| allocator.free(v);
+    }
+
+    const transpose_prev_events = try helpers.createPrevEventsResource(allocator, prev_events);
+    errdefer {
+        if (transpose_prev_events) |v| allocator.destroy(v);
     }
 
     const set_arg = cl.kernel.set_arg;
@@ -75,7 +80,7 @@ pub fn transpose(command_queue: wCommandQueue, result_tensor: wTensor, tensor: w
     if (dim0 > dim1) {
         dim0_ = dim1;
         dim1_ = dim0;
-    }else{
+    } else {
         dim0_ = dim0;
         dim1_ = dim1;
     }
@@ -91,28 +96,23 @@ pub fn transpose(command_queue: wCommandQueue, result_tensor: wTensor, tensor: w
     // TODO: Adapt code to use views
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
-        cmd, kernel, null, &[1]u64{tensor.number_of_elements},
-        tensor.work_item_for_all_elements[command_queue.wekua_id..command_queue.wekua_id+1],
-        prev_events, &new_event
+        cmd,
+        kernel,
+        null,
+        &[1]u64{tensor.number_of_elements},
+        tensor.work_item_for_all_elements[command_queue.wekua_id .. command_queue.wekua_id + 1],
+        prev_events,
+        &new_event,
     );
-    errdefer {
-        cl.event.wait(new_event) catch unreachable;
-        cl.event.release(new_event) catch unreachable;
-    }
+    errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try cl.event.retain(new_event);
-    errdefer cl.event.release(new_event) catch unreachable;
-
-    var resources: ?*transpose_resources = null;
-    if (prev_events) |v| {
-        resources = try allocator.create(transpose_resources);
-        resources.?.prev_events = v;
-    }
-    errdefer {
-        if (resources) |v| allocator.destroy(v);
-    }
-
-    try w_event.register_new_event_to_multiple_tensors(
-        command_queue, &.{tensor, result_tensor}, &release_events_array, resources, new_event, &.{.read, .write}
+    try w_tensor.EventManager.appendNewEventToMultipleTensor(
+        T,
+        allocator,
+        &.{.read, .write},
+        &.{tensor, result_tensor},
+        prev_events,
+        new_event,
+        .{ .data = transpose_prev_events, .func = &helpers.releaseEventsArray },
     );
 }

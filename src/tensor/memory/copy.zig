@@ -1,4 +1,3 @@
-const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("../../core/main.zig");
@@ -8,22 +7,6 @@ const helpers = @import("../helpers.zig");
 
 const w_tensor = @import("../main.zig");
 const Tensor = w_tensor.Tensor;
-
-const validations = @import("../utils/validations.zig");
-
-const CopyData = struct {
-    allocator: std.mem.Allocator,
-    prev_events: []cl.event.cl_event,
-};
-
-fn release_resources(ptr: ?*anyopaque) void {
-    const maybe_data: ?*CopyData = @alignCast(@ptrCast(ptr));
-    const data = maybe_data orelse return;
-
-    const allocator = data.allocator;
-    allocator.free(data.prev_events);
-    allocator.destroy(data);
-}
 
 fn copy_tensor_with_different_row_pitch(
     comptime T: type,
@@ -55,20 +38,9 @@ fn copy_tensor_with_different_row_pitch(
         }
     }
 
-    var copy_data: ?*CopyData = null;
-    if (prev_events) |pv| {
-        const ptr = try allocator.create(CopyData);
-        errdefer allocator.destroy(ptr);
-
-        ptr.* = .{
-            .allocator = allocator,
-            .prev_events = pv,
-        };
-
-        copy_data = ptr;
-    }
+    const copy_prev_events = try helpers.createPrevEventsResource(allocator, prev_events);
     errdefer {
-        if (copy_data) |ptr| {
+        if (copy_prev_events) |ptr| {
             allocator.destroy(ptr);
         }
     }
@@ -88,7 +60,7 @@ fn copy_tensor_with_different_row_pitch(
         prev_events,
         &new_event,
     );
-    errdefer |err| helpers.release_event(new_event, err);
+    errdefer |err| helpers.releaseEvent(new_event, err);
 
     try w_tensor.EventManager.appendNewEventToMultipleTensor(
         T,
@@ -97,7 +69,7 @@ fn copy_tensor_with_different_row_pitch(
         &.{ src, dst },
         prev_events,
         new_event,
-        .{ .data = copy_data, .func = &release_resources },
+        .{ .data = copy_prev_events, .func = &helpers.releaseEventsArray },
     );
 }
 
@@ -116,20 +88,9 @@ fn copy_tensor_with_same_row_pitch(
         if (prev_events) |v| allocator.free(v);
     }
 
-    var copy_data: ?*CopyData = null;
-    if (prev_events) |pv| {
-        const ptr = try allocator.create(CopyData);
-        errdefer allocator.destroy(ptr);
-
-        ptr.* = .{
-            .allocator = allocator,
-            .prev_events = pv,
-        };
-
-        copy_data = ptr;
-    }
+    const copy_prev_events = try helpers.createPrevEventsResource(allocator, prev_events);
     errdefer {
-        if (copy_data) |ptr| {
+        if (copy_prev_events) |ptr| {
             allocator.destroy(ptr);
         }
     }
@@ -147,7 +108,7 @@ fn copy_tensor_with_same_row_pitch(
         &new_event,
     );
 
-    errdefer |err| helpers.release_event(new_event, err);
+    errdefer |err| helpers.releaseEvent(new_event, err);
 
     try w_tensor.EventManager.appendNewEventToMultipleTensor(
         T,
@@ -156,13 +117,13 @@ fn copy_tensor_with_same_row_pitch(
         &.{ src, dst },
         prev_events,
         new_event,
-        .{ .data = copy_data, .func = &release_resources },
+        .{ .data = copy_prev_events, .func = &helpers.releaseEventsArray },
     );
 }
 
 pub fn copy(comptime T: type, command_queue: *const CommandQueue, src: *Tensor(T), dst: *Tensor(T)) !void {
-    try validations.eql_tensors_dimensions(T, src, dst);
-    try validations.eql_number_space(T, src, dst);
+    try helpers.eqlTensorsDimensions(T, src, dst);
+    try helpers.eqlNumberSpace(T, src, dst);
 
     if (src.row_pitch == dst.row_pitch) {
         try copy_tensor_with_same_row_pitch(T, command_queue, src, dst);

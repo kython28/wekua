@@ -13,7 +13,6 @@ __kernel void transpose(
 		const ulong dim_pitch = pitches_A[x];
 		const ulong remaining = index % dim_pitch;
 		const ulong dim_index = (index - remaining) / dim_pitch;
-		// printf("%lu %lu %lu %lu %lu: %lu (%lu %lu %lu)\n", pitches_A[x], dim0, pitches_B[x], dim1, ndim, index, dim_index, x, remaining);
 		if (x == dim0) {
 			b_index += dim_index * pitches_B[dim1];
 		}else if (x == dim1) {

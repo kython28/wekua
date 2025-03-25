@@ -15,10 +15,10 @@ test "Create float tensor with random numbers" {
         defer tensor.release();
 
         if (command_queue.typeIsSupported(T)) {
-            try wekua.tensor.Random.fill(T, tensor, command_queue, null);
+            try wekua.tensor.random.fill(T, tensor, command_queue, null);
 
             const seed = std.crypto.random.int(u64);
-            try wekua.tensor.Random.fill(T, tensor, command_queue, seed);
+            try wekua.tensor.random.fill(T, tensor, command_queue, seed);
         }
     }
 }
@@ -88,10 +88,10 @@ test "Check variance" {
         defer tensor.release();
 
         if (command_queue.typeIsSupported(T)) {
-            try wekua.tensor.Random.fill(T, tensor, command_queue, null);
+            try wekua.tensor.random.fill(T, tensor, command_queue, null);
             try checkVariance(T, allocator, command_queue, tensor);
 
-            try wekua.tensor.Random.fill(T, tensor, command_queue, 0);
+            try wekua.tensor.random.fill(T, tensor, command_queue, 0);
             try checkVariance(T, allocator, command_queue, tensor);
         }
     }

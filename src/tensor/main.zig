@@ -9,8 +9,8 @@ const utils = @import("../utils/utils.zig");
 
 pub const fill = @import("fill.zig");
 pub const memory = @import("memory/main.zig");
-pub const Random = @import("random/main.zig");
-// usingnamespace @import("transpose.zig");
+pub const random = @import("random/main.zig");
+pub usingnamespace @import("transpose.zig");
 // const convertions = @import("convertions/main.zig");
 
 pub const Errors = error{
@@ -20,6 +20,7 @@ pub const Errors = error{
     InvalidBuffer,
     UnqualTensorsAttribute,
     UnqualTensorsShape,
+    UnqualTensorsDimension,
 };
 
 pub const CreateConfig = struct {
