@@ -14,12 +14,12 @@ fn create_and_release(comptime T: type, ctx: *const wekua.core.Context, config: 
         try std.testing.expect(!tensor.vectors_enabled);
         try std.testing.expectEqual(2*20*10, tensor.number_of_elements_without_padding);
         try std.testing.expectEqual(tensor.row_pitch, tensor.row_pitch_for_vectors);
-        try std.testing.expectEqual(2, tensor.pitchs[tensor.pitchs.len - 1]);
+        try std.testing.expectEqual(2, tensor.pitches[tensor.pitches.len - 1]);
     }else{
         try std.testing.expect(!tensor.is_complex);
         try std.testing.expect(tensor.vectors_enabled);
         try std.testing.expectEqual(20*10, tensor.number_of_elements_without_padding);
-        try std.testing.expectEqual(1, tensor.pitchs[tensor.pitchs.len - 1]);
+        try std.testing.expectEqual(1, tensor.pitches[tensor.pitches.len - 1]);
     }
 
     try std.testing.expectEqualSlices(u64, shape_expected, tensor.shape);

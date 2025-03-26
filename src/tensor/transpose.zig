@@ -86,10 +86,10 @@ pub fn transpose(
     }
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
-    try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitchs_buffer));
+    try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitches_buffer));
 
     try set_arg(kernel, 2, cl_mem_size, @ptrCast(&result_tensor.buffer));
-    try set_arg(kernel, 3, cl_mem_size, @ptrCast(&result_tensor.pitchs_buffer));
+    try set_arg(kernel, 3, cl_mem_size, @ptrCast(&result_tensor.pitches_buffer));
 
     try set_arg(kernel, 4, u64_size, @ptrCast(&tensor.row_pitch));
     try set_arg(kernel, 5, u64_size, @ptrCast(&tensor.shape_like_matrix_without_vectors[1]));

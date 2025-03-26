@@ -7,6 +7,8 @@ const Context = core.Context;
 pub const EventManager = @import("event_manager.zig");
 const utils = @import("../utils/utils.zig");
 
+const helpers = @import("helpers.zig");
+
 pub const fill = @import("fill.zig");
 pub const memory = @import("memory/main.zig");
 pub const random = @import("random/main.zig");
@@ -51,8 +53,8 @@ pub fn Tensor(comptime T: type) type {
         number_of_vectors: u64,
 
         row_pitch: u64,
-        pitchs: []u64,
-        pitchs_buffer: cl.buffer.cl_mem,
+        pitches: []u64,
+        pitches_buffer: cl.buffer.cl_mem,
 
         row_pitch_for_vectors: u64,
 
@@ -74,16 +76,15 @@ pub fn Tensor(comptime T: type) type {
 
         const this = @This();
 
-        fn createPitchBuffer(self: *this, context: *const Context, pitchs: []const u64) !void {
-            const pitchs_as_bytes = @as([*]const u8, @ptrCast(pitchs.ptr))[0..(pitchs.len * @sizeOf(u64))];
-            const pitchs_buffer = try cl.buffer.create(
+        fn createPitchBuffer(self: *this, context: *const Context, pitches: []const u64) !void {
+            const pitches_buffer = try cl.buffer.create(
                 context.ctx,
                 @intFromEnum(cl.buffer.enums.mem_flags.read_write),
-                pitchs_as_bytes.len,
+                pitches.len * @sizeOf(u64),
                 null,
             );
-            self.pitchs_buffer = pitchs_buffer;
-            errdefer cl.buffer.release(pitchs_buffer);
+            self.pitches_buffer = pitches_buffer;
+            errdefer cl.buffer.release(pitches_buffer);
 
             const prev_events = self.events_manager.getPrevEvents(.write);
 
@@ -91,20 +92,15 @@ pub fn Tensor(comptime T: type) type {
             const command_queue = context.command_queues[0];
             try cl.buffer.write(
                 command_queue.cmd,
-                pitchs_buffer,
+                pitches_buffer,
                 false,
                 0,
-                pitchs_as_bytes.len,
-                pitchs_as_bytes.ptr,
+                pitches.len * @sizeOf(u64),
+                pitches.ptr,
                 prev_events,
                 &new_event,
             );
-            errdefer {
-                cl.event.wait(new_event) catch |err| {
-                    std.debug.panic("Unexpected error while waiting for event: {s}", .{@errorName(err)});
-                };
-                cl.event.release(new_event);
-            }
+            errdefer |err| helpers.releaseEvent(new_event, err);
 
             try self.events_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
@@ -175,7 +171,7 @@ pub fn Tensor(comptime T: type) type {
 
             const pitches = try allocator.alloc(u64, shape.len);
             errdefer allocator.free(pitches);
-            tensor.pitchs = pitches;
+            tensor.pitches = pitches;
 
             var pitch: u64 = number_of_elements;
             for (shape[0..last_element_index], pitches[0..last_element_index]) |e, *p| {
@@ -249,11 +245,11 @@ pub fn Tensor(comptime T: type) type {
             self.events_manager.deinit();
 
             cl.buffer.release(self.buffer);
-            cl.buffer.release(self.pitchs_buffer);
+            cl.buffer.release(self.pitches_buffer);
 
             allocator.free(self.shape);
             allocator.free(self.vl_shape);
-            allocator.free(self.pitchs);
+            allocator.free(self.pitches);
             allocator.free(self.work_item_for_all_elements);
             allocator.free(self.work_item_for_all_vectors);
             allocator.free(self.work_items_like_matrix);
