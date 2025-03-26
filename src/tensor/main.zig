@@ -13,7 +13,7 @@ pub const fill = @import("fill.zig");
 pub const memory = @import("memory/main.zig");
 pub const random = @import("random/main.zig");
 pub usingnamespace @import("transpose.zig");
-// const convertions = @import("convertions/main.zig");
+pub const convertions = @import("convertions/main.zig");
 
 pub const Errors = error{
     InvalidValue,
