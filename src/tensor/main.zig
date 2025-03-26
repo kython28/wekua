@@ -64,13 +64,12 @@ pub fn Tensor(comptime T: type) type {
         vectors_enabled: bool,
 
         shape_like_matrix: [2]u64,
-
         shape_like_matrix_without_vectors: [2]u64,
 
         work_item_for_all_elements: []u64,
         work_item_for_all_vectors: []u64,
-        work_items_like_matrix: [][2]u64,
-        work_items_like_matrix_without_vectors: [][2]u64,
+        work_items_for_matrix_shape: [][2]u64,
+        work_items_for_matrix_shape_without_vectors: [][2]u64,
 
         events_manager: EventManager,
 
@@ -157,10 +156,10 @@ pub fn Tensor(comptime T: type) type {
             @memcpy(vl_shape[0..last_element_index], shape[0..last_element_index]);
             vl_shape[last_element_index] = row_pitch_for_vectors;
 
-            var number_of_elements: u64 = multiplier;
+            var number_of_elements: u64 = 1;
             for (shape[0..last_element_index]) |e| number_of_elements *= e;
 
-            const number_of_elements_without_padding = number_of_elements * shape[last_element_index];
+            const number_of_elements_without_padding = number_of_elements * shape[last_element_index] * multiplier;
             tensor.number_of_elements_without_padding = number_of_elements_without_padding;
 
             number_of_elements *= row_pitch;
@@ -186,16 +185,16 @@ pub fn Tensor(comptime T: type) type {
             const work_item_for_all_vectors = try allocator.alloc(u64, command_queues.len);
             errdefer allocator.free(work_item_for_all_vectors);
 
-            const work_items_like_matrix = try allocator.alloc([2]u64, command_queues.len);
-            errdefer allocator.free(work_items_like_matrix);
+            const work_items_for_matrix_shape = try allocator.alloc([2]u64, command_queues.len);
+            errdefer allocator.free(work_items_for_matrix_shape);
 
-            const work_items_like_matrix_without_vectors = try allocator.alloc([2]u64, command_queues.len);
-            errdefer allocator.free(work_items_like_matrix_without_vectors);
+            const work_items_for_matrix_shape_without_vectors = try allocator.alloc([2]u64, command_queues.len);
+            errdefer allocator.free(work_items_for_matrix_shape_without_vectors);
 
             tensor.work_item_for_all_elements = work_item_for_all_elements;
             tensor.work_item_for_all_vectors = work_item_for_all_vectors;
-            tensor.work_items_like_matrix = work_items_like_matrix;
-            tensor.work_items_like_matrix_without_vectors = work_items_like_matrix_without_vectors;
+            tensor.work_items_for_matrix_shape = work_items_for_matrix_shape;
+            tensor.work_items_for_matrix_shape_without_vectors = work_items_for_matrix_shape_without_vectors;
 
             const rows = number_of_elements / row_pitch;
             const shape_like_matrix: []u64 = &tensor.shape_like_matrix;
@@ -210,8 +209,8 @@ pub fn Tensor(comptime T: type) type {
                 command_queues,
                 work_item_for_all_elements,
                 work_item_for_all_vectors,
-                work_items_like_matrix,
-                work_items_like_matrix_without_vectors,
+                work_items_for_matrix_shape,
+                work_items_for_matrix_shape_without_vectors,
             ) |cmd, *wa, *wv, *wmv, *wm| {
                 utils.calculate_work_items(
                     @as([*]const u64, @ptrCast(&number_of_elements))[0..1],
@@ -252,8 +251,8 @@ pub fn Tensor(comptime T: type) type {
             allocator.free(self.pitches);
             allocator.free(self.work_item_for_all_elements);
             allocator.free(self.work_item_for_all_vectors);
-            allocator.free(self.work_items_like_matrix);
-            allocator.free(self.work_items_like_matrix_without_vectors);
+            allocator.free(self.work_items_for_matrix_shape);
+            allocator.free(self.work_items_for_matrix_shape_without_vectors);
             allocator.destroy(self);
         }
 

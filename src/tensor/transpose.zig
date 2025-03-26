@@ -98,6 +98,8 @@ pub fn transpose(
     try set_arg(kernel, 7, u64_size, @ptrCast(&dim1_));
     try set_arg(kernel, 8, u64_size, @ptrCast(&ndim));
 
+    const wekua_id = command_queue.wekua_id;
+
     // TODO: Adapt code to use views
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
@@ -105,7 +107,7 @@ pub fn transpose(
         kernel,
         null,
         &[1]u64{tensor.number_of_elements},
-        tensor.work_item_for_all_elements[command_queue.wekua_id .. command_queue.wekua_id + 1],
+        tensor.work_item_for_all_elements[wekua_id .. wekua_id + 1],
         prev_events,
         &new_event,
     );
@@ -114,8 +116,8 @@ pub fn transpose(
     try w_tensor.EventManager.appendNewEventToMultipleTensor(
         T,
         allocator,
-        &.{.read, .write},
-        &.{tensor, result_tensor},
+        &.{ .read, .write },
+        &.{ tensor, result_tensor },
         prev_events,
         new_event,
         .{ .data = transpose_prev_events, .func = &helpers.releaseEventsArray },

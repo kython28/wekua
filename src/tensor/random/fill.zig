@@ -48,7 +48,7 @@ pub fn fill(
         kernel,
         null,
         &tensor.shape_like_matrix_without_vectors,
-        &tensor.work_items_like_matrix_without_vectors[command_queue.wekua_id],
+        &tensor.work_items_for_matrix_shape_without_vectors[command_queue.wekua_id],
         null,
         &new_event,
     );

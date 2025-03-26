@@ -6,9 +6,17 @@ fn test_transpose(
     allocator: std.mem.Allocator,
     ctx: *const wekua.core.Context,
     comptime is_complex: bool,
+    vectors_for_tensor1: bool,
+    vectors_for_tensor2: bool,
     randprg: std.Random,
     comptime T: type,
 ) !void {
+    const w_cmd = &ctx.command_queues[0];
+
+    if (!w_cmd.typeIsSupported(T)) {
+        return;
+    }
+
     var shape: [4]u64 = .{
         randprg.intRangeAtMost(u64, 1, 5),
         randprg.intRangeAtMost(u64, 1, 5),
@@ -18,10 +26,12 @@ fn test_transpose(
 
     std.log.warn("Shapers 1: {any}", .{shape});
 
-    const tensor = try wekua.Tensor(T).alloc(ctx, &shape, .{ .is_complex = is_complex });
+    const tensor = try wekua.Tensor(T).alloc(ctx, &shape, .{
+        .is_complex = is_complex,
+        .vectors_enabled = vectors_for_tensor1,
+    });
     defer tensor.release();
 
-    const w_cmd = &ctx.command_queues[0];
     try wekua.tensor.random.fill(T, w_cmd, tensor, null);
 
     const dim0: u64 = randprg.intRangeAtMost(u64, 0, 2);
@@ -33,7 +43,10 @@ fn test_transpose(
 
     std.log.warn("Shapers 2: {any}", .{shape});
 
-    const tensor2 = try wekua.Tensor(T).alloc(ctx, &shape, .{ .is_complex = is_complex });
+    const tensor2 = try wekua.Tensor(T).alloc(ctx, &shape, .{
+        .is_complex = is_complex,
+        .vectors_enabled = vectors_for_tensor2,
+    });
     defer tensor2.release();
 
     try wekua.tensor.transpose(T, w_cmd, tensor2, tensor, dim0, dim1);
@@ -46,9 +59,6 @@ fn test_transpose(
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);
     try wekua.tensor.memory.writeToBuffer(T, tensor2, w_cmd, numbers2);
-
-    std.log.warn("{any}", .{numbers1});
-    std.log.warn("{any}", .{numbers2});
 
     var multi_index: [4]u64 = undefined;
     const factor: u64 = (1 + @as(usize, @intFromBool(is_complex)));
@@ -92,7 +102,14 @@ test "Transpose and check" {
 
     const randprg = std.crypto.random;
     inline for (wekua.core.SupportedTypes) |T| {
-        try test_transpose(allocator, ctx, false, randprg, T);
-        try test_transpose(allocator, ctx, true, randprg, T);
+        try test_transpose(allocator, ctx, false, true, true, randprg, T);
+        try test_transpose(allocator, ctx, false, true, false, randprg, T);
+        try test_transpose(allocator, ctx, false, false, true, randprg, T);
+        try test_transpose(allocator, ctx, false, false, false, randprg, T);
+
+        try test_transpose(allocator, ctx, true, true, true, randprg, T);
+        try test_transpose(allocator, ctx, true, true, false, randprg, T);
+        try test_transpose(allocator, ctx, true, false, true, randprg, T);
+        try test_transpose(allocator, ctx, true, false, false, randprg, T);
     }
 }
