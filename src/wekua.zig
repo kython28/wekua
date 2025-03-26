@@ -1,4 +1,4 @@
-// pub const opencl = @import("opencl");
+pub const opencl = @import("opencl");
 
 pub const core = @import("core/main.zig");
 

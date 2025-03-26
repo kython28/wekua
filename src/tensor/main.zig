@@ -146,7 +146,10 @@ pub fn Tensor(comptime T: type) type {
             const last_element_index = shape.len - 1;
             var row_pitch: u64 = shape[last_element_index] * multiplier;
             if (vectors_enabled and vector_width > 1) {
-                row_pitch += vector_width - @mod(row_pitch, vector_width);
+                const remainder = @mod(row_pitch, vector_width);
+                if (remainder > 0) {
+                    row_pitch += vector_width - remainder;
+                }
             }
 
             const row_pitch_for_vectors = row_pitch / vector_width;
@@ -198,12 +201,13 @@ pub fn Tensor(comptime T: type) type {
 
             const rows = number_of_elements / row_pitch;
             const shape_like_matrix: []u64 = &tensor.shape_like_matrix;
-            shape_like_matrix[0] = rows;
-            shape_like_matrix[1] = vl_shape[last_element_index];
-
             const shape_like_matrix_without_vectors: []u64 = &tensor.shape_like_matrix_without_vectors;
+
+            shape_like_matrix[0] = rows;
             shape_like_matrix_without_vectors[0] = rows;
+
             shape_like_matrix_without_vectors[1] = shape[last_element_index];
+            shape_like_matrix[1] = vl_shape[last_element_index];
 
             for (
                 command_queues,

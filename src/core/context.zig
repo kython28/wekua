@@ -55,7 +55,7 @@ pub fn create_from_best_device(
     var best_score: u64 = 0;
     for (platforms) |plat| {
         var num_devices: u32 = undefined;
-        try cl.device.get_ids(plat.id.?, device_type, null, &num_devices);
+        cl.device.get_ids(plat.id.?, device_type, null, &num_devices) catch continue;
         if (num_devices == 0) continue;
         
         const devices = try allocator.alloc(cl.device.cl_device_id, num_devices);

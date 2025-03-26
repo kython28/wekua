@@ -47,11 +47,15 @@ pub fn build(b: *std.Build) void {
     benchmark.linkSystemLibrary("wekua");
     benchmark.linkSystemLibrary("openblas");
 
+    const install_benchmark = b.addInstallArtifact(benchmark, .{});
+
     const run_benchmark = b.addRunArtifact(benchmark);
     run_benchmark.has_side_effects = true;
 
     const run_benchmark_step = b.step("benchmark", "Run benchmark");
+    run_benchmark_step.dependOn(&install_benchmark.step);
     run_benchmark_step.dependOn(&run_benchmark.step);
+
 
     const run_check_step = b.step("check", "ZLS");
     run_check_step.dependOn(&lib_unit_tests.step);

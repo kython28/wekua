@@ -79,8 +79,8 @@ __kernel void random(
 #if com == 1
 	const ulong index = i*row_pitch + j*2;
 
-    const uwks real_value = (uwks) xxhash64(index, global_seed) & WK_UINT_MAX;
-    const uwks imag_value = (uwks) xxhash64(index + 1, global_seed) & WK_UINT_MAX;
+    const uwks real_value = (uwks) xxhash64(index, global_seed);
+    const uwks imag_value = (uwks) xxhash64(index + 1, global_seed);
 
 #if WKS_IS_UNSIGNED
     numbers[index] = real_value;
