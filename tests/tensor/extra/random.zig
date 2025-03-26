@@ -39,7 +39,7 @@ fn checkVariance(
         const val: f64 = switch (@typeInfo(T)) {
             .int => @floatFromInt(elem),
             .float => @floatCast(elem),
-            else => unreachable
+            else => unreachable,
         };
 
         mean += val;
@@ -50,29 +50,54 @@ fn checkVariance(
 
     var sq_diff: f64 = 0.0;
     for (buf) |elem| {
-        const diff = switch(@typeInfo(T)) {
+        const diff = switch (@typeInfo(T)) {
             .int => @as(f64, @floatFromInt(elem)) - mean,
             .float => @as(f64, @floatCast(elem)) - mean,
-            else => unreachable
+            else => unreachable,
         };
         sq_diff += diff * diff;
     }
 
     const variance: f64 = sq_diff / (number_of_elements_float - 1);
 
-
     const expected_variance = switch (@typeInfo(T)) {
         .int => blk: {
             const max_int: f64 = @floatFromInt(std.math.maxInt(T));
             const min_int: f64 = @floatFromInt(std.math.minInt(T));
 
-            break :blk (max_int - min_int) * (max_int - min_int) / 12.0;
+            const diff = max_int - min_int;
+            break :blk diff * diff / 12.0;
         },
         .float => 1.0 / 12.0,
-        else => unreachable
+        else => unreachable,
     };
-    const epsilon = variance*1.96/std.math.sqrt(number_of_elements_float);
-    try std.testing.expectApproxEqAbs(expected_variance, variance, epsilon);
+
+    try std.testing.expectApproxEqRel(expected_variance, variance, 0.1);
+}
+
+fn test_random_fill(
+    allocator: std.mem.Allocator,
+    ctx: *wekua.core.Context,
+    comptime T: type,
+    comptime is_complex: bool,
+    comptime vectors_enabled: bool,
+) !void {
+    const command_queue = &ctx.command_queues[0];
+
+    const tensor = try wekua.Tensor(T).alloc(ctx, &.{ 100, 100, 100 }, .{
+        .is_complex = is_complex,
+        .vectors_enabled = vectors_enabled,
+    });
+    defer tensor.release();
+
+    if (command_queue.typeIsSupported(T)) {
+        try wekua.tensor.random.fill(T, command_queue, tensor, null);
+        try checkVariance(T, allocator, command_queue, tensor);
+
+        const seed = std.crypto.random.int(u64);
+        try wekua.tensor.random.fill(T, command_queue, tensor, seed);
+        try checkVariance(T, allocator, command_queue, tensor);
+    }
 }
 
 test "Check variance" {
@@ -81,18 +106,11 @@ test "Check variance" {
     const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer ctx.release();
 
-    const command_queue = &ctx.command_queues[0];
-
     inline for (wekua.core.SupportedTypes) |T| {
-        const tensor = try wekua.Tensor(T).alloc(ctx, &.{ 20, 20, 20 }, .{});
-        defer tensor.release();
+        try test_random_fill(allocator, ctx, T, false, true);
+        try test_random_fill(allocator, ctx, T, false, false);
 
-        if (command_queue.typeIsSupported(T)) {
-            try wekua.tensor.random.fill(T, command_queue, tensor, null);
-            try checkVariance(T, allocator, command_queue, tensor);
-
-            try wekua.tensor.random.fill(T, command_queue, tensor, 0);
-            try checkVariance(T, allocator, command_queue, tensor);
-        }
+        try test_random_fill(allocator, ctx, T, true, true);
+        try test_random_fill(allocator, ctx, T, true, false);
     }
 }

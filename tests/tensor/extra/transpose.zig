@@ -6,8 +6,8 @@ fn test_transpose(
     allocator: std.mem.Allocator,
     ctx: *const wekua.core.Context,
     comptime is_complex: bool,
-    vectors_for_tensor1: bool,
-    vectors_for_tensor2: bool,
+    comptime vectors_for_tensor1: bool,
+    comptime vectors_for_tensor2: bool,
     randprg: std.Random,
     comptime T: type,
 ) !void {
@@ -24,8 +24,6 @@ fn test_transpose(
         randprg.intRangeAtMost(u64, 1, 5),
     };
 
-    std.log.warn("Shapers 1: {any}", .{shape});
-
     const tensor = try wekua.Tensor(T).alloc(ctx, &shape, .{
         .is_complex = is_complex,
         .vectors_enabled = vectors_for_tensor1,
@@ -40,8 +38,6 @@ fn test_transpose(
     const l_dim = shape[dim0];
     shape[dim0] = shape[dim1];
     shape[dim1] = l_dim;
-
-    std.log.warn("Shapers 2: {any}", .{shape});
 
     const tensor2 = try wekua.Tensor(T).alloc(ctx, &shape, .{
         .is_complex = is_complex,
