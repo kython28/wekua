@@ -10,5 +10,4 @@ pub const CreateTensorConfig = tensor.CreateConfig;
 
 pub const utils = @import("utils/utils.zig");
 
-// pub const tensor = @import("tensor/main.zig");
-// pub const blas = @import("blas/main.zig");
+pub const blas = @import("blas/main.zig");

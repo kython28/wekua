@@ -56,8 +56,8 @@ pub inline fn eqlTensorsDimensions(comptime T: type, tensor_a: *Tensor(T), tenso
     if (!std.mem.eql(u64, tensor_a.shape, tensor_b.shape)) return w_tensor.Errors.UnqualTensorsShape;
 }
 
-pub inline fn eql_tensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
-    try eqlTensorsDimensions(T, tensor_a, tensor_b);
-    try eqlNumberSpace(T, tensor_a, tensor_b);
-    if (tensor_a.vectors_enabled != tensor_b.vectors_enabled) return w_tensor.Errors.UnqualTensorsAttribute;
-}
+// pub inline fn eql_tensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
+//     try eqlTensorsDimensions(T, tensor_a, tensor_b);
+//     try eqlNumberSpace(T, tensor_a, tensor_b);
+//     if (tensor_a.vectors_enabled != tensor_b.vectors_enabled) return w_tensor.Errors.UnqualTensorsAttribute;
+// }

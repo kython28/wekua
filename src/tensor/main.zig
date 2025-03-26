@@ -7,7 +7,7 @@ const Context = core.Context;
 pub const EventManager = @import("event_manager.zig");
 const utils = @import("../utils/utils.zig");
 
-const helpers = @import("helpers.zig");
+pub const helpers = @import("helpers.zig");
 
 pub const fill = @import("fill.zig");
 pub const memory = @import("memory/main.zig");

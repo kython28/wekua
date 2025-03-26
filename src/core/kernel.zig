@@ -17,7 +17,8 @@ pub const KernelsID = enum(u16) {
     ToComplex = 3,
     ToReal = 4,
     AXPY = 5,
-    GEMM = 6,
+    AXPY2 = 6,
+    GEMM = 7,
 };
 
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;
@@ -277,10 +278,11 @@ pub fn getClKernel(
     const is_complex = tensor.is_complex;
     const vectors_enabled = tensor.vectors_enabled;
 
-    const kernel_index = (@intFromBool(vectors_enabled) * (2 * w_tensor.SupportedTypes.len) +
-        @intFromBool(is_complex) * w_tensor.SupportedTypes.len + @as(usize, @intFromEnum(T)));
+    const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.SupportedTypes.len) +
+        @intFromBool(is_complex) * core.SupportedTypes.len + @as(usize, core.getTypeId(T)));
 
     return try createAndGetKernel(
+        T,
         command_queue,
         kernel_id,
         kernel_source,
@@ -292,7 +294,7 @@ pub fn getClKernel(
         },
         true,
         true,
-        w_tensor.SupportedTypes.len * 2 * 2,
+        core.SupportedTypes.len * 2 * 2,
         kernel_index,
     );
 }
