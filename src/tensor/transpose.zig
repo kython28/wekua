@@ -53,21 +53,13 @@ pub fn transpose(
     const dst_prev_events = result_tensor.events_manager.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const prev_events = try w_tensor.EventManager.concat(
+    const events_set = try w_tensor.EventManager.EventsSet.init(
         allocator,
-        &.{
-            src_prev_events,
-            dst_prev_events,
-        },
+        &.{ src_prev_events, dst_prev_events },
+        null,
     );
-    errdefer {
-        if (prev_events) |v| allocator.free(v);
-    }
-
-    const transpose_prev_events = try helpers.createPrevEventsResource(allocator, prev_events);
-    errdefer {
-        if (transpose_prev_events) |v| allocator.destroy(v);
-    }
+    errdefer events_set.release();
+    const prev_events = events_set.getPrevEvents();
 
     const set_arg = cl.kernel.set_arg;
     const u64_size = @sizeOf(u64);
@@ -113,13 +105,5 @@ pub fn transpose(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try w_tensor.EventManager.appendNewEventToMultipleTensor(
-        T,
-        allocator,
-        &.{ .read, .write },
-        &.{ tensor, result_tensor },
-        prev_events,
-        new_event,
-        .{ .data = transpose_prev_events, .func = &helpers.releaseEventsArray },
-    );
+    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ tensor, result_tensor }, prev_events, new_event);
 }

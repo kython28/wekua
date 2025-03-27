@@ -36,15 +36,14 @@ fn axpy_with_vectors(
     const x_prev_events = x.events_manager.getPrevEvents(.read);
     const y_prev_events = y.events_manager.getPrevEvents(.write);
 
-    const prev_events = try w_tensor.EventManager.concat(allocator, &.{ x_prev_events, y_prev_events });
-    errdefer {
-        if (prev_events) |v| allocator.free(v);
-    }
+    const events_set = try w_tensor.EventManager.EventsSet.init(
+        allocator,
+        &.{ x_prev_events, y_prev_events },
+        null,
+    );
+    errdefer events_set.release();
 
-    const axpy_resources = try w_tensor.helpers.createPrevEventsResource(allocator, prev_events);
-    errdefer {
-        if (axpy_resources) |v| allocator.destroy(v);
-    }
+    const prev_events = events_set.getPrevEvents();
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
@@ -73,18 +72,11 @@ fn axpy_with_vectors(
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
 
-    try w_tensor.EventManager.appendNewEventToMultipleTensor(
-        T,
-        allocator,
-        &.{ .read, .write },
-        &.{ x, y },
-        prev_events,
-        new_event,
-        .{ .data = axpy_resources, .func = &w_tensor.helpers.releaseEventsArray },
-    );
+    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
 }
 
-fn axpy_without_vectors( comptime T: type,
+fn axpy_without_vectors(
+    comptime T: type,
     command_queue: *const CommandQueue,
     x: *Tensor(T),
     alpha: ?T,
@@ -110,15 +102,14 @@ fn axpy_without_vectors( comptime T: type,
     const x_prev_events = x.events_manager.getPrevEvents(.read);
     const y_prev_events = y.events_manager.getPrevEvents(.write);
 
-    const prev_events = try w_tensor.EventManager.concat(allocator, &.{ x_prev_events, y_prev_events });
-    errdefer {
-        if (prev_events) |v| allocator.free(v);
-    }
+    const events_set = try w_tensor.EventManager.EventsSet.init(
+        allocator,
+        &.{ x_prev_events, y_prev_events },
+        null,
+    );
+    errdefer events_set.release();
 
-    const axpy_resources = try w_tensor.helpers.createPrevEventsResource(allocator, prev_events);
-    errdefer {
-        if (axpy_resources) |v| allocator.destroy(v);
-    }
+    const prev_events = events_set.getPrevEvents();
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
@@ -144,15 +135,7 @@ fn axpy_without_vectors( comptime T: type,
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
 
-    try w_tensor.EventManager.appendNewEventToMultipleTensor(
-        T,
-        allocator,
-        &.{ .read, .write },
-        &.{ x, y },
-        prev_events,
-        new_event,
-        .{ .data = axpy_resources, .func = &w_tensor.helpers.releaseEventsArray },
-    );
+    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
 }
 
 pub inline fn axpy(
@@ -169,7 +152,7 @@ pub inline fn axpy(
 
     if (x.vectors_enabled and y.vectors_enabled) {
         try axpy_with_vectors(T, command_queue, x, alpha, beta, y);
-    }else{
+    } else {
         try axpy_without_vectors(T, command_queue, x, alpha, beta, y);
     }
 }

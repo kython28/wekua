@@ -66,21 +66,15 @@ pub fn to_complex(
     const dst_prev_events = dst.events_manager.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const prev_events = try w_tensor.EventManager.concat(
-        allocator,
-        &.{
-            src_prev_events,
-            dst_prev_events,
-        },
-    );
-    errdefer {
-        if (prev_events) |v| allocator.free(v);
-    }
 
-    const convertion_resources = try helpers.createPrevEventsResource(allocator, prev_events);
-    errdefer {
-        if (convertion_resources) |v| allocator.destroy(v);
-    }
+    const events_set = try w_tensor.EventManager.EventsSet.init(
+        allocator,
+        &.{ src_prev_events, dst_prev_events },
+        null,
+    );
+    errdefer events_set.release();
+
+    const prev_events = events_set.getPrevEvents();
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
@@ -102,13 +96,5 @@ pub fn to_complex(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try w_tensor.EventManager.appendNewEventToMultipleTensor(
-        T,
-        allocator,
-        &.{ .read, .write },
-        &.{ src, dst },
-        prev_events,
-        new_event,
-        .{ .data = convertion_resources, .func = &helpers.releaseEventsArray },
-    );
+    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
 }

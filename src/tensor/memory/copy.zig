@@ -31,19 +31,13 @@ fn copy_tensor_with_different_row_pitch(
     const dst_prev_events = dst.events_manager.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const prev_events = try w_tensor.EventManager.concat(allocator, &.{ src_prev_events, dst_prev_events });
-    errdefer {
-        if (prev_events) |v| {
-            allocator.free(v);
-        }
-    }
-
-    const copy_prev_events = try helpers.createPrevEventsResource(allocator, prev_events);
-    errdefer {
-        if (copy_prev_events) |ptr| {
-            allocator.destroy(ptr);
-        }
-    }
+    const events_set = try w_tensor.EventManager.EventsSet.init(
+        allocator,
+        &.{ src_prev_events, dst_prev_events },
+        null,
+    );
+    errdefer events_set.release();
+    const prev_events = events_set.getPrevEvents();
 
     var new_event: cl.event.cl_event = undefined;
     try cl.buffer.copy_rect(
@@ -62,15 +56,7 @@ fn copy_tensor_with_different_row_pitch(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try w_tensor.EventManager.appendNewEventToMultipleTensor(
-        T,
-        allocator,
-        &.{ .read, .write },
-        &.{ src, dst },
-        prev_events,
-        new_event,
-        .{ .data = copy_prev_events, .func = &helpers.releaseEventsArray },
-    );
+    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
 }
 
 fn copy_tensor_with_same_row_pitch(
@@ -83,17 +69,13 @@ fn copy_tensor_with_same_row_pitch(
     const dst_prev_events = dst.events_manager.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const prev_events = try w_tensor.EventManager.concat(allocator, &.{ src_prev_events, dst_prev_events });
-    errdefer {
-        if (prev_events) |v| allocator.free(v);
-    }
-
-    const copy_prev_events = try helpers.createPrevEventsResource(allocator, prev_events);
-    errdefer {
-        if (copy_prev_events) |ptr| {
-            allocator.destroy(ptr);
-        }
-    }
+    const events_set = try w_tensor.EventManager.EventsSet.init(
+        allocator,
+        &.{ src_prev_events, dst_prev_events },
+        null,
+    );
+    errdefer events_set.release();
+    const prev_events = events_set.getPrevEvents();
 
     const size = src.size;
     var new_event: cl.event.cl_event = undefined;
@@ -107,18 +89,9 @@ fn copy_tensor_with_same_row_pitch(
         prev_events,
         &new_event,
     );
-
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try w_tensor.EventManager.appendNewEventToMultipleTensor(
-        T,
-        allocator,
-        &.{ .read, .write },
-        &.{ src, dst },
-        prev_events,
-        new_event,
-        .{ .data = copy_prev_events, .func = &helpers.releaseEventsArray },
-    );
+    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
 }
 
 pub fn copy(comptime T: type, command_queue: *const CommandQueue, src: *Tensor(T), dst: *Tensor(T)) !void {
