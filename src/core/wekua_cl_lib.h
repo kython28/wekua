@@ -245,7 +245,7 @@ typedef double16 wk;
 
 #if dtype < 9 // PoCL doesn't support _cl_dot with float
 
-wks __attribute__((overloadable)) dot(wk aa, wk bb){
+inline wks __attribute__((overloadable)) dot(wk aa, wk bb){
 	wk cc = aa*bb;
 	wks r = cc[0];
 
@@ -281,7 +281,7 @@ wks __attribute__((overloadable)) dot(wk aa, wk bb){
 
 #endif
 
-wks sum(wk a){
+inline wks sum(wk a) {
 	wks r = a[0];
 
 	#if wk_width >= 2
@@ -316,33 +316,6 @@ wks sum(wk a){
 
 #endif
 
-void complex_mul_vector_vector(wk *a, wk *b, wk c, wk d){
-	wk k1, k2, k3, aa, bb;
-
-	aa = a[0]; bb = b[0];
-
-	k1 = c*(aa + bb);
-	k2 = aa*(d - c);
-	k3 = bb*(c + d);
-
-	a[0] = k1 - k3;
-	b[0] = k1 + k2;
-}
-
-#if dtype >= 8
-void complex_mul_vector_scalar(wk *a, wk *b, wks c, wks d){
-	wk k1, k2, k3, aa, bb;
-
-	aa = a[0]; bb = b[0];
-
-	k1 = c*(aa + bb);
-	k2 = aa*(d - c);
-	k3 = bb*(c + d);
-
-	a[0] = k1 - k3;
-	b[0] = k1 + k2;
-}
-#endif
 
 #define COMPLEX_MUL_K(T) \
 	T k1, k2, k3;
@@ -354,35 +327,45 @@ void complex_mul_vector_scalar(wk *a, wk *b, wks c, wks d){
 	a = k1 - k3; \
 	b = k1 + k2; \
 
-void calc_inv_complex(wk *a, wk *b){
-	wk c, d, aa, bb;
-	aa = a[0]; bb = b[0];
+#define COMPLEX_S_MUL_K(T) \
+	T k1_s, k2_s, k3_s;
 
-	c = aa;
-	d = -bb;
+#define COMPLEX_S_MUL(a, b, c, d) \
+	k1_s = c*(a + b); \
+	k2_s = a*(d - c); \
+	k3_s = b*(c + d); \
+	a = k1_s - k3_s; \
+	b = k1_s + k2_s; \
 
-	aa = (aa*aa + bb*bb);
+/* void calc_inv_complex(wk *a, wk *b){ */
+/* 	wk c, d, aa, bb; */
+/* 	aa = a[0]; bb = b[0]; */
 
-	c /= aa;
-	d /= aa;
+/* 	c = aa; */
+/* 	d = -bb; */
+
+/* 	aa = (aa*aa + bb*bb); */
+
+/* 	c /= aa; */
+/* 	d /= aa; */
 	
-	a[0] = c;
-	b[0] = d;
-}
+/* 	a[0] = c; */
+/* 	b[0] = d; */
+/* } */
 
-void calc_inv_complex_scalar(wks *a, wks *b){
-	wks c, d, aa, bb;
-	aa = a[0]; bb = b[0];
+/* void calc_inv_complex_scalar(wks *a, wks *b){ */
+/* 	wks c, d, aa, bb; */
+/* 	aa = a[0]; bb = b[0]; */
 
-	c = aa;
-	d = -bb;
+/* 	c = aa; */
+/* 	d = -bb; */
 
-	aa = (aa*aa + bb*bb);
+/* 	aa = (aa*aa + bb*bb); */
 
-	c /= aa;
-	d /= aa;
+/* 	c /= aa; */
+/* 	d /= aa; */
 	
-	a[0] = c;
-	b[0] = d;
-}
+/* 	a[0] = c; */
+/* 	b[0] = d; */
+/* } */
 

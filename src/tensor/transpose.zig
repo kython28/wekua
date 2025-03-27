@@ -77,6 +77,9 @@ pub fn transpose(
         dim1_ = dim1;
     }
 
+    const tensor_len = tensor.shape_like_matrix_without_vectors[0] * tensor.row_pitch;
+    const tensor_cols = tensor.shape_like_matrix_without_vectors[1] * @as(u64, @intFromBool(tensor.is_complex));
+
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitches_buffer));
 
@@ -84,11 +87,12 @@ pub fn transpose(
     try set_arg(kernel, 3, cl_mem_size, @ptrCast(&result_tensor.pitches_buffer));
 
     try set_arg(kernel, 4, u64_size, @ptrCast(&tensor.row_pitch));
-    try set_arg(kernel, 5, u64_size, @ptrCast(&tensor.shape_like_matrix_without_vectors[1]));
+    try set_arg(kernel, 5, u64_size, @ptrCast(&tensor_cols));
+    try set_arg(kernel, 6, u64_size, @ptrCast(&tensor_len));
 
-    try set_arg(kernel, 6, u64_size, @ptrCast(&dim0_));
-    try set_arg(kernel, 7, u64_size, @ptrCast(&dim1_));
-    try set_arg(kernel, 8, u64_size, @ptrCast(&ndim));
+    try set_arg(kernel, 7, u64_size, @ptrCast(&dim0_));
+    try set_arg(kernel, 8, u64_size, @ptrCast(&dim1_));
+    try set_arg(kernel, 9, u64_size, @ptrCast(&ndim));
 
     const wekua_id = command_queue.wekua_id;
 

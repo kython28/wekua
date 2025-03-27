@@ -397,7 +397,13 @@ const EventsBatch = struct {
     }
 
     pub fn waitForPendingEvents(self: *EventsBatch) void {
-        if (self.events_num == 0) return;
+        if (self.events_num == 0) {
+            if (self.events[0].operation == .none) {
+                return;
+            }
+
+            self.events_num += 1;
+        }
 
         while (!self.finalized()) {
             const events_num = self.events_num;
@@ -665,77 +671,5 @@ pub inline fn appendNewEvent(
 ) !void {
     _ = try self.addEventToBatch(new_op, prev_cl_events, new_cl_event, user_callback, true);
 }
-
-// pub fn appendNewEventToMultipleTensor(
-//     comptime T: type,
-//     allocator: std.mem.Allocator,
-//     new_ops: []const Operation,
-//     tensors: []const *Tensor(T),
-//     prev_cl_events: ?[]const cl.event.cl_event,
-//     new_cl_event: cl.event.cl_event,
-//     user_callback: ?UserCallback,
-// ) !void {
-//     if (new_ops.len == 0) {
-//         return;
-//     }
-
-//     if (new_ops.len != tensors.len) {
-//         @panic("`new_ops` and `tensors` arrays have different lenghts");
-//     }
-
-//     var ref_counter: usize = 1;
-//     errdefer {
-//         for (1..ref_counter) |_| {
-//             cl.event.release(new_cl_event);
-//         }
-//     }
-
-//     while (ref_counter < new_ops.len) {
-//         try cl.event.retain(new_cl_event);
-//         ref_counter += 1;
-//     }
-
-//     const events = try allocator.alloc(*Event, new_ops.len);
-//     errdefer allocator.free(events);
-
-//     var events_added: usize = 0;
-//     errdefer {
-//         for (events[0..events_added]) |event| {
-//             const batch = event.getParent();
-//             batch.mutex.lock();
-//             defer batch.mutex.unlock();
-
-//             const was_full = event.full();
-//             event.pop(false);
-//             if (event.operation == .none or was_full) {
-//                 batch.events_num -= 1;
-//             }
-//         }
-//     }
-
-//     for (new_ops, tensors, events) |new_op, tensor, *event| {
-//         event.* = try addEventToBatch(
-//             &tensor.events_manager,
-//             new_op,
-//             prev_cl_events,
-//             new_cl_event,
-//             null,
-//             false,
-//         );
-
-//         events_added += 1;
-//     }
-
-//     const set = try allocator.create(EventsSet);
-//     errdefer allocator.destroy(set);
-
-//     set.* = .{
-//         .events = events,
-//         .allocator = allocator,
-//         .user_callback = user_callback,
-//     };
-
-//     try cl.event.set_callback(new_cl_event, .complete, &multipleCompletionEventCallback, set);
-// }
 
 const TensorEventManager = @This();

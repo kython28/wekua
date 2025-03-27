@@ -14,6 +14,7 @@ pub const memory = @import("memory/main.zig");
 pub const random = @import("random/main.zig");
 pub usingnamespace @import("transpose.zig");
 pub const convertions = @import("convertions/main.zig");
+pub usingnamespace @import("identity.zig");
 
 pub const Errors = error{
     InvalidValue,
@@ -42,6 +43,7 @@ pub fn Tensor(comptime T: type) type {
 
     return struct {
         context: *const Context,
+        arena: std.heap.ArenaAllocator,
 
         buffer: cl.buffer.cl_mem,
 
@@ -115,8 +117,12 @@ pub fn Tensor(comptime T: type) type {
             try tensor.events_manager.init(allocator);
             errdefer tensor.events_manager.deinit();
 
-            tensor.shape = try allocator.alloc(u64, shape.len);
-            errdefer allocator.free(tensor.shape);
+            tensor.arena = std.heap.ArenaAllocator.init(allocator);
+            errdefer tensor.arena.deinit();
+
+            const arena_allocator = tensor.arena.allocator();
+
+            tensor.shape = try arena_allocator.alloc(u64, shape.len);
             for (tensor.shape, shape) |*d, s| {
                 if (s == 0) return Errors.InvalidValue;
 
@@ -139,8 +145,7 @@ pub fn Tensor(comptime T: type) type {
                 }
             }
 
-            const vl_shape = try allocator.dupe(u64, shape);
-            errdefer allocator.free(vl_shape);
+            const vl_shape = try arena_allocator.dupe(u64, shape);
             tensor.vl_shape = vl_shape;
 
             const last_element_index = shape.len - 1;
@@ -152,54 +157,59 @@ pub fn Tensor(comptime T: type) type {
                 }
             }
 
-            const row_pitch_for_vectors = row_pitch / vector_width;
+            var row_pitch_for_vectors = row_pitch / vector_width;
+            if ((row_pitch_for_vectors % 2) == 1) {
+                row_pitch_for_vectors += 1;
+                row_pitch += vector_width;
+            }
+
             tensor.row_pitch = row_pitch;
             tensor.row_pitch_for_vectors = row_pitch_for_vectors;
 
-            @memcpy(vl_shape[0..last_element_index], shape[0..last_element_index]);
             vl_shape[last_element_index] = row_pitch_for_vectors;
 
-            var number_of_elements: u64 = 1;
-            for (shape[0..last_element_index]) |e| number_of_elements *= e;
-
-            const number_of_elements_without_padding = number_of_elements * shape[last_element_index] * multiplier;
+            var number_of_elements_without_padding: u64 = multiplier;
+            for (shape) |e| number_of_elements_without_padding *= e;
             tensor.number_of_elements_without_padding = number_of_elements_without_padding;
 
-            number_of_elements *= row_pitch;
+            const rows_padding = shape[0]%2;
+            const rows_padded = (rows_padding == 1);
+            const padded_rows = shape[0] + rows_padding;
+
+            var number_of_elements = (number_of_elements_without_padding / shape[0] / shape[last_element_index] / multiplier);
+            number_of_elements *= padded_rows * row_pitch;
+
             tensor.number_of_elements = number_of_elements;
 
             const number_of_vectors = number_of_elements / vector_width;
             tensor.number_of_vectors = number_of_vectors;
 
-            const pitches = try allocator.alloc(u64, shape.len);
-            errdefer allocator.free(pitches);
+            const pitches = try arena_allocator.alloc(u64, shape.len);
             tensor.pitches = pitches;
 
-            var pitch: u64 = number_of_elements;
-            for (shape[0..last_element_index], pitches[0..last_element_index]) |e, *p| {
+            var pitch: u64 = number_of_elements / padded_rows;
+            pitches[0] = pitch;
+            for (shape[1..last_element_index], pitches[1..last_element_index]) |e, *p| {
                 pitch /= e;
                 p.* = pitch;
             }
             pitches[last_element_index] = multiplier;
 
-            const work_item_for_all_elements = try allocator.alloc(u64, command_queues.len);
-            errdefer allocator.free(work_item_for_all_elements);
-
-            const work_item_for_all_vectors = try allocator.alloc(u64, command_queues.len);
-            errdefer allocator.free(work_item_for_all_vectors);
-
-            const work_items_for_matrix_shape = try allocator.alloc([2]u64, command_queues.len);
-            errdefer allocator.free(work_items_for_matrix_shape);
-
-            const work_items_for_matrix_shape_without_vectors = try allocator.alloc([2]u64, command_queues.len);
-            errdefer allocator.free(work_items_for_matrix_shape_without_vectors);
+            const work_item_for_all_elements = try arena_allocator.alloc(u64, command_queues.len);
+            const work_item_for_all_vectors = try arena_allocator.alloc(u64, command_queues.len);
+            const work_items_for_matrix_shape = try arena_allocator.alloc([2]u64, command_queues.len);
+            const work_items_for_matrix_shape_without_vectors = try arena_allocator.alloc([2]u64, command_queues.len);
 
             tensor.work_item_for_all_elements = work_item_for_all_elements;
             tensor.work_item_for_all_vectors = work_item_for_all_vectors;
             tensor.work_items_for_matrix_shape = work_items_for_matrix_shape;
             tensor.work_items_for_matrix_shape_without_vectors = work_items_for_matrix_shape_without_vectors;
 
-            const rows = number_of_elements / row_pitch;
+            var rows = number_of_elements / row_pitch;
+            if (rows_padded) {
+                rows -= 1;
+            }
+
             const shape_like_matrix: []u64 = &tensor.shape_like_matrix;
             const shape_like_matrix_without_vectors: []u64 = &tensor.shape_like_matrix_without_vectors;
 
@@ -250,13 +260,7 @@ pub fn Tensor(comptime T: type) type {
             cl.buffer.release(self.buffer);
             cl.buffer.release(self.pitches_buffer);
 
-            allocator.free(self.shape);
-            allocator.free(self.vl_shape);
-            allocator.free(self.pitches);
-            allocator.free(self.work_item_for_all_elements);
-            allocator.free(self.work_item_for_all_vectors);
-            allocator.free(self.work_items_for_matrix_shape);
-            allocator.free(self.work_items_for_matrix_shape_without_vectors);
+            self.arena.deinit();
             allocator.destroy(self);
         }
 

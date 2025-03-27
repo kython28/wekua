@@ -22,7 +22,7 @@ pub fn writeToBuffer(
     const c: usize = @intCast(
         tensor_shape[tensor_shape.len - 1] * (1 + @as(u64, @intCast(@intFromBool(tensor.is_complex)))),
     );
-    const r: usize = tensor.number_of_elements / tensor.row_pitch;
+    const r: usize = tensor.shape_like_matrix_without_vectors[0];
 
     const buff_origin: [3]usize = .{ 0, 0, 0 };
     const region: [3]usize = .{ c * @sizeOf(T), r, 1 };

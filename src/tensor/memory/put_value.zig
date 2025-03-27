@@ -29,16 +29,10 @@ pub fn putValue(
     pattern[0] = real_scalar orelse 0;
     pattern[1] = imag_scalar orelse 0;
 
-    var stride: usize = @intCast(tensor.number_of_elements);
     var offset: usize = 0;
-
-    const shape = tensor.shape;
-    const last_index = shape.len - 1;
-    for (shape[0..last_index], coor[0..last_index]) |v, c| {
-        stride /= v;
-        offset += c * stride;
+    for (tensor.pitches, coor) |p, c| {
+        offset += c * p;
     }
-    offset += coor[last_index] * (1 + @as(usize, @intFromBool(is_complex)));
     offset *= @sizeOf(T);
 
     const prev_events = tensor.events_manager.getPrevEvents(.write);

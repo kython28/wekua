@@ -9,17 +9,15 @@ __kernel void transpose(
 
     const ulong A_row_pitch,
     const ulong A_cols,
+    const ulong A_len,
 
 	const ulong dim0,
     const ulong dim1,
     const ulong ndim
 ) {
 	ulong index = get_global_id(0);
-#if com == 1
-    if ((index % A_row_pitch) >= ( A_cols * 2 )) return;
-#else
     if ((index % A_row_pitch) >= A_cols) return;
-#endif
+    else if (index >= A_len) return;
 
 	const wks value = A[index];
 

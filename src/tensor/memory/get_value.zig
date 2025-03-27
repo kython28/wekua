@@ -28,16 +28,11 @@ pub fn getValue(
         buf_size += @sizeOf(T);
     }
 
-    var stride: usize = @intCast(tensor.number_of_elements);
     var offset: usize = 0;
 
-    const shape = tensor.shape;
-    const last_index = shape.len - 1;
-    for (shape[0..last_index], coor[0..last_index]) |v, c| {
-        stride /= v;
-        offset += c * stride;
+    for (tensor.pitches, coor) |p, c| {
+        offset += c * p;
     }
-    offset += coor[last_index] * (1 + @as(usize, @intCast(@intFromBool(is_complex))));
     offset *= @sizeOf(T);
 
     const prev_events = tensor.events_manager.getPrevEvents(.read);
