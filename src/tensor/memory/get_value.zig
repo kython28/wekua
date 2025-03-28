@@ -23,14 +23,12 @@ pub fn getValue(
         return w_tensor.Errors.TensorDoesNotSupportComplexNumbers;
     }
 
-    var buf_size: usize = @sizeOf(T);
-    if (is_complex) {
-        buf_size += @sizeOf(T);
-    }
+    const buf_size: usize = @sizeOf(T) * (1 + @as(usize, @intFromBool(is_complex))); 
 
     var offset: usize = 0;
+    for (tensor.pitches, tensor.shape, coor) |p, ds, c| {
+        if (c >= ds) return w_tensor.Errors.InvalidCoordinates;
 
-    for (tensor.pitches, coor) |p, c| {
         offset += c * p;
     }
     offset *= @sizeOf(T);

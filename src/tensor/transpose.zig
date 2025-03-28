@@ -77,8 +77,8 @@ pub fn transpose(
         dim1_ = dim1;
     }
 
-    const tensor_len = tensor.shape_like_matrix_without_vectors[0] * tensor.row_pitch;
-    const tensor_cols = tensor.shape_like_matrix_without_vectors[1] * @as(u64, @intFromBool(tensor.is_complex));
+    const tensor_len = tensor.global_work_items_without_vectors[0] * tensor.row_pitch;
+    const tensor_cols = tensor.global_work_items_without_vectors[1] * @as(u64, @intFromBool(tensor.is_complex));
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitches_buffer));
@@ -103,7 +103,7 @@ pub fn transpose(
         kernel,
         null,
         &[1]u64{tensor.number_of_elements},
-        tensor.work_item_for_all_elements[wekua_id .. wekua_id + 1],
+        tensor.local_work_items_1d[wekua_id .. wekua_id + 1],
         prev_events,
         &new_event,
     );

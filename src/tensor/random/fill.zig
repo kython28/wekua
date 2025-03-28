@@ -39,7 +39,8 @@ pub fn fill(
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, @sizeOf(u64), @ptrCast(&tensor.row_pitch));
-    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&global_seed));
+    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&tensor.slice_pitch));
+    try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&global_seed));
 
     // TODO: Adapt code to use views
     var new_event: cl.event.cl_event = undefined;
@@ -47,9 +48,9 @@ pub fn fill(
         cmd,
         kernel,
         null,
-        &tensor.shape_like_matrix_without_vectors,
-        &tensor.work_items_for_matrix_shape_without_vectors[command_queue.wekua_id],
-        null,
+        &tensor.global_work_items_without_vectors,
+        &tensor.local_work_items_without_vectors[command_queue.wekua_id],
+        prev_events,
         &new_event,
     );
     errdefer |err| helpers.releaseEvent(new_event, err);

@@ -55,23 +55,26 @@ pub fn Tensor(comptime T: type) type {
         number_of_vectors: u64,
 
         row_pitch: u64,
+        row_pitch_for_vectors: u64,
+
+        slice_pitch: u64,
+
         pitches: []u64,
         pitches_buffer: cl.buffer.cl_mem,
-
-        row_pitch_for_vectors: u64,
 
         size: usize,
 
         is_complex: bool,
         vectors_enabled: bool,
 
-        shape_like_matrix: [2]u64,
-        shape_like_matrix_without_vectors: [2]u64,
+        global_work_items: [3]u64,
+        global_work_items_without_vectors: [3]u64,
 
-        work_item_for_all_elements: []u64,
-        work_item_for_all_vectors: []u64,
-        work_items_for_matrix_shape: [][2]u64,
-        work_items_for_matrix_shape_without_vectors: [][2]u64,
+        local_work_items_1d: []u64,
+        local_work_items_for_vectors_1d: []u64,
+
+        local_work_items: [][3]u64,
+        local_work_items_without_vectors: [][3]u64,
 
         events_manager: EventManager,
 
@@ -149,7 +152,21 @@ pub fn Tensor(comptime T: type) type {
             tensor.vl_shape = vl_shape;
 
             const last_element_index = shape.len - 1;
-            var row_pitch: u64 = shape[last_element_index] * multiplier;
+            const penultimate_element_index = last_element_index - 1;
+
+            var number_of_elements_without_padding: u64 = 1;
+            for (shape[0..penultimate_element_index]) |e| number_of_elements_without_padding *= e;
+
+            const penultimate_size = shape[penultimate_element_index];
+            const last_size = shape[last_element_index];
+
+            const padded_penultimate_size = penultimate_size + (penultimate_size % 2);
+            const depth: usize = number_of_elements_without_padding;
+            var row_pitch: u64 = last_size * multiplier;
+
+            number_of_elements_without_padding *= row_pitch * penultimate_size;
+            tensor.number_of_elements_without_padding = number_of_elements_without_padding;
+
             if (vectors_enabled and vector_width > 1) {
                 const remainder = @mod(row_pitch, vector_width);
                 if (remainder > 0) {
@@ -163,23 +180,15 @@ pub fn Tensor(comptime T: type) type {
                 row_pitch += vector_width;
             }
 
+            vl_shape[last_element_index] = row_pitch_for_vectors;
+
             tensor.row_pitch = row_pitch;
             tensor.row_pitch_for_vectors = row_pitch_for_vectors;
 
-            vl_shape[last_element_index] = row_pitch_for_vectors;
-
-            var number_of_elements_without_padding: u64 = multiplier;
-            for (shape) |e| number_of_elements_without_padding *= e;
-            tensor.number_of_elements_without_padding = number_of_elements_without_padding;
-
-            const rows_padding = shape[0]%2;
-            const rows_padded = (rows_padding == 1);
-            const padded_rows = shape[0] + rows_padding;
-
-            var number_of_elements = (number_of_elements_without_padding / shape[0] / shape[last_element_index] / multiplier);
-            number_of_elements *= padded_rows * row_pitch;
-
+            const slice_pitch = row_pitch * padded_penultimate_size;
+            const number_of_elements = slice_pitch * depth;
             tensor.number_of_elements = number_of_elements;
+            tensor.slice_pitch = slice_pitch;
 
             const number_of_vectors = number_of_elements / vector_width;
             tensor.number_of_vectors = number_of_vectors;
@@ -187,44 +196,42 @@ pub fn Tensor(comptime T: type) type {
             const pitches = try arena_allocator.alloc(u64, shape.len);
             tensor.pitches = pitches;
 
-            var pitch: u64 = number_of_elements / padded_rows;
-            pitches[0] = pitch;
-            for (shape[1..last_element_index], pitches[1..last_element_index]) |e, *p| {
+            var pitch: u64 = number_of_elements;
+            for (shape[0..penultimate_element_index], pitches[0..penultimate_element_index]) |e, *p| {
                 pitch /= e;
                 p.* = pitch;
             }
+            pitches[penultimate_element_index] = row_pitch;
             pitches[last_element_index] = multiplier;
 
-            const work_item_for_all_elements = try arena_allocator.alloc(u64, command_queues.len);
-            const work_item_for_all_vectors = try arena_allocator.alloc(u64, command_queues.len);
-            const work_items_for_matrix_shape = try arena_allocator.alloc([2]u64, command_queues.len);
-            const work_items_for_matrix_shape_without_vectors = try arena_allocator.alloc([2]u64, command_queues.len);
+            const local_work_items_1d = try arena_allocator.alloc(u64, command_queues.len);
+            const lobal_work_items_for_vectors_1d = try arena_allocator.alloc(u64, command_queues.len);
+            const local_work_items = try arena_allocator.alloc([3]u64, command_queues.len);
+            const local_work_items_without_vectors = try arena_allocator.alloc([3]u64, command_queues.len);
 
-            tensor.work_item_for_all_elements = work_item_for_all_elements;
-            tensor.work_item_for_all_vectors = work_item_for_all_vectors;
-            tensor.work_items_for_matrix_shape = work_items_for_matrix_shape;
-            tensor.work_items_for_matrix_shape_without_vectors = work_items_for_matrix_shape_without_vectors;
+            tensor.local_work_items_1d = local_work_items_1d;
+            tensor.local_work_items_for_vectors_1d = lobal_work_items_for_vectors_1d;
+            tensor.local_work_items = local_work_items;
+            tensor.local_work_items_without_vectors = local_work_items_without_vectors;
 
-            var rows = number_of_elements / row_pitch;
-            if (rows_padded) {
-                rows -= 1;
-            }
+            const global_work_items: []u64 = &tensor.global_work_items;
+            const global_work_items_without_vectors: []u64 = &tensor.global_work_items_without_vectors;
 
-            const shape_like_matrix: []u64 = &tensor.shape_like_matrix;
-            const shape_like_matrix_without_vectors: []u64 = &tensor.shape_like_matrix_without_vectors;
+            global_work_items[0] = depth;
+            global_work_items_without_vectors[0] = depth;
 
-            shape_like_matrix[0] = rows;
-            shape_like_matrix_without_vectors[0] = rows;
+            global_work_items[1] = penultimate_size;
+            global_work_items_without_vectors[1] = penultimate_size;
 
-            shape_like_matrix_without_vectors[1] = shape[last_element_index];
-            shape_like_matrix[1] = vl_shape[last_element_index];
+            global_work_items_without_vectors[2] = last_size;
+            global_work_items[2] = vl_shape[last_element_index];
 
             for (
                 command_queues,
-                work_item_for_all_elements,
-                work_item_for_all_vectors,
-                work_items_for_matrix_shape,
-                work_items_for_matrix_shape_without_vectors,
+                local_work_items_1d,
+                lobal_work_items_for_vectors_1d,
+                local_work_items,
+                local_work_items_without_vectors,
             ) |cmd, *wa, *wv, *wmv, *wm| {
                 utils.calculate_work_items(
                     @as([*]const u64, @ptrCast(&number_of_elements))[0..1],
@@ -238,8 +245,8 @@ pub fn Tensor(comptime T: type) type {
                     cmd.max_work_group_size,
                 );
 
-                utils.calculate_work_items(shape_like_matrix, wmv, cmd.max_work_group_size);
-                utils.calculate_work_items(shape_like_matrix_without_vectors, wm, cmd.max_work_group_size);
+                utils.calculate_work_items(global_work_items, wmv, cmd.max_work_group_size);
+                utils.calculate_work_items(global_work_items_without_vectors, wm, cmd.max_work_group_size);
             }
 
             const size = number_of_elements * @sizeOf(T);

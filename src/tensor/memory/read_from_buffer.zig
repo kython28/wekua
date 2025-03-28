@@ -20,15 +20,24 @@ pub fn readFromBuffer(
     }
 
     const tensor_shape = tensor.shape;
-    const c: usize = @intCast(
-        tensor_shape[tensor_shape.len - 1] * (1 + @as(u64, @intCast(@intFromBool(tensor.is_complex)))),
-    );
-    const r: usize = tensor.shape_like_matrix_without_vectors[0];
+    const width: usize = (
+        tensor_shape[tensor_shape.len - 1] * (1 + @as(u64, @intFromBool(tensor.is_complex)))
+    ) * @sizeOf(T);
+    const height: usize = tensor_shape[tensor_shape.len - 2];
+
+    var depth: usize = 1;
+    if (tensor_shape.len >= 3) {
+        for (tensor_shape[0..tensor_shape.len - 3]) |e| depth *= e;
+    }
 
     const buff_origin: [3]usize = .{ 0, 0, 0 };
-    const region: [3]usize = .{ c * @sizeOf(T), r, 1 };
+    const region: [3]usize = .{ width, height, depth };
+
     const buf_row_pitch = tensor.row_pitch * @sizeOf(T);
-    const host_row_pitch = c * @sizeOf(T);
+    const buf_slice_pitch = tensor.slice_pitch * @sizeOf(T);
+
+    const host_row_pitch = width;
+    const host_slice_pitch = height * host_row_pitch;
 
     const prev_events = tensor.events_manager.getPrevEvents(.read);
 
@@ -42,9 +51,9 @@ pub fn readFromBuffer(
             &buff_origin,
             &region,
             buf_row_pitch,
-            0,
+            buf_slice_pitch,
             host_row_pitch,
-            0,
+            host_slice_pitch,
             buffer.ptr,
             prev_events,
             &new_event,

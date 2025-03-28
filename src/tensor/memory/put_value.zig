@@ -24,13 +24,16 @@ pub fn putValue(
         return w_tensor.Errors.TensorDoesNotSupportComplexNumbers;
     }
 
+    const buf_size: usize = @sizeOf(T) * (1 + @as(usize, @intFromBool(is_complex))); 
     var pattern: [2]T = undefined;
 
     pattern[0] = real_scalar orelse 0;
     pattern[1] = imag_scalar orelse 0;
 
     var offset: usize = 0;
-    for (tensor.pitches, coor) |p, c| {
+    for (tensor.pitches, tensor.shape, coor) |p, ds, c| {
+        if (c >= ds) return w_tensor.Errors.InvalidCoordinates;
+
         offset += c * p;
     }
     offset *= @sizeOf(T);
@@ -44,7 +47,7 @@ pub fn putValue(
             tensor.buffer,
             false,
             offset,
-            @sizeOf(T) * (1 + @as(usize, @intFromBool(is_complex))),
+            buf_size,
             &pattern,
             prev_events,
             &new_event,
