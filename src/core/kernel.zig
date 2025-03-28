@@ -11,15 +11,15 @@ const Tensor = w_tensor.Tensor;
 const header_content: []const u8 = @embedFile("wekua_cl_lib.h");
 
 pub const KernelsID = enum(u16) {
-    Fill = 0,
-    FillRandom = 1,
-    RandRange = 2,
-    Transpose = 3,
-    ToComplex = 4,
-    ToReal = 5,
-    AXPY = 6,
-    AXPY2 = 7,
-    Identity = 8,
+    Fill,
+    FillRandom,
+    RandRange,
+    Transpose,
+    ToComplex,
+    ToReal,
+    AXPY,
+    AXPY2,
+    Identity,
     // GEMM = 7,
 };
 

@@ -558,6 +558,8 @@ fn multipleCompletionEventCallback(
     event_command_status: i32,
     user_data: ?*anyopaque,
 ) callconv(.C) void {
+    // const t0 = std.time.microTimestamp();
+    // defer std.debug.print("event callback time: {d}\n", .{std.time.microTimestamp() - t0});
     const event_status: cl.event.enums.execution_status = @enumFromInt(event_command_status);
     if (event_status != .complete) unreachable;
 

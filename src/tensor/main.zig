@@ -58,6 +58,7 @@ pub fn Tensor(comptime T: type) type {
         row_pitch_for_vectors: u64,
 
         slice_pitch: u64,
+        slice_pitch_for_vectors: u64,
 
         pitches: []u64,
         pitches_buffer: cl.buffer.cl_mem,
@@ -168,11 +169,11 @@ pub fn Tensor(comptime T: type) type {
 
             const padded_penultimate_size = penultimate_size + (penultimate_size % 2);
             const depth: usize = number_of_elements_without_padding;
-            var row_pitch: u64 = last_size * multiplier;
 
-            number_of_elements_without_padding *= row_pitch * penultimate_size;
+            number_of_elements_without_padding *= multiplier * last_size * penultimate_size;
             tensor.number_of_elements_without_padding = number_of_elements_without_padding;
 
+            var row_pitch: u64 = last_size;
             if (vectors_enabled and vector_width > 1) {
                 const remainder = @mod(row_pitch, vector_width);
                 if (remainder > 0) {
@@ -181,12 +182,16 @@ pub fn Tensor(comptime T: type) type {
             }
 
             var row_pitch_for_vectors = row_pitch / vector_width;
-            if ((row_pitch_for_vectors % 2) == 1) {
-                row_pitch_for_vectors += 1;
-                row_pitch += vector_width;
-            }
-
             vl_shape[last_element_index] = row_pitch_for_vectors;
+            row_pitch_for_vectors *= multiplier;
+            row_pitch *= multiplier;
+
+            const row_pitch_for_vectors_remainder = row_pitch_for_vectors % (multiplier * 2);
+            if (row_pitch_for_vectors_remainder > 0) {
+                const diff = multiplier * 2 - row_pitch_for_vectors_remainder;
+                row_pitch_for_vectors += diff;
+                row_pitch += vector_width * diff;
+            }
 
             tensor.row_pitch = row_pitch;
             tensor.row_pitch_for_vectors = row_pitch_for_vectors;
@@ -195,6 +200,7 @@ pub fn Tensor(comptime T: type) type {
             const number_of_elements = slice_pitch * depth;
             tensor.number_of_elements = number_of_elements;
             tensor.slice_pitch = slice_pitch;
+            tensor.slice_pitch_for_vectors = slice_pitch / vector_width;
 
             const number_of_vectors = number_of_elements / vector_width;
             tensor.number_of_vectors = number_of_vectors;
@@ -310,12 +316,7 @@ pub fn Tensor(comptime T: type) type {
                 prev_events,
                 &new_event,
             );
-            errdefer {
-                cl.event.wait(new_event) catch |err| {
-                    std.debug.panic("Unexpected error while waiting for event: {s}", .{@errorName(err)});
-                };
-                cl.event.release(new_event);
-            }
+            errdefer |err| helpers.releaseEvent(new_event, err);
 
             try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
             return tensor;
@@ -323,7 +324,10 @@ pub fn Tensor(comptime T: type) type {
 
         pub fn wait(self: *this) !void {
             const prev_events = self.events_manager.getPrevEvents(.write) orelse return;
+            // const t0 = std.time.milliTimestamp();
             try cl.event.wait_for_many(prev_events);
+            // const t1 = std.time.milliTimestamp();
+            // std.debug.print("wait time: {d}\n", .{t1 - t0});
         }
     };
 }

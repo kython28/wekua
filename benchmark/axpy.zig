@@ -57,10 +57,10 @@ fn run_old_wekua_test(
     ) orelse return error.OutOfMemory;
     defer utils.wekua_c.freeWekuaContext(ctx);
 
-    const x = utils.wekua_c.wekuaAllocMatrix(ctx, 1, size, 0) orelse return error.OutOfMemory;
+    const x = utils.wekua_c.wekuaAllocMatrix(ctx, 1, size, WekuaCPreferredType) orelse return error.OutOfMemory;
     defer utils.wekua_c.wekuaFreeMatrix(x, 0, null);
 
-    const y = utils.wekua_c.wekuaAllocMatrix(ctx, 1, size, 0) orelse return error.OutOfMemory;
+    const y = utils.wekua_c.wekuaAllocMatrix(ctx, 1, size, WekuaCPreferredType) orelse return error.OutOfMemory;
     defer utils.wekua_c.wekuaFreeMatrix(y, 0, null);
 
     var ret = utils.wekua_c.wekuaMatrixCopyBuffer(x, x_buf.ptr, null);

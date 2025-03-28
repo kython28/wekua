@@ -9,6 +9,8 @@ const Tensor = w_tensor.Tensor;
 
 const axpy_cl_kernel: []const u8 = @embedFile("kernels/axpy.cl");
 
+const std = @import("std");
+
 fn axpy_with_vectors(
     comptime T: type,
     command_queue: *const CommandQueue,
@@ -19,6 +21,8 @@ fn axpy_with_vectors(
 ) !void {
     const real_scalar = alpha orelse 0;
     const imag_scalar = beta orelse 0;
+
+    // var t0 = std.time.milliTimestamp();
 
     const allocator = command_queue.allocator;
     const kernel = try KernelsSet.getClKernel(
@@ -31,33 +35,43 @@ fn axpy_with_vectors(
         null,
     );
 
+    // const kernel_time = std.time.milliTimestamp() - t0;
+    // std.debug.print("kernel time: {d}\n", .{kernel_time});
+
     const cmd = command_queue.cmd;
 
+    // t0 = std.time.milliTimestamp();
     const x_prev_events = x.events_manager.getPrevEvents(.read);
     const y_prev_events = y.events_manager.getPrevEvents(.write);
+    // const getting_prev_events_time = std.time.milliTimestamp() - t0;
+    // std.debug.print("getting prev events time: {d}\n", .{getting_prev_events_time});
 
+    // t0 = std.time.milliTimestamp();
     const events_set = try w_tensor.EventManager.EventsSet.init(
         allocator,
         &.{ x_prev_events, y_prev_events },
         null,
     );
     errdefer events_set.release();
+    // const getting_events_set_time = std.time.milliTimestamp() - t0;
+    // std.debug.print("getting events set time: {d}\n", .{getting_events_set_time});
 
+    // t0 = std.time.milliTimestamp();
     const prev_events = events_set.getPrevEvents();
+    // const getting_prev_events_time2 = std.time.milliTimestamp() - t0;
+    // std.debug.print("getting prev events time2: {d}\n", .{getting_prev_events_time2});
 
+    // t0 = std.time.milliTimestamp();
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
 
-    var global: u64 = x.number_of_vectors;
-    var work_items: u64 = x.local_work_items_for_vectors_1d[command_queue.wekua_id];
-
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
-    try set_arg(kernel, 2, @sizeOf(T), &real_scalar);
+    try set_arg(kernel, 2, @sizeOf(u64), &x.row_pitch_for_vectors);
+    try set_arg(kernel, 3, @sizeOf(u64), &x.slice_pitch_for_vectors);
+    try set_arg(kernel, 4, @sizeOf(T), &real_scalar);
     if (x.is_complex) {
-        global /= 2;
-        work_items /= 2;
-        try set_arg(kernel, 3, @sizeOf(T), &imag_scalar);
+        try set_arg(kernel, 5, @sizeOf(T), &imag_scalar);
     }
 
     var new_event: cl.event.cl_event = undefined;
@@ -65,14 +79,19 @@ fn axpy_with_vectors(
         cmd,
         kernel,
         null,
-        @as([*]const u64, @ptrCast(&global))[0..1],
-        @as([*]const u64, @ptrCast(&work_items))[0..1],
+        &x.global_work_items,
+        &x.local_work_items[command_queue.wekua_id],
         prev_events,
         &new_event,
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
+    // const enqueue_nd_range_time = std.time.milliTimestamp() - t0;
+    // std.debug.print("enqueue_nd_range time: {d}\n", .{enqueue_nd_range_time});
 
+    // t0 = std.time.milliTimestamp();
     try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
+    // const append_new_event_time = std.time.milliTimestamp() - t0;
+    // std.debug.print("append new event time: {d}\n", .{append_new_event_time});
 }
 
 fn axpy_without_vectors(
@@ -152,7 +171,7 @@ pub inline fn axpy(
     try w_tensor.helpers.eqlNumberSpace(T, x, y);
     if (alpha == null and beta == null) return w_tensor.Errors.InvalidValue;
 
-    if (x.vectors_enabled and y.vectors_enabled) {
+    if (x.vectors_enabled == y.vectors_enabled) {
         try axpy_with_vectors(T, command_queue, x, alpha, beta, y);
     } else {
         try axpy_without_vectors(T, command_queue, x, alpha, beta, y);

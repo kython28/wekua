@@ -23,7 +23,7 @@ pub fn init(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     devices: []cl.device.cl_device_id
-) !*wContext {
+) !*Context {
     const cl_ctx = try cl.context.create(properties, devices, null, null);
     errdefer cl.context.release(cl_ctx);
 
@@ -35,7 +35,7 @@ pub fn init_from_device_type(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     device_type: cl.device.enums.device_type
-) !*wContext {
+) !*Context {
     const cl_ctx = try cl.context.create_from_type(properties, device_type, null, null);
     errdefer cl.context.release(cl_ctx);
 
@@ -47,7 +47,7 @@ pub fn create_from_best_device(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.cl_context_properties,
     device_type: cl.device.enums.device_type
-) !*wContext {
+) !*Context {
     const platforms = try cl.platform.get_all(allocator);
     defer cl.platform.release_list(allocator, platforms);
 
@@ -71,11 +71,6 @@ pub fn create_from_best_device(
         try cl.device.get_ids(plat.id.?, device_type, devices, null);
         var device_choosen_in_this_iteration: bool = false;
         for (devices) |device| {
-            var clock_freq: u32 = undefined;
-            try cl.device.get_info(
-                device, cl.device.enums.device_info.max_clock_frequency, @sizeOf(u32), &clock_freq, null
-            );
-
             var max_work_group_size: u64 = undefined;
             try cl.device.get_info(
                 device, cl.device.enums.device_info.max_work_group_size, @sizeOf(u64), &max_work_group_size, null
@@ -87,7 +82,7 @@ pub fn create_from_best_device(
                 &compute_units, null
             );
 
-            const score: u64 = clock_freq * max_work_group_size * compute_units;
+            const score: u64 = max_work_group_size * compute_units;
             if (score > best_score or best_device == null) {
                 if (best_device) |dev| {
                     if (!device_choosen_in_this_iteration) cl.device.release(dev);
@@ -111,8 +106,8 @@ pub fn create_from_best_device(
 pub fn init_from_cl_context(
     allocator: std.mem.Allocator,
     cl_ctx: cl.context.cl_context
-) !*wContext {
-    var context = try allocator.create(wContext);
+) !*Context {
+    var context = try allocator.create(Context);
     errdefer allocator.destroy(context);
 
     var number_of_devices: u32 = undefined;
@@ -134,7 +129,7 @@ pub fn init_from_cl_context(
     return context;
 }
 
-pub fn release(context: *wContext) void {
+pub fn release(context: *Context) void {
     const allocator = context.allocator;
 
     CommandQueue.deinit_multiples(allocator, context.command_queues);
@@ -143,4 +138,4 @@ pub fn release(context: *wContext) void {
     allocator.destroy(context);
 }
 
-const wContext = @This();
+const Context = @This();

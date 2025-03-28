@@ -20,14 +20,15 @@ pub fn readFromBuffer(
     }
 
     const tensor_shape = tensor.shape;
+    const ndim = tensor_shape.len;
     const width: usize = (
-        tensor_shape[tensor_shape.len - 1] * (1 + @as(u64, @intFromBool(tensor.is_complex)))
+        tensor_shape[ndim - 1] * (1 + @as(u64, @intFromBool(tensor.is_complex)))
     ) * @sizeOf(T);
-    const height: usize = tensor_shape[tensor_shape.len - 2];
+    const height: usize = if (ndim >= 2) tensor_shape[ndim - 2] else 1;
 
     var depth: usize = 1;
-    if (tensor_shape.len >= 3) {
-        for (tensor_shape[0..tensor_shape.len - 2]) |e| depth *= e;
+    if (ndim >= 3) {
+        for (tensor_shape[0..ndim - 2]) |e| depth *= e;
     }
 
     const buff_origin: [3]usize = .{ 0, 0, 0 };
