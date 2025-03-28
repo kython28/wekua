@@ -80,15 +80,17 @@ pub fn to_real(
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&src.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&dst.buffer));
     try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&src.row_pitch));
-    try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&dst.row_pitch));
+    try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&src.slice_pitch));
+    try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&dst.row_pitch));
+    try set_arg(kernel, 5, @sizeOf(u64), @ptrCast(&dst.slice_pitch));
 
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
         cmd,
         kernel,
         null,
-        &src.shape_like_matrix_without_vectors,
-        &src.work_items_for_matrix_shape_without_vectors[command_queue.wekua_id],
+        &src.global_work_items_without_vectors,
+        &src.local_work_items_without_vectors[command_queue.wekua_id],
         prev_events,
         &new_event,
     );

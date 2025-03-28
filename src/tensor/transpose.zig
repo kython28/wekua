@@ -77,8 +77,11 @@ pub fn transpose(
         dim1_ = dim1;
     }
 
-    const tensor_len = tensor.global_work_items_without_vectors[0] * tensor.row_pitch;
-    const tensor_cols = tensor.global_work_items_without_vectors[1] * @as(u64, @intFromBool(tensor.is_complex));
+    const multiplier: u64 = 1 + @as(u64, @intFromBool(tensor.is_complex));
+    const row_pitch = tensor.row_pitch;
+
+    const tensor_width = tensor.global_work_items_without_vectors[2] * multiplier;
+    const tensor_height = tensor.global_work_items_without_vectors[1] * row_pitch;
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitches_buffer));
@@ -86,13 +89,14 @@ pub fn transpose(
     try set_arg(kernel, 2, cl_mem_size, @ptrCast(&result_tensor.buffer));
     try set_arg(kernel, 3, cl_mem_size, @ptrCast(&result_tensor.pitches_buffer));
 
-    try set_arg(kernel, 4, u64_size, @ptrCast(&tensor.row_pitch));
-    try set_arg(kernel, 5, u64_size, @ptrCast(&tensor_cols));
-    try set_arg(kernel, 6, u64_size, @ptrCast(&tensor_len));
+    try set_arg(kernel, 4, u64_size, @ptrCast(&row_pitch));
+    try set_arg(kernel, 5, u64_size, @ptrCast(&tensor.slice_pitch));
+    try set_arg(kernel, 6, u64_size, @ptrCast(&tensor_height));
+    try set_arg(kernel, 7, u64_size, @ptrCast(&tensor_width));
 
-    try set_arg(kernel, 7, u64_size, @ptrCast(&dim0_));
-    try set_arg(kernel, 8, u64_size, @ptrCast(&dim1_));
-    try set_arg(kernel, 9, u64_size, @ptrCast(&ndim));
+    try set_arg(kernel, 8, u64_size, @ptrCast(&dim0_));
+    try set_arg(kernel, 9, u64_size, @ptrCast(&dim1_));
+    try set_arg(kernel, 10, u64_size, @ptrCast(&ndim));
 
     const wekua_id = command_queue.wekua_id;
 

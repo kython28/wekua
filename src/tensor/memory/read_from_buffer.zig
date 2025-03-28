@@ -27,7 +27,7 @@ pub fn readFromBuffer(
 
     var depth: usize = 1;
     if (tensor_shape.len >= 3) {
-        for (tensor_shape[0..tensor_shape.len - 3]) |e| depth *= e;
+        for (tensor_shape[0..tensor_shape.len - 2]) |e| depth *= e;
     }
 
     const buff_origin: [3]usize = .{ 0, 0, 0 };

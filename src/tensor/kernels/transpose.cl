@@ -8,8 +8,9 @@ __kernel void transpose(
     __global const ulong *restrict pitches_B,
 
     const ulong A_row_pitch,
+    const ulong A_slice_pitch,
+    const ulong A_height,
     const ulong A_cols,
-    const ulong A_len,
 
 	const ulong dim0,
     const ulong dim1,
@@ -17,7 +18,7 @@ __kernel void transpose(
 ) {
 	ulong index = get_global_id(0);
     if ((index % A_row_pitch) >= A_cols) return;
-    else if (index >= A_len) return;
+    else if ((index % A_slice_pitch) >= A_height) return;
 
 	const wks value = A[index];
 

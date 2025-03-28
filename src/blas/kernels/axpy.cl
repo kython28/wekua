@@ -29,7 +29,10 @@ __kernel void axpy2(
     __global wks *restrict B,
 
     const ulong row_pitch_A,
+    const ulong slice_pitch_A,
+
     const ulong row_pitch_B,
+    const ulong slice_pitch_B,
 
 	const wks alpha
 #if com == 1
@@ -38,11 +41,12 @@ __kernel void axpy2(
 ) {
 	const ulong i = get_global_id(0);
     const ulong j = get_global_id(1);
+    const ulong k = get_global_id(2);
 
 #if com == 1
-    const col = j << 1;
-    const ulong index_A = i * row_pitch_A + col;
-    const ulong index_B = i * row_pitch_B + col;
+    const col = k << 1;
+    const ulong index_A = i * slice_pitch_A + j * row_pitch_A + col;
+    const ulong index_B = i * slice_pitch_B + j * row_pitch_B + col;
 
 	wks real_value = A[index_A];
 	wks imag_value = A[index_A + 1];
@@ -53,8 +57,8 @@ __kernel void axpy2(
 	B[index_B] += real_value;
 	B[index_B + 1] += imag_value;
 #else
-    const ulong index_A = i * row_pitch_A + j;
-    const ulong index_B = i * row_pitch_B + j;
+    const ulong index_A = i * slice_pitch_A + j * row_pitch_A + k;
+    const ulong index_B = i * slice_pitch_B + j * row_pitch_B + k;
 
 	B[index_B] += alpha * A[index_A];
 #endif

@@ -1,10 +1,11 @@
-const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("../../core/main.zig");
 
 const w_tensor = @import("../main.zig");
 const Tensor = w_tensor.Tensor;
+
+const helpers = @import("../helpers.zig");
 
 pub fn putValue(
     comptime T: type,
@@ -25,10 +26,10 @@ pub fn putValue(
     }
 
     const buf_size: usize = @sizeOf(T) * (1 + @as(usize, @intFromBool(is_complex))); 
-    var pattern: [2]T = undefined;
+    var buf: [2]T = undefined;
 
-    pattern[0] = real_scalar orelse 0;
-    pattern[1] = imag_scalar orelse 0;
+    buf[0] = real_scalar orelse 0;
+    buf[1] = imag_scalar orelse 0;
 
     var offset: usize = 0;
     for (tensor.pitches, tensor.shape, coor) |p, ds, c| {
@@ -48,20 +49,11 @@ pub fn putValue(
             false,
             offset,
             buf_size,
-            &pattern,
+            &buf,
             prev_events,
             &new_event,
         );
-        errdefer |err| {
-            cl.event.wait(new_event) catch |err2| {
-                std.debug.panic(
-                    "An error ocurred ({s}) while waiting for new event and dealing with another error ({s})", .{
-                        @errorName(err2), @errorName(err)
-                    }
-                );
-            };
-            cl.event.release(new_event);
-        }
+        errdefer |err| helpers.releaseEvent(new_event, err);
 
         try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
     }

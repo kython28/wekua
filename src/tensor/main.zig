@@ -110,6 +110,10 @@ pub fn Tensor(comptime T: type) type {
         }
 
         pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
+            if (shape.len == 0) {
+                return Errors.InvalidValue;
+            }
+
             const allocator = context.allocator;
             const command_queues = context.command_queues;
 
@@ -151,13 +155,15 @@ pub fn Tensor(comptime T: type) type {
             const vl_shape = try arena_allocator.dupe(u64, shape);
             tensor.vl_shape = vl_shape;
 
-            const last_element_index = shape.len - 1;
-            const penultimate_element_index = last_element_index - 1;
+            const ndim = shape.len;
+
+            const last_element_index = ndim -| 1;
+            const penultimate_element_index = last_element_index -| 1;
 
             var number_of_elements_without_padding: u64 = 1;
             for (shape[0..penultimate_element_index]) |e| number_of_elements_without_padding *= e;
 
-            const penultimate_size = shape[penultimate_element_index];
+            const penultimate_size = if (ndim >= 2) shape[penultimate_element_index] else 1;
             const last_size = shape[last_element_index];
 
             const padded_penultimate_size = penultimate_size + (penultimate_size % 2);
@@ -196,12 +202,24 @@ pub fn Tensor(comptime T: type) type {
             const pitches = try arena_allocator.alloc(u64, shape.len);
             tensor.pitches = pitches;
 
+            const antepenultimate_element_index = penultimate_element_index -| 1;
             var pitch: u64 = number_of_elements;
-            for (shape[0..penultimate_element_index], pitches[0..penultimate_element_index]) |e, *p| {
+            for (
+                shape[0..antepenultimate_element_index],
+                pitches[0..antepenultimate_element_index],
+            ) |e, *p| {
                 pitch /= e;
                 p.* = pitch;
             }
-            pitches[penultimate_element_index] = row_pitch;
+
+            if (ndim >= 3) {
+                pitches[antepenultimate_element_index] = slice_pitch;
+            }
+
+            if (ndim >= 2) {
+                pitches[penultimate_element_index] = row_pitch;
+            }
+
             pitches[last_element_index] = multiplier;
 
             const local_work_items_1d = try arena_allocator.alloc(u64, command_queues.len);

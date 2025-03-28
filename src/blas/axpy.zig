@@ -49,7 +49,7 @@ fn axpy_with_vectors(
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
 
     var global: u64 = x.number_of_vectors;
-    var work_items: u64 = x.work_item_for_all_vectors[command_queue.wekua_id];
+    var work_items: u64 = x.local_work_items_for_vectors_1d[command_queue.wekua_id];
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
@@ -117,10 +117,12 @@ fn axpy_without_vectors(
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
     try set_arg(kernel, 2, @sizeOf(u64), &x.row_pitch);
-    try set_arg(kernel, 3, @sizeOf(u64), &y.row_pitch);
-    try set_arg(kernel, 4, @sizeOf(T), &real_scalar);
+    try set_arg(kernel, 3, @sizeOf(u64), &x.slice_pitch);
+    try set_arg(kernel, 4, @sizeOf(u64), &y.row_pitch);
+    try set_arg(kernel, 5, @sizeOf(u64), &y.slice_pitch);
+    try set_arg(kernel, 6, @sizeOf(T), &real_scalar);
     if (x.is_complex) {
-        try set_arg(kernel, 5, @sizeOf(T), &imag_scalar);
+        try set_arg(kernel, 7, @sizeOf(T), &imag_scalar);
     }
 
     var new_event: cl.event.cl_event = undefined;
@@ -128,8 +130,8 @@ fn axpy_without_vectors(
         cmd,
         kernel,
         null,
-        &x.shape_like_matrix_without_vectors,
-        &x.work_items_for_matrix_shape_without_vectors[command_queue.wekua_id],
+        &x.global_work_items_without_vectors,
+        &x.local_work_items_without_vectors[command_queue.wekua_id],
         prev_events,
         &new_event,
     );
