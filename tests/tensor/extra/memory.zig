@@ -5,18 +5,16 @@ const std = @import("std");
 const allocator = std.testing.allocator;
 
 fn create_random_tensor(
-    comptime T: type, ctx: *const wekua.core.Context, is_complex: bool, randprg: std.Random,
-    real_scalar: ?T, imag_scalar: ?T
+    comptime T: type,
+    ctx: *wekua.core.Context,
+    is_complex: bool,
+    randprg: std.Random,
+    real_scalar: ?T,
+    imag_scalar: ?T,
 ) !*wekua.Tensor(T) {
-    const shape: [3]u64 = .{
-        randprg.intRangeAtMost(u64, 2, 500),
-        randprg.intRangeAtMost(u64, 2, 500),
-        randprg.intRangeAtMost(u64, 2, 500)
-    };
+    const shape: [3]u64 = .{ randprg.intRangeAtMost(u64, 2, 500), randprg.intRangeAtMost(u64, 2, 500), randprg.intRangeAtMost(u64, 2, 500) };
 
-    const tensor = try wekua.Tensor(T).alloc(ctx, &shape, .{
-        .is_complex = is_complex
-    });
+    const tensor = try wekua.Tensor(T).alloc(ctx, &shape, .{ .is_complex = is_complex });
     errdefer tensor.release();
 
     const w_cmd = &ctx.command_queues[0];
@@ -37,13 +35,13 @@ test "fill and get random value" {
             const scalar = switch (@typeInfo(T)) {
                 .int => randprg.int(T),
                 .float => randprg.float(T),
-                else => unreachable
+                else => unreachable,
             };
 
             const scalar2 = switch (@typeInfo(T)) {
                 .int => randprg.int(T),
                 .float => randprg.float(T),
-                else => unreachable
+                else => unreachable,
             };
 
             const tensor = try create_random_tensor(T, ctx, false, randprg, scalar, null);
@@ -51,17 +49,9 @@ test "fill and get random value" {
 
             var actual_scalar: T = undefined;
 
-            const coor: [3]u64 = .{
-                randprg.intRangeLessThan(u64, 1, tensor.shape[0]),
-                randprg.intRangeLessThan(u64, 1, tensor.shape[1]),
-                randprg.intRangeLessThan(u64, 1, tensor.shape[2])
-            };
+            const coor: [3]u64 = .{ randprg.intRangeLessThan(u64, 1, tensor.shape[0]), randprg.intRangeLessThan(u64, 1, tensor.shape[1]), randprg.intRangeLessThan(u64, 1, tensor.shape[2]) };
 
-            const coor2: [3]u64 = .{
-                randprg.intRangeLessThan(u64, 1, tensor.shape[0]),
-                randprg.intRangeLessThan(u64, 1, tensor.shape[1]),
-                randprg.intRangeLessThan(u64, 1, tensor.shape[2])
-            };
+            const coor2: [3]u64 = .{ randprg.intRangeLessThan(u64, 1, tensor.shape[0]), randprg.intRangeLessThan(u64, 1, tensor.shape[1]), randprg.intRangeLessThan(u64, 1, tensor.shape[2]) };
 
             const w_cmd = &ctx.command_queues[0];
             try wekua.tensor.memory.putValue(T, tensor, w_cmd, &coor2, scalar2, null);
@@ -70,14 +60,14 @@ test "fill and get random value" {
             switch (@typeInfo(T)) {
                 .int => try std.testing.expectEqual(scalar, actual_scalar),
                 .float => try std.testing.expectApproxEqAbs(scalar, actual_scalar, comptime std.math.floatEps(T)),
-                else => unreachable
+                else => unreachable,
             }
 
             try wekua.tensor.memory.getValue(T, tensor, w_cmd, &coor2, &actual_scalar, null);
             switch (@typeInfo(T)) {
                 .int => try std.testing.expectEqual(scalar2, actual_scalar),
                 .float => try std.testing.expectApproxEqAbs(scalar2, actual_scalar, comptime std.math.floatEps(T)),
-                else => unreachable
+                else => unreachable,
             }
         }
     }
@@ -93,12 +83,12 @@ test "fill and get random complex value" {
             const scalar = switch (@typeInfo(T)) {
                 .int => randprg.int(T),
                 .float => randprg.float(T),
-                else => unreachable
+                else => unreachable,
             };
             const scalar_imag = switch (@typeInfo(T)) {
                 .int => randprg.int(T),
                 .float => randprg.float(T),
-                else => unreachable
+                else => unreachable,
             };
 
             const tensor = try create_random_tensor(T, ctx, true, randprg, scalar, scalar_imag);
@@ -107,11 +97,7 @@ test "fill and get random complex value" {
             var new_scalar: T = undefined;
             var new_scalar_imag: T = undefined;
 
-            const coor: [3]u64 = .{
-                randprg.intRangeLessThan(u64, 0, tensor.shape[0]),
-                randprg.intRangeLessThan(u64, 0, tensor.shape[1]),
-                randprg.intRangeLessThan(u64, 0, tensor.shape[2])
-            };
+            const coor: [3]u64 = .{ randprg.intRangeLessThan(u64, 0, tensor.shape[0]), randprg.intRangeLessThan(u64, 0, tensor.shape[1]), randprg.intRangeLessThan(u64, 0, tensor.shape[2]) };
 
             const w_cmd = &ctx.command_queues[0];
             try wekua.tensor.memory.getValue(T, tensor, w_cmd, &coor, &new_scalar, &new_scalar_imag);
@@ -125,7 +111,7 @@ test "fill and get random complex value" {
                     try std.testing.expectApproxEqAbs(scalar, new_scalar, comptime std.math.floatEps(T));
                     try std.testing.expectApproxEqAbs(scalar_imag, new_scalar_imag, comptime std.math.floatEps(T));
                 },
-                else => unreachable
+                else => unreachable,
             }
         }
     }
@@ -138,7 +124,7 @@ test "read from and write to buffer" {
     const randprg = std.crypto.random;
     inline for (wekua.core.SupportedTypes) |T| {
         if (ctx.command_queues[0].typeIsSupported(T)) {
-            const tensor = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
+            const tensor = try wekua.Tensor(T).empty(ctx, &.{ 5, 5 }, .{});
             defer tensor.release();
 
             var buffer1: [25]T = undefined;
@@ -147,7 +133,7 @@ test "read from and write to buffer" {
                 v.* = switch (@typeInfo(T)) {
                     .int => randprg.int(T),
                     .float => randprg.float(T),
-                    else => unreachable
+                    else => unreachable,
                 };
             }
 
@@ -169,10 +155,10 @@ test "copy" {
     const randprg = std.crypto.random;
     inline for (wekua.core.SupportedTypes) |T| {
         if (ctx.command_queues[0].typeIsSupported(T)) {
-            const tensor = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
+            const tensor = try wekua.Tensor(T).empty(ctx, &.{ 5, 5 }, .{});
             defer tensor.release();
 
-            const tensor2 = try wekua.Tensor(T).empty(ctx, &.{5, 5}, .{});
+            const tensor2 = try wekua.Tensor(T).empty(ctx, &.{ 5, 5 }, .{});
             defer tensor2.release();
 
             var buffer1: [25]T = undefined;
@@ -181,7 +167,7 @@ test "copy" {
                 v.* = switch (@typeInfo(T)) {
                     .int => randprg.int(T),
                     .float => randprg.float(T),
-                    else => unreachable
+                    else => unreachable,
                 };
             }
 

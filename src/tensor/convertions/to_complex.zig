@@ -12,7 +12,7 @@ const helpers = @import("../helpers.zig");
 
 const to_complex_cl_kernel: []const u8 = @embedFile("kernels/to_complex.cl");
 
-fn get_kernel(
+fn getKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
     dom: bool,
@@ -48,7 +48,7 @@ fn get_kernel(
     return kernel;
 }
 
-pub fn to_complex(
+pub fn toComplex(
     comptime T: type,
     command_queue: *const CommandQueue,
     src: *Tensor(T),
@@ -59,7 +59,7 @@ pub fn to_complex(
     if (src.is_complex) return w_tensor.Errors.InvalidValue;
     if (!dst.is_complex) return w_tensor.Errors.InvalidValue;
 
-    const kernel = try get_kernel(T, command_queue, dom);
+    const kernel = try getKernel(T, command_queue, dom);
     const cmd = command_queue.cmd;
 
     const src_prev_events = src.events_manager.getPrevEvents(.read);
@@ -98,5 +98,5 @@ pub fn to_complex(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
 }

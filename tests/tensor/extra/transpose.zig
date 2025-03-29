@@ -4,7 +4,7 @@ const std = @import("std");
 
 fn test_transpose(
     allocator: std.mem.Allocator,
-    ctx: *const wekua.core.Context,
+    ctx: *wekua.core.Context,
     comptime is_complex: bool,
     comptime vectors_for_tensor1: bool,
     comptime vectors_for_tensor2: bool,

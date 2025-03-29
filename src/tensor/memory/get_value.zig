@@ -50,7 +50,7 @@ pub fn getValue(
         );
         errdefer |err| helpers.releaseEvent(new_event, err);
 
-        try tensor.events_manager.appendNewEvent(.read, prev_events, new_event, null);
+        _ = try tensor.events_manager.appendNewEvent(.read, prev_events, new_event, null);
     }
 
     try tensor.wait();

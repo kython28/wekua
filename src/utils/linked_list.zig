@@ -12,7 +12,7 @@ pub fn LinkedList(comptime T: type) type {
 
         pub const Node = *_linked_list_node;
 
-        pub const errors = error {
+        pub const Errors = error {
             CannotHasElementsWhenRealasing,
             LinkedListEmpty
         };
@@ -104,7 +104,7 @@ pub fn LinkedList(comptime T: type) type {
         }
 
         pub fn pop_node(self: *@This()) !Node {
-            const last_node = self.last orelse return errors.LinkedListEmpty;
+            const last_node = self.last orelse return Errors.LinkedListEmpty;
 
             if (last_node.prev) |prev_node| {
                 prev_node.next = null;
@@ -127,7 +127,7 @@ pub fn LinkedList(comptime T: type) type {
         }
 
         pub fn popleft_node(self: *@This()) !Node {
-            const first_node = self.first orelse return errors.LinkedListEmpty;
+            const first_node = self.first orelse return Errors.LinkedListEmpty;
 
             if (first_node.next) |next_node| {
                 next_node.prev = null;

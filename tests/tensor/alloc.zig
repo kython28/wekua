@@ -4,14 +4,14 @@ const std = @import("std");
 
 fn create_and_release(
     comptime T: type,
-    ctx: *const wekua.core.Context,
+    ctx: *wekua.core.Context,
     config: wekua.CreateTensorConfig,
 ) !void {
     const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{ 20, 10 }, config);
     tensor.release();
 }
 
-fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, config: wekua.CreateTensorConfig) !void {
+fn create_check_and_release(comptime T: type, ctx: *wekua.core.Context, config: wekua.CreateTensorConfig) !void {
     const tensor = try wekua.Tensor(T).alloc(ctx, &[_]u64{ 20, 10 }, config);
     defer tensor.release();
 
@@ -22,7 +22,7 @@ fn create_check_and_release(comptime T: type, ctx: *const wekua.core.Context, co
     const custom_event = try cl.event.create_user_event(ctx.ctx);
     defer cl.event.set_user_event_status(custom_event, .complete) catch |err| @panic(@errorName(err));
 
-    try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null);
+    _ = try tensor.events_manager.appendNewEvent(.read, events_to_wait, custom_event, null);
 
     var event_to_map: cl.event.cl_event = undefined;
     const map: []u8 = try cl.buffer.map(

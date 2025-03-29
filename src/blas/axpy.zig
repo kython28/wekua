@@ -1,3 +1,4 @@
+const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("../core/main.zig");
@@ -9,59 +10,132 @@ const Tensor = w_tensor.Tensor;
 
 const axpy_cl_kernel: []const u8 = @embedFile("kernels/axpy.cl");
 
-const std = @import("std");
+fn getKernel(
+    comptime T: type,
+    command_queue: *const CommandQueue,
+    comptime kernel_name: []const u8,
+    comptime vectors_enabled: bool,
+    is_complex: bool,
+    has_alpha: bool,
+    substract: bool,
+) !cl.kernel.cl_kernel {
+    const kernels_set = try KernelsSet.getKernelSet(command_queue, .AXPY, core.SupportedTypes.len * 2 * 2 * 2 * 2);
 
-fn axpy_with_vectors(
+    var kernel_index: usize = @intFromBool(vectors_enabled) * (2 * 2 * 2 * core.SupportedTypes.len);
+    kernel_index += @intFromBool(is_complex) * (2 * 2 * core.SupportedTypes.len);
+    kernel_index += @intFromBool(has_alpha) * (2 * core.SupportedTypes.len);
+    kernel_index += @intFromBool(substract) * core.SupportedTypes.len;
+    kernel_index += @as(usize, core.getTypeId(T));
+
+    if (kernels_set.kernels[kernel_index]) |v| return v;
+
+    var kernel: cl.kernel.cl_kernel = undefined;
+    var program: cl.program.cl_program = undefined;
+
+    const allocator = command_queue.allocator;
+    const extra_args: []u8 = try std.fmt.allocPrint(
+        allocator,
+        "-DHAS_ALPHA={d} -DSUBSTRACT={d}",
+        .{
+            @intFromBool(has_alpha),
+            @intFromBool(substract),
+        },
+    );
+    defer allocator.free(extra_args);
+
+    try KernelsSet.compileKernel(
+        T,
+        command_queue,
+        .{
+            .is_complex = is_complex,
+            .vectors_enabled = vectors_enabled,
+            .kernel_name = kernel_name,
+            .extra_args = extra_args,
+        },
+        &kernel,
+        &program,
+        axpy_cl_kernel,
+    );
+
+    kernels_set.kernels[kernel_index] = kernel;
+    kernels_set.programs[kernel_index] = program;
+
+    return kernel;
+}
+
+inline fn checkAlpha(comptime T: type, alpha: ?T, ialpha: ?T) bool {
+    return (alpha != null or ialpha != null);
+}
+
+inline fn checkIfSubstract(comptime T: type, alpha: T, ialpha: T) bool {
+    return switch (@typeInfo(T)) {
+        .float => blk: {
+            const eps = comptime std.math.floatEps(T);
+            break :blk (@abs(alpha + @as(T, 1)) < eps and @abs(ialpha) < eps);
+        },
+        .int => |int_info| blk: {
+            if (int_info.signedness == .unsigned) {
+                break :blk false;
+            }
+            break :blk (alpha == @as(T, -1) and ialpha == 0);
+        },
+        else => @compileError("Type not supported"),
+    };
+}
+
+fn axpyWithVectors(
     comptime T: type,
     command_queue: *const CommandQueue,
     x: *Tensor(T),
     alpha: ?T,
-    beta: ?T,
+    ialpha: ?T,
     y: *Tensor(T),
 ) !void {
-    const real_scalar = alpha orelse 0;
-    const imag_scalar = beta orelse 0;
+    var real_scalar: T = undefined;
+    var imag_scalar: T = undefined;
 
-    // var t0 = std.time.milliTimestamp();
+    var has_alpha = checkAlpha(T, alpha, ialpha);
+    var substract = false;
+    if (has_alpha) {
+        if (ialpha) |s| {
+            real_scalar = alpha orelse 0;
+            imag_scalar = s;
+        }else{
+            real_scalar = alpha orelse 1;
+            imag_scalar = ialpha orelse 0;
+        }
+
+        substract = checkIfSubstract(T, real_scalar, imag_scalar);
+        if (substract) {
+            has_alpha = false;
+        }
+    }
 
     const allocator = command_queue.allocator;
-    const kernel = try KernelsSet.getClKernel(
+    const kernel = try getKernel(
         T,
         command_queue,
-        x,
-        .AXPY,
         "axpy",
-        axpy_cl_kernel,
-        null,
+        true,
+        x.is_complex,
+        has_alpha,
+        substract
     );
-
-    // const kernel_time = std.time.milliTimestamp() - t0;
-    // std.debug.print("kernel time: {d}\n", .{kernel_time});
 
     const cmd = command_queue.cmd;
 
-    // t0 = std.time.milliTimestamp();
     const x_prev_events = x.events_manager.getPrevEvents(.read);
     const y_prev_events = y.events_manager.getPrevEvents(.write);
-    // const getting_prev_events_time = std.time.milliTimestamp() - t0;
-    // std.debug.print("getting prev events time: {d}\n", .{getting_prev_events_time});
 
-    // t0 = std.time.milliTimestamp();
     const events_set = try w_tensor.EventManager.EventsSet.init(
         allocator,
         &.{ x_prev_events, y_prev_events },
         null,
     );
     errdefer events_set.release();
-    // const getting_events_set_time = std.time.milliTimestamp() - t0;
-    // std.debug.print("getting events set time: {d}\n", .{getting_events_set_time});
 
-    // t0 = std.time.milliTimestamp();
     const prev_events = events_set.getPrevEvents();
-    // const getting_prev_events_time2 = std.time.milliTimestamp() - t0;
-    // std.debug.print("getting prev events time2: {d}\n", .{getting_prev_events_time2});
 
-    // t0 = std.time.milliTimestamp();
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
 
@@ -69,9 +143,11 @@ fn axpy_with_vectors(
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
     try set_arg(kernel, 2, @sizeOf(u64), &x.row_pitch_for_vectors);
     try set_arg(kernel, 3, @sizeOf(u64), &x.slice_pitch_for_vectors);
-    try set_arg(kernel, 4, @sizeOf(T), &real_scalar);
-    if (x.is_complex) {
-        try set_arg(kernel, 5, @sizeOf(T), &imag_scalar);
+    if (has_alpha) {
+        try set_arg(kernel, 4, @sizeOf(T), &real_scalar);
+        if (x.is_complex) {
+            try set_arg(kernel, 5, @sizeOf(T), &imag_scalar);
+        }
     }
 
     var new_event: cl.event.cl_event = undefined;
@@ -85,35 +161,47 @@ fn axpy_with_vectors(
         &new_event,
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
-    // const enqueue_nd_range_time = std.time.milliTimestamp() - t0;
-    // std.debug.print("enqueue_nd_range time: {d}\n", .{enqueue_nd_range_time});
 
-    // t0 = std.time.milliTimestamp();
-    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
-    // const append_new_event_time = std.time.milliTimestamp() - t0;
-    // std.debug.print("append new event time: {d}\n", .{append_new_event_time});
+    _ = try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
 }
 
-fn axpy_without_vectors(
+fn axpyWithoutVectors(
     comptime T: type,
     command_queue: *const CommandQueue,
     x: *Tensor(T),
     alpha: ?T,
-    beta: ?T,
+    ialpha: ?T,
     y: *Tensor(T),
 ) !void {
-    const real_scalar = alpha orelse 0;
-    const imag_scalar = beta orelse 0;
+    var real_scalar: T = undefined;
+    var imag_scalar: T = undefined;
+
+    var has_alpha = checkAlpha(T, alpha, ialpha);
+    var substract = false;
+    if (has_alpha) {
+        if (ialpha) |s| {
+            real_scalar = alpha orelse 0;
+            imag_scalar = s;
+        }else{
+            real_scalar = alpha orelse 1;
+            imag_scalar = ialpha orelse 0;
+        }
+
+        substract = checkIfSubstract(T, real_scalar, imag_scalar);
+        if (substract) {
+            has_alpha = false;
+        }
+    }
 
     const allocator = command_queue.allocator;
-    const kernel = try KernelsSet.getClKernel(
+    const kernel = try getKernel(
         T,
         command_queue,
-        x,
-        .AXPY2,
         "axpy2",
-        axpy_cl_kernel,
-        null,
+        false,
+        x.is_complex,
+        has_alpha,
+        substract
     );
 
     const cmd = command_queue.cmd;
@@ -139,9 +227,12 @@ fn axpy_without_vectors(
     try set_arg(kernel, 3, @sizeOf(u64), &x.slice_pitch);
     try set_arg(kernel, 4, @sizeOf(u64), &y.row_pitch);
     try set_arg(kernel, 5, @sizeOf(u64), &y.slice_pitch);
-    try set_arg(kernel, 6, @sizeOf(T), &real_scalar);
-    if (x.is_complex) {
-        try set_arg(kernel, 7, @sizeOf(T), &imag_scalar);
+
+    if (has_alpha) {
+        try set_arg(kernel, 6, @sizeOf(T), &real_scalar);
+        if (x.is_complex) {
+            try set_arg(kernel, 7, @sizeOf(T), &imag_scalar);
+        }
     }
 
     var new_event: cl.event.cl_event = undefined;
@@ -156,7 +247,7 @@ fn axpy_without_vectors(
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
 
-    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
 }
 
 pub inline fn axpy(
@@ -164,16 +255,15 @@ pub inline fn axpy(
     command_queue: *const CommandQueue,
     x: *Tensor(T),
     alpha: ?T,
-    beta: ?T,
+    ialpha: ?T,
     y: *Tensor(T),
 ) !void {
     try w_tensor.helpers.eqlTensorsDimensions(T, x, y);
     try w_tensor.helpers.eqlNumberSpace(T, x, y);
-    if (alpha == null and beta == null) return w_tensor.Errors.InvalidValue;
 
-    if (x.vectors_enabled == y.vectors_enabled) {
-        try axpy_with_vectors(T, command_queue, x, alpha, beta, y);
+    if (x.vectors_enabled and y.vectors_enabled) {
+        try axpyWithVectors(T, command_queue, x, alpha, ialpha, y);
     } else {
-        try axpy_without_vectors(T, command_queue, x, alpha, beta, y);
+        try axpyWithoutVectors(T, command_queue, x, alpha, ialpha, y);
     }
 }

@@ -3,7 +3,7 @@ const cl = @import("opencl");
 const std = @import("std");
 
 
-fn create_and_release(comptime T: type, ctx: *const wekua.core.Context, config: wekua.CreateTensorConfig) !void {
+fn create_and_release(comptime T: type, ctx: *wekua.core.Context, config: wekua.CreateTensorConfig) !void {
     const shape_expected: []const u64 = &[_]u64{20, 10};
 
     const tensor = try wekua.Tensor(T).empty(ctx, shape_expected, config);

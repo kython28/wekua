@@ -1,118 +1,122 @@
 const std = @import("std");
 
-const wLinkedList = @import("linked_list.zig");
+const linked_list = @import("linked_list.zig");
 
-mutex: std.Thread.Mutex,
-cond: std.Thread.Condition,
-queue: wLinkedList,
+pub fn Queue(comptime T: type) type {
+    const LinkedList = linked_list.LinkedList(T);
+    return struct {
+        mutex: std.Thread.Mutex,
+        cond: std.Thread.Condition,
+        list: LinkedList,
 
-releasing: bool,
+        releasing: bool,
 
-pub fn init(allocator: std.mem.Allocator) wQueue {
-    return wQueue{
-        .mutex = std.Thread.Mutex{},
-        .queue = wLinkedList.init(allocator),
-        .cond = std.Thread.Condition{},
-        .releasing = false
+        const this = @This();
+
+        pub fn init(allocator: std.mem.Allocator) this {
+            return .{
+                .mutex = std.Thread.Mutex{},
+                .list = LinkedList.init(allocator),
+                .cond = std.Thread.Condition{},
+                .releasing = false
+            };
+        }
+
+        pub fn put(self: *this, data: T) !void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            try self.list.append(data);
+            self.cond.signal();
+        }
+
+        pub fn put_node(self: *this, node: LinkedList.Node) void {
+            const mutex = &self.mutex;
+            mutex.lock();
+            defer mutex.unlock();
+
+            self.list.append_node(node);
+            self.cond.signal();
+        }
+
+        pub fn get_node(self: *this, wait: bool) !?LinkedList.Node {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            defer self.cond.signal();
+
+            if (!wait and self.list.first == null) return null;
+
+            while (self.list.first == null) {
+                if (self.releasing) return null;
+
+                self.cond.wait(&self.mutex);
+            }
+
+            const last_node = try self.list.popleft_node();
+            return last_node;
+        }
+
+        pub fn get(self: *this, wait: bool) !?T {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            defer self.cond.signal();
+
+            if (!wait and self.list.first == null) return null;
+
+            while (self.list.first == null) {
+                if (self.releasing) return null;
+
+                self.cond.wait(&self.mutex);
+            }
+
+            const data = try self.list.popleft();
+            return data;
+        }
+
+        pub fn get_last_node(self: *this, wait: bool) !?LinkedList.Node {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            defer self.cond.signal();
+
+            if (!wait and self.list.last == null) return null;
+
+            while (self.list.last == null) {
+                if (self.releasing) return null;
+
+                self.cond.wait(&self.mutex);
+            }
+
+            const last_node = try self.list.pop_node();
+            return last_node;
+        }
+
+        pub fn get_last(self: *this, wait: bool) !?T {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            defer self.cond.signal();
+
+            if (!wait and self.list.last == null) return null;
+
+            while (self.list.last == null) {
+                if (self.releasing) return null;
+
+                self.cond.wait(&self.mutex);
+            }
+
+            const data = try self.list.pop();
+            return data;
+        }
+
+        pub fn release(self: *this) void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            self.releasing = true;
+            self.cond.broadcast();
+
+            while (self.list.last != null) {
+                self.cond.wait(&self.mutex);
+            }
+        }
     };
 }
-
-pub fn put(self: *wQueue, data: ?*anyopaque) !void {
-    const mutex = &self.mutex;
-    mutex.lock();
-    defer mutex.unlock();
-
-    try self.queue.append(data);
-    self.cond.signal();
-}
-
-pub fn put_node(self: *wQueue, node: wLinkedList.Node) void {
-    const mutex = &self.mutex;
-    mutex.lock();
-    defer mutex.unlock();
-
-    self.queue.append_node(node);
-    self.cond.signal();
-}
-
-pub fn get_node(self: *wQueue, wait: bool) !?wLinkedList.Node {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-    defer self.cond.signal();
-
-    if (!wait and self.queue.first == null) return null;
-
-    while (self.queue.first == null) {
-        if (self.releasing) return null;
-
-        self.cond.wait(&self.mutex);
-    }
-
-    const last_node = try self.queue.popleft_node();
-    return last_node;
-}
-
-pub fn get(self: *wQueue, wait: bool) !?*anyopaque {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-    defer self.cond.signal();
-
-    if (!wait and self.queue.first == null) return null;
-
-    while (self.queue.first == null) {
-        if (self.releasing) return null;
-
-        self.cond.wait(&self.mutex);
-    }
-
-    const data = try self.queue.popleft();
-    return data;
-}
-
-pub fn get_last_node(self: *wQueue, wait: bool) !?wLinkedList.Node {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-    defer self.cond.signal();
-
-    if (!wait and self.queue.last == null) return null;
-
-    while (self.queue.last == null) {
-        if (self.releasing) return null;
-
-        self.cond.wait(&self.mutex);
-    }
-
-    const last_node = try self.queue.pop_node();
-    return last_node;
-}
-
-pub fn get_last(self: *wQueue, wait: bool) !?*anyopaque {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-    defer self.cond.signal();
-
-    if (!wait and self.queue.last == null) return null;
-
-    while (self.queue.last == null) {
-        if (self.releasing) return null;
-
-        self.cond.wait(&self.mutex);
-    }
-
-    const data = try self.queue.pop();
-    return data;
-}
-
-pub fn release(self: *wQueue) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-
-    self.releasing = true;
-    self.cond.broadcast();
-
-    while (self.queue.last != null) {
-        self.cond.wait(&self.mutex);
-    }
-}
-
-const wQueue = @This();

@@ -14,18 +14,26 @@ fn copy_tensor_with_different_row_pitch(
     src: *Tensor(T),
     dst: *Tensor(T),
 ) !void {
-    const number_of_elements = src.number_of_elements;
-
     const tensor_shape = src.shape;
-    const c: usize = @intCast(
-        tensor_shape[tensor_shape.len - 1] * (1 + @as(u64, @intCast(@intFromBool(src.is_complex)))),
-    );
-    const r: usize = number_of_elements / src.row_pitch;
+    const ndim = tensor_shape.len;
+    const width: usize = (
+        tensor_shape[ndim - 1] * (1 + @as(u64, @intFromBool(src.is_complex)))
+    ) * @sizeOf(T);
+    const height: usize = if (ndim >= 2) tensor_shape[ndim - 2] else 1;
+
+    var depth: usize = 1;
+    if (ndim >= 3) {
+        for (tensor_shape[0..ndim - 2]) |e| depth *= e;
+    }
 
     const buff_origin: [3]usize = .{ 0, 0, 0 };
-    const region: [3]usize = .{ c * @sizeOf(T), r, 1 };
+    const region: [3]usize = .{ width, height, depth };
+
     const src_row_pitch = src.row_pitch * @sizeOf(T);
+    const src_slice_pitch = src.slice_pitch * @sizeOf(T);
+
     const dst_row_pitch = dst.row_pitch * @sizeOf(T);
+    const dst_slice_pitch = dst.slice_pitch * @sizeOf(T);
 
     const src_prev_events = src.events_manager.getPrevEvents(.read);
     const dst_prev_events = dst.events_manager.getPrevEvents(.write);
@@ -48,15 +56,15 @@ fn copy_tensor_with_different_row_pitch(
         &buff_origin,
         &region,
         src_row_pitch,
-        0,
+        src_slice_pitch,
         dst_row_pitch,
-        0,
+        dst_slice_pitch,
         prev_events,
         &new_event,
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
 }
 
 fn copy_tensor_with_same_row_pitch(
@@ -91,7 +99,7 @@ fn copy_tensor_with_same_row_pitch(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
 }
 
 pub fn copy(comptime T: type, command_queue: *const CommandQueue, src: *Tensor(T), dst: *Tensor(T)) !void {

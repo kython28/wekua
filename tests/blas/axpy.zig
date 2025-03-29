@@ -20,7 +20,7 @@ inline fn complex_mul(comptime T: type, re1: T, im1: T, re2: T, im2: T) struct {
 fn test_axpy(
     comptime T: type,
     allocator: std.mem.Allocator,
-    ctx: *const wekua.core.Context,
+    ctx: *wekua.core.Context,
     randprg: std.Random,
     comptime is_complex: bool,
     comptime vectors_enabled: bool,

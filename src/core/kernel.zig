@@ -18,7 +18,6 @@ pub const KernelsID = enum(u16) {
     ToComplex,
     ToReal,
     AXPY,
-    AXPY2,
     Identity,
     // GEMM = 7,
 };

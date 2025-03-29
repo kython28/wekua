@@ -5,7 +5,7 @@ const std = @import("std");
 fn test_convertions_to_complex(
     comptime T: type,
     allocator: std.mem.Allocator,
-    ctx: *const wekua.core.Context,
+    ctx: *wekua.core.Context,
     randprg: std.Random,
     comptime dom: bool,
     comptime vectors_enabled: bool,
@@ -37,7 +37,7 @@ fn test_convertions_to_complex(
     });
     defer tensor2.release();
 
-    try wekua.tensor.convertions.to_complex(T, w_cmd, tensor, tensor2, dom);
+    try wekua.tensor.convertions.toComplex(T, w_cmd, tensor, tensor2, dom);
 
     const numbers1: []T = try allocator.alloc(T, tensor.number_of_elements_without_padding);
     defer allocator.free(numbers1);
@@ -87,7 +87,7 @@ test "Convert real tensor to complex" {
 fn test_convertions_to_real(
     comptime T: type,
     allocator: std.mem.Allocator,
-    ctx: *const wekua.core.Context,
+    ctx: *wekua.core.Context,
     randprg: std.Random,
     comptime dom: bool,
     comptime vectors_enabled: bool,
@@ -119,7 +119,7 @@ fn test_convertions_to_real(
     });
     defer tensor2.release();
 
-    try wekua.tensor.convertions.to_real(T, w_cmd, tensor, tensor2, dom);
+    try wekua.tensor.convertions.toReal(T, w_cmd, tensor, tensor2, dom);
 
     const numbers1: []T = try allocator.alloc(T, tensor.number_of_elements_without_padding);
     defer allocator.free(numbers1);

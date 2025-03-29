@@ -107,10 +107,10 @@ pub fn Tensor(comptime T: type) type {
             );
             errdefer |err| helpers.releaseEvent(new_event, err);
 
-            try self.events_manager.appendNewEvent(.write, prev_events, new_event, null);
+            _ = try self.events_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
 
-        pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
+        pub fn empty(context: *Context, shape: []const u64, config: CreateConfig) !*this {
             if (shape.len == 0) {
                 return Errors.InvalidValue;
             }
@@ -122,7 +122,7 @@ pub fn Tensor(comptime T: type) type {
             errdefer allocator.destroy(tensor);
 
             tensor.context = context;
-            try tensor.events_manager.init(allocator);
+            try tensor.events_manager.init(allocator, &context.events_batch_queue);
             errdefer tensor.events_manager.deinit();
 
             tensor.arena = std.heap.ArenaAllocator.init(allocator);
@@ -295,7 +295,7 @@ pub fn Tensor(comptime T: type) type {
             allocator.destroy(self);
         }
 
-        pub fn alloc(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
+        pub fn alloc(context: *Context, shape: []const u64, config: CreateConfig) !*this {
             const tensor = try empty(context, shape, config);
             errdefer tensor.release();
 
@@ -318,16 +318,13 @@ pub fn Tensor(comptime T: type) type {
             );
             errdefer |err| helpers.releaseEvent(new_event, err);
 
-            try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
+            _ = try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
             return tensor;
         }
 
         pub fn wait(self: *this) !void {
             const prev_events = self.events_manager.getPrevEvents(.write) orelse return;
-            // const t0 = std.time.milliTimestamp();
             try cl.event.wait_for_many(prev_events);
-            // const t1 = std.time.milliTimestamp();
-            // std.debug.print("wait time: {d}\n", .{t1 - t0});
         }
     };
 }
