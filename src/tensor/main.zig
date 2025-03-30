@@ -70,12 +70,14 @@ pub fn Tensor(comptime T: type) type {
 
         global_work_items: [3]u64,
         global_work_items_without_vectors: [3]u64,
+        global_work_items_gemm: [2]u64,
 
         local_work_items_1d: []u64,
         local_work_items_for_vectors_1d: []u64,
 
         local_work_items: [][3]u64,
         local_work_items_without_vectors: [][3]u64,
+        local_work_items_gemm: [][2]u64,
 
         events_manager: EventManager,
 
@@ -232,20 +234,25 @@ pub fn Tensor(comptime T: type) type {
             const lobal_work_items_for_vectors_1d = try arena_allocator.alloc(u64, command_queues.len);
             const local_work_items = try arena_allocator.alloc([3]u64, command_queues.len);
             const local_work_items_without_vectors = try arena_allocator.alloc([3]u64, command_queues.len);
+            const local_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
 
             tensor.local_work_items_1d = local_work_items_1d;
             tensor.local_work_items_for_vectors_1d = lobal_work_items_for_vectors_1d;
             tensor.local_work_items = local_work_items;
             tensor.local_work_items_without_vectors = local_work_items_without_vectors;
+            tensor.local_work_items_gemm = local_work_items_gemm;
 
             const global_work_items: []u64 = &tensor.global_work_items;
             const global_work_items_without_vectors: []u64 = &tensor.global_work_items_without_vectors;
+            const global_work_items_gemm: []u64 = &tensor.global_work_items_gemm;
 
             global_work_items[0] = depth;
             global_work_items_without_vectors[0] = depth;
+            global_work_items_gemm[0] = padded_penultimate_size / 2;
 
             global_work_items[1] = penultimate_size;
             global_work_items_without_vectors[1] = penultimate_size;
+            global_work_items_gemm[1] = (last_size + (last_size % 2)) / 2;
 
             global_work_items_without_vectors[2] = last_size;
             global_work_items[2] = vl_shape[last_element_index];
@@ -256,21 +263,23 @@ pub fn Tensor(comptime T: type) type {
                 lobal_work_items_for_vectors_1d,
                 local_work_items,
                 local_work_items_without_vectors,
-            ) |cmd, *wa, *wv, *wmv, *wm| {
-                utils.calculate_work_items(
+                local_work_items_gemm,
+            ) |cmd, *wa, *wv, *wmv, *wm, *wm_gemm| {
+                utils.calculateWorkItems(
                     @as([*]const u64, @ptrCast(&number_of_elements))[0..1],
                     @as([*]u64, @ptrCast(wa))[0..1],
                     cmd.max_work_group_size,
                 );
 
-                utils.calculate_work_items(
+                utils.calculateWorkItems(
                     @as([*]const u64, @ptrCast(&number_of_vectors))[0..1],
                     @as([*]u64, @ptrCast(wv))[0..1],
                     cmd.max_work_group_size,
                 );
 
-                utils.calculate_work_items(global_work_items, wmv, cmd.max_work_group_size);
-                utils.calculate_work_items(global_work_items_without_vectors, wm, cmd.max_work_group_size);
+                utils.calculateWorkItems(global_work_items, wmv, cmd.max_work_group_size);
+                utils.calculateWorkItems(global_work_items_without_vectors, wm, cmd.max_work_group_size);
+                utils.calculateWorkItems(global_work_items_gemm, wm_gemm, cmd.max_work_group_size);
             }
 
             const size = number_of_elements * @sizeOf(T);

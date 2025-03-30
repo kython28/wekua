@@ -19,7 +19,7 @@ pub const KernelsID = enum(u16) {
     ToReal,
     AXPY,
     Identity,
-    // GEMM = 7,
+    GEMM,
 };
 
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;
