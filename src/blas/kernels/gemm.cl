@@ -2,10 +2,16 @@
 
 // TODO: Add support for big endian devices
 
+// Winograd-Waksman implementation
 __kernel void gemm(
-    __global wk *restrict A,
-    __global wk *restrict B,
-    __global wks *restrict C,
+    __global const wk *const restrict A,
+    __global const wk *const restrict B,
+
+#if wk_width == 1
+    __global wks *const restrict C,
+#else
+    __global wk2 *const restrict C,
+#endif
 
     const ulong A_row_pitch,
     const ulong B_row_pitch,
@@ -32,7 +38,11 @@ __kernel void gemm(
 #endif
 ) {
     const ulong i = get_global_id(0) << 1;
+#if wk_width == 1
     const ulong j = get_global_id(1) << 1;
+#else
+    const ulong j = get_global_id(1);
+#endif
 
 #if A_TRANS == 0
     const ulong row_A = i*A_row_pitch;
@@ -40,7 +50,11 @@ __kernel void gemm(
 #endif
 
 #if B_TRANS
+#if wk_width == 1
     const ulong row_B = j*B_row_pitch;
+#else
+    const ulong row_B = (j << 1)*B_row_pitch;
+#endif
     const ulong next_row_B = row_B + B_row_pitch;
 #endif
 
@@ -57,9 +71,6 @@ __kernel void gemm(
     #endif
 
 #if com
-    const ulong C_index = i*C_row_pitch + (j << 1);
-    const ulong C_index2 = C_index + C_row_pitch;
-
     #if wk_width == 1
     wk C11_i = 0;
     wk C12_i = 0;
@@ -189,6 +200,9 @@ __kernel void gemm(
         C22 += p1 + m4;
         C22_i += p1_i + m4_i;
     }
+
+    const ulong C_index = i*C_row_pitch + (j << 1);
+    const ulong C_index2 = C_index + C_row_pitch;
 
 #if wk_width == 1
 
@@ -356,9 +370,6 @@ __kernel void gemm(
 #endif
 
 #else
-    const ulong C_index = i*C_row_pitch + j;
-    const ulong C_index2 = C_index + C_row_pitch;
-
     for (ulong k=0; k<cols; k += 2) {
 #if A_TRANS
         const ulong A_index = k*A_row_pitch + i;
@@ -390,27 +401,22 @@ __kernel void gemm(
         const wk B22 = B[B_index2 + 1];
 #endif
 
-        const wk t0 = B22 - B12;
-        const wk t1 = B11 + t0;
-        const wk t2 = A11 - A21;
-        const wk t3 = t2 - A22;
+        const wk s1 = (B12 - B22) * A11;
+        const wk s2 = (B21 - B11) * A22;
+        const wk s3 = (A11 + A12) * B22;
+        const wk s4 = (A21 + A22) * B11;
+        const wk s5 = (A11 + A22) * (B11 + B22);
+        const wk s6 = (A12 - A22) * (B21 + B22);
+        const wk s7 = (A11 - A21) * (B11 + B12);
 
-        const wk m0 = A11*B11;
-        const wk m1 = A12*B21;
-        const wk m2 = A22*(t1 - B21);
-        const wk m3 = t2*t0;
-        const wk m4 = (A21 + A22)*(B12 - B11);
-        const wk m5 = (t3 + A12)*B22;
-        const wk m6 = t3*t1;
-
-        const wk p0 = m0 - m6;
-        const wk p1 = p0 + m3;
-
-        C11 += m0 + m1;
-        C12 += p0 + m4 + m5;
-        C21 += p1 - m2;
-        C22 += p1 + m4;
+        C11 += s5 + s2 - s3 + s6;
+        C12 += s1 + s3;
+        C21 += s2 + s4;
+        C22 += s5 + s1 - s4 -s7;
     }
+
+    const ulong C_index = i*C_row_pitch + j;
+    const ulong C_index2 = C_index + C_row_pitch;
 
 #if wk_width == 1
 
@@ -437,21 +443,35 @@ __kernel void gemm(
 
 #if HAS_ALPHA
 #if HAS_BETA
+    C[C_index] = alpha * (wk2)(sum(C11), sum(C12)) + C[C_index] * beta;
+    C[C_index2] = alpha * (wk2)(sum(C21), sum(C22)) + C[C_index2] * beta;
+    /*
     C[C_index] = alpha*sum(C11) + beta*C[C_index];
     C[C_index + 1] = alpha*sum(C12) + beta*C[C_index + 1];
     C[C_index2] = alpha*sum(C21) + beta*C[C_index2];
     C[C_index2 + 1] = alpha*sum(C22) + beta*C[C_index2 + 1];
+    */
 #else
+    C[C_index] = alpha * (wk2)(sum(C11), sum(C12));
+    C[C_index2] = alpha * (wk2)(sum(C21), sum(C22));
+
+    /*
     C[C_index] = alpha*sum(C11);
     C[C_index + 1] = alpha*sum(C12);
     C[C_index2] = alpha*sum(C21);
     C[C_index2 + 1] = alpha*sum(C22);
+    */
 #endif
 #else
+    C[C_index] = (wk2)(sum(C11), sum(C12));
+    C[C_index2] = (wk2)(sum(C21), sum(C22));
+
+    /*
     C[C_index] = sum(C11);
     C[C_index + 1] = sum(C12);
     C[C_index2] = sum(C21);
     C[C_index2 + 1] = sum(C22);
+    */
 #endif
 
 #endif

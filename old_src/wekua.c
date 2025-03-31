@@ -190,16 +190,16 @@ void wekuaDeviceFromclDevice(cl_device_id dev, wDevice *wdev){
 	clGetDeviceInfo(dev, CL_DEVICE_GLOBAL_MEM_SIZE, 8, &wdev->max_global_size, NULL);
 	clGetDeviceInfo(dev, CL_DEVICE_LOCAL_MEM_TYPE, sizeof(cl_device_local_mem_type), &wdev->local_mem_type, NULL);
 
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, 4, wdev->vector_width, NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR, 4, &wdev->vector_width[1], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT, 4, &wdev->vector_width[2], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT, 4, &wdev->vector_width[3], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT, 4, &wdev->vector_width[4], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT, 4, &wdev->vector_width[5], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG, 4, &wdev->vector_width[6], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG, 4, &wdev->vector_width[7], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT, 4, &wdev->vector_width[8], NULL);
-	clGetDeviceInfo(dev, CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE, 4, &wdev->vector_width[9], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_CHAR, 4, wdev->vector_width, NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_CHAR, 4, &wdev->vector_width[1], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_SHORT, 4, &wdev->vector_width[2], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_SHORT, 4, &wdev->vector_width[3], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_INT, 4, &wdev->vector_width[4], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_INT, 4, &wdev->vector_width[5], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_LONG, 4, &wdev->vector_width[6], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_LONG, 4, &wdev->vector_width[7], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_FLOAT, 4, &wdev->vector_width[8], NULL);
+	clGetDeviceInfo(dev, CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE, 4, &wdev->vector_width[9], NULL);
 
 	clGetDeviceInfo(dev, CL_DEVICE_NAME, 0, NULL, &wdev->nlen);
 	wdev->name = (uint8_t*) malloc(wdev->nlen);

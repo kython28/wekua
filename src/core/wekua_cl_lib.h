@@ -21,6 +21,18 @@ typedef char wks;
 
 #define WKS_IS_UNSIGNED 0
 
+#if wk_width >= 2
+typedef char2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef char4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef char8 wk8;
+#endif
+
 #if wk_width == 1
 typedef char wk;
 #elif wk_width == 2
@@ -44,6 +56,18 @@ typedef uchar uwks;
 typedef uchar wks;
 
 #define WKS_IS_UNSIGNED 1
+
+#if wk_width >= 2
+typedef uchar2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef uchar4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef uchar8 wk8;
+#endif
 
 #if wk_width == 1
 typedef uchar wk;
@@ -69,6 +93,18 @@ typedef short wks;
 
 #define WKS_IS_UNSIGNED 0
 
+#if wk_width >= 2
+typedef short2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef short4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef short8 wk8;
+#endif
+
 #if wk_width == 1
 typedef short wk;
 #elif wk_width == 2
@@ -92,6 +128,18 @@ typedef ushort uwks;
 typedef ushort wks;
 
 #define WKS_IS_UNSIGNED 1
+
+#if wk_width >= 2
+typedef ushort2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef ushort4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef ushort8 wk8;
+#endif
 
 #if wk_width == 1
 typedef ushort wk;
@@ -117,6 +165,18 @@ typedef int wks;
 
 #define WKS_IS_UNSIGNED 0
 
+#if wk_width >= 2
+typedef int2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef int4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef int8 wk8;
+#endif
+
 #if wk_width == 1
 typedef int wk;
 #elif wk_width == 2
@@ -140,6 +200,18 @@ typedef uint uwks;
 typedef uint wks;
 
 #define WKS_IS_UNSIGNED 1
+
+#if wk_width >= 2
+typedef uint2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef uint4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef uint8 wk8;
+#endif
 
 #if wk_width == 1
 typedef uint wk;
@@ -165,6 +237,18 @@ typedef long wks;
 
 #define WKS_IS_UNSIGNED 1
 
+#if wk_width >= 2
+typedef long2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef long4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef long8 wk8;
+#endif
+
 #if wk_width == 1
 typedef long wk;
 #elif wk_width == 2
@@ -189,6 +273,18 @@ typedef ulong wks;
 
 #define WKS_IS_UNSIGNED 1
 
+#if wk_width >= 2
+typedef ulong2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef ulong4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef ulong8 wk8;
+#endif
+
 #if wk_width == 1
 typedef ulong wk;
 #elif wk_width == 2
@@ -206,6 +302,18 @@ typedef ulong16 wk;
 #elif dtype == 8
 
 typedef float wks;
+
+#if wk_width >= 2
+typedef float2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef float4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef float8 wk8;
+#endif
 
 #if wk_width == 1
 typedef float wk;
@@ -225,6 +333,18 @@ typedef float16 wk;
 
 typedef double wks;
 
+#if wk_width >= 2
+typedef double2 wk2;
+#endif
+
+#if wk_width >= 4
+typedef double4 wk4;
+#endif
+
+#if wk_width >= 8
+typedef double8 wk8;
+#endif
+
 #if wk_width == 1
 typedef double wk;
 #elif wk_width == 2
@@ -243,75 +363,24 @@ typedef double16 wk;
 
 #if wk_width > 1
 
-#if dtype < 9 // PoCL doesn't support _cl_dot with float
-
-inline wks __attribute__((overloadable)) dot(wk aa, wk bb){
-	wk cc = aa*bb;
-	wks r = cc[0];
-
-	#if wk_width >= 2
-	r += cc[1];
-	#endif
-
-	#if wk_width >= 4
-	r += cc[2];
-	r += cc[3];
-	#endif
-
-	#if wk_width >= 8
-	r += cc[4];
-	r += cc[5];
-	r += cc[6];
-	r += cc[7];
-	#endif
-
-	#if wk_width == 16
-	r += cc[8];
-	r += cc[9];
-	r += cc[10];
-	r += cc[11];
-	r += cc[12];
-	r += cc[13];
-	r += cc[14];
-	r += cc[15];
-	#endif
-
-	return r;
-}
-
-#endif
-
 inline wks sum(wk a) {
-	wks r = a[0];
-
-	#if wk_width >= 2
-	r += a[1];
-	#endif
-
-	#if wk_width >= 4
-	r += a[2];
-	r += a[3];
-	#endif
-
-	#if wk_width >= 8
-	r += a[4];
-	r += a[5];
-	r += a[6];
-	r += a[7];
-	#endif
-
-	#if wk_width == 16
-	r += a[8];
-	r += a[9];
-	r += a[10];
-	r += a[11];
-	r += a[12];
-	r += a[13];
-	r += a[14];
-	r += a[15];
-	#endif
-
-	return r;
+#if wk_width == 1
+	return a;
+#elif wk_width == 2
+	return a.lo + a.hi;
+#elif wk_width == 4
+    const wk2 temp = a.lo + a.hi;
+    return temp.lo + temp.hi;
+#elif wk_width == 8
+	const wk4 temp = a.lo + a.hi;
+    const wk2 temp2 = temp.lo + temp.hi;
+    return temp2.lo + temp2.hi;
+#elif wk_width == 16
+	const wk8 temp = a.lo + a.hi;
+	const wk4 temp2 = temp.lo + temp.hi;
+    const wk2 temp3 = temp2.lo + temp2.hi;
+    return temp3.lo + temp3.hi;
+#endif
 }
 
 #endif

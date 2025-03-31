@@ -20,13 +20,19 @@ const PreferredType = f32;
 const WekuaCPreferredType = utils.wekua_c.WEKUA_DTYPE_FLOAT;
 
 fn run_openblas_test(
-    _: std.mem.Allocator,
+    allocator: std.mem.Allocator,
     size: usize,
     alphas: []PreferredType,
-    x: []PreferredType,
-    y: []PreferredType,
+    buf1: []PreferredType,
+    buf2: []PreferredType,
 ) !f64 {
     const axpy_func = if (PreferredType == f32) utils.openblas.cblas_saxpy else utils.openblas.cblas_daxpy;
+
+    const x = try allocator.dupe(PreferredType, buf1);
+    defer allocator.free(x);
+
+    const y = try allocator.dupe(PreferredType, buf2);
+    defer allocator.free(y);
 
     var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();

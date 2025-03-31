@@ -2,9 +2,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const axpy = @import("axpy.zig");
+const gemm = @import("gemm.zig");
 
 const modules = .{
-    axpy,
+    axpy, gemm
 };
 
 pub fn main() !void {

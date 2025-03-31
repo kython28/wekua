@@ -4,6 +4,7 @@ const cl = @import("opencl");
 const core = @import("../core/main.zig");
 const CommandQueue = core.CommandQueue;
 const KernelsSet = core.KernelsSet;
+const Context = core.Context;
 
 const w_tensor = @import("../tensor/main.zig");
 const Tensor = w_tensor.Tensor;
@@ -151,7 +152,11 @@ pub fn perform(
     const real_beta_scalar = beta orelse 0;
     const imag_beta_scalar = ibeta orelse 0;
 
-    const vectors_enabled = a.vectors_enabled and b.vectors_enabled and op_a == .no_transpose and op_b == .transpose;
+    const vectors_enabled = (
+        a.vectors_enabled and b.vectors_enabled
+        and op_a == .no_transpose and op_b == .transpose
+        and command_queue.vector_widths[Context.getTypeId(T)] > 1
+    );
     const is_complex = a.is_complex;
 
     const kernel = try getKernel(
@@ -199,6 +204,7 @@ pub fn perform(
         cols *= (1 + @as(u64, @intFromBool(is_complex)));
     }
 
+    const c_row_pitch = c.row_pitch / (1 + @as(u64, @intFromBool(vectors_enabled)));
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
@@ -209,7 +215,7 @@ pub fn perform(
 
     try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&a_row_pitch));
     try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&b_row_pitch));
-    try set_arg(kernel, 5, @sizeOf(u64), @ptrCast(&c.row_pitch));
+    try set_arg(kernel, 5, @sizeOf(u64), @ptrCast(&c_row_pitch));
 
     try set_arg(kernel, 6, @sizeOf(u64), @ptrCast(&cols));
 

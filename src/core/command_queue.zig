@@ -50,16 +50,16 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
     );
 
     const vector_types = .{
-        device_info_enum.preferred_vector_width_char,
-        device_info_enum.preferred_vector_width_char,
-        device_info_enum.preferred_vector_width_short,
-        device_info_enum.preferred_vector_width_short,
-        device_info_enum.preferred_vector_width_int,
-        device_info_enum.preferred_vector_width_int,
-        device_info_enum.preferred_vector_width_long,
-        device_info_enum.preferred_vector_width_long,
-        device_info_enum.preferred_vector_width_float,
-        device_info_enum.preferred_vector_width_double,
+        device_info_enum.native_vector_width_char,
+        device_info_enum.native_vector_width_char,
+        device_info_enum.native_vector_width_short,
+        device_info_enum.native_vector_width_short,
+        device_info_enum.native_vector_width_int,
+        device_info_enum.native_vector_width_int,
+        device_info_enum.native_vector_width_long,
+        device_info_enum.native_vector_width_long,
+        device_info_enum.native_vector_width_float,
+        device_info_enum.native_vector_width_double,
     };
 
     inline for (&self.vector_widths, vector_types) |*vw, vt| {
