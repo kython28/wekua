@@ -17,6 +17,7 @@ pub const UserCallbackArray = std.ArrayList(UserCallback);
 
 pub const Operation = enum {
     write,
+    partial_write,
     read,
     none,
 };
@@ -24,7 +25,7 @@ pub const Operation = enum {
 pub const AppendResult = enum { full, success_and_full, success };
 
 const MaxEventsPerSet = switch (builtin.mode) {
-    .Debug => 8,
+    .Debug => 32,
     .ReleaseFast, .ReleaseSafe => 256,
     .ReleaseSmall => 64,
 };
@@ -92,6 +93,7 @@ pub const EventsSet = struct {
     pub fn appendNewEvent(
         self: *EventsSet,
         comptime T: type,
+        add_destructor_callback: bool,
         new_ops: []const Operation,
         tensors: []const *Tensor(T),
         prev_cl_events: ?[]const cl.event.cl_event,
@@ -105,7 +107,7 @@ pub const EventsSet = struct {
             @panic("`new_ops` and `tensors` arrays have different lenghts");
         }
 
-        var ref_counter: usize = 0;
+        var ref_counter: usize = @intFromBool(!add_destructor_callback);
         var events_added: usize = 0;
         errdefer {
             for (events_added..ref_counter) |_| {
@@ -130,8 +132,10 @@ pub const EventsSet = struct {
             events_added += 1;
         }
 
-        try event.appendCallback(.{ .func = multipleCompletionEventCallback, .data = self });
-        cl.event.release(new_cl_event);
+        if (add_destructor_callback) {
+            try event.appendCallback(.{ .func = multipleCompletionEventCallback, .data = self });
+            cl.event.release(new_cl_event);
+        }
     }
 
     pub inline fn release(self: *EventsSet) void {
@@ -207,7 +211,7 @@ const Event = struct {
 
     pub inline fn checkFull(operation: Operation, events_count: usize) bool {
         return switch (operation) {
-            .read => (events_count == MaxEventsPerSet),
+            .read, .partial_write => (events_count == MaxEventsPerSet),
             .write => (events_count == 1),
             .none => false,
         };
@@ -419,7 +423,7 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
     const event: *Event = &batch.events[events_num];
     switch (event.operation) {
         .read => switch (new_op) {
-            .write => {
+            .write, .partial_write => {
                 batch.events_num += 1;
                 return event.toSlice();
             },
@@ -427,6 +431,10 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
             else => unreachable,
         },
         .write => unreachable,
+        .partial_write => {
+            batch.events_num += 1;
+            return event.toSlice();
+        },
         .none => {},
     }
 

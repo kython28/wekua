@@ -153,8 +153,10 @@ pub fn perform(
     const imag_beta_scalar = ibeta orelse 0;
 
     const vectors_enabled = (
-        a.flags.vectors_enabled and b.flags.vectors_enabled
-        and op_a == .no_transpose and op_b == .transpose
+        a.flags.vectors_enabled
+        and b.flags.vectors_enabled
+        and op_a == .no_transpose
+        and op_b == .transpose
         and command_queue.vector_widths[Context.getTypeId(T)] > 1
     );
     const is_complex = a.flags.is_complex;
@@ -175,7 +177,7 @@ pub fn perform(
 
     const a_prev_events = a.events_manager.getPrevEvents(.read);
     const b_prev_events = b.events_manager.getPrevEvents(.read);
-    const c_prev_events = c.events_manager.getPrevEvents(.write);
+    const c_prev_events = c.events_manager.getPrevEvents(.partial_write);
 
     const events_set = try w_tensor.EventManager.EventsSet.init(
         allocator,
@@ -195,7 +197,7 @@ pub fn perform(
         b_row_pitch = b.memory_layout.row_pitch_for_vectors;
 
         cols = a_row_pitch;
-    }else{
+    } else {
         a_row_pitch = a.memory_layout.row_pitch;
         b_row_pitch = b.memory_layout.row_pitch;
 
@@ -209,43 +211,84 @@ pub fn perform(
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
 
-    try set_arg(kernel, 0, cl_mem_size, @ptrCast(&a.buffer));
-    try set_arg(kernel, 1, cl_mem_size, @ptrCast(&b.buffer));
-    try set_arg(kernel, 2, cl_mem_size, @ptrCast(&c.buffer));
+    const a_buffer = &a.buffer;
+    const b_buffer = &b.buffer;
+    const c_buffer = &c.buffer;
 
-    try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&a_row_pitch));
-    try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&b_row_pitch));
-    try set_arg(kernel, 5, @sizeOf(u64), @ptrCast(&c_row_pitch));
+    var offset: [2]u64 = .{ 0, 0 };
 
-    try set_arg(kernel, 6, @sizeOf(u64), @ptrCast(&cols));
+    const wekua_id = command_queue.wekua_id;
+    const global_work_items_gemm: []const u64 = &c.work_configuration.global_work_items_gemm[wekua_id];
+    const local_work_items_gemm: []const u64 = &c.work_configuration.local_work_items_gemm[wekua_id];
 
-    if (has_alpha) {
-        try set_arg(kernel, 7, @sizeOf(T), @ptrCast(&real_alpha_scalar));
-        var arg_index: u32 = 8;
-        if (has_beta) {
-            try set_arg(kernel, arg_index, @sizeOf(T), @ptrCast(&real_beta_scalar));
-            arg_index += 1;
-        }
+    const offset_y_inc = global_work_items_gemm[0];
+    const offset_x_inc = global_work_items_gemm[1];
 
-        if (is_complex) {
-            try set_arg(kernel, arg_index, @sizeOf(T), @ptrCast(&imag_alpha_scalar));
-            if (has_beta) {
-                try set_arg(kernel, arg_index + 1, @sizeOf(T), @ptrCast(&imag_beta_scalar));
+    // std.log.warn("gemm: offset_x_inc: {d}, offset_y_inc: {d}", .{ offset_x_inc, offset_y_inc });
+    // std.log.warn("width: {d}, height: {d}", .{ c.work_configuration.gemm_blocks_width[wekua_id], c.work_configuration.gemm_blocks_height[wekua_id] });
+    // std.log.warn("GI: {any} | LI: {any}", .{ global_work_items_gemm, local_work_items_gemm });
+    // std.log.warn("Shape: {any}", .{ c.dimensions.shape });
+
+
+    const blocks_height = c.work_configuration.gemm_blocks_height[wekua_id];
+    const blocks_width = c.work_configuration.gemm_blocks_width[wekua_id];
+
+    const total_kernel_events: usize = blocks_width * blocks_height;
+    var counter: usize = 0;
+
+    for (0..blocks_height) |_| {
+        offset[1] = 0;
+        for (0..blocks_width) |_| {
+            counter += 1;
+
+            try set_arg(kernel, 0, cl_mem_size, @ptrCast(a_buffer));
+            try set_arg(kernel, 1, cl_mem_size, @ptrCast(b_buffer));
+            try set_arg(kernel, 2, cl_mem_size, @ptrCast(c_buffer));
+
+            try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&a_row_pitch));
+            try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&b_row_pitch));
+            try set_arg(kernel, 5, @sizeOf(u64), @ptrCast(&c_row_pitch));
+
+            try set_arg(kernel, 6, @sizeOf(u64), @ptrCast(&cols));
+
+            if (has_alpha) {
+                try set_arg(kernel, 7, @sizeOf(T), @ptrCast(&real_alpha_scalar));
+                var arg_index: u32 = 8;
+                if (has_beta) {
+                    try set_arg(kernel, arg_index, @sizeOf(T), @ptrCast(&real_beta_scalar));
+                    arg_index += 1;
+                }
+
+                if (is_complex) {
+                    try set_arg(kernel, arg_index, @sizeOf(T), @ptrCast(&imag_alpha_scalar));
+                    if (has_beta) {
+                        try set_arg(kernel, arg_index + 1, @sizeOf(T), @ptrCast(&imag_beta_scalar));
+                    }
+                }
             }
+
+            var new_event: cl.event.cl_event = undefined;
+            try cl.kernel.enqueue_nd_range(
+                cmd,
+                kernel,
+                &offset,
+                global_work_items_gemm,
+                local_work_items_gemm,
+                prev_events,
+                &new_event,
+            );
+            errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
+
+            _ = try events_set.appendNewEvent(
+                T,
+                (counter == total_kernel_events),
+                &.{ .read, .read, .partial_write },
+                &.{ a, b, c },
+                prev_events,
+                new_event,
+            );
+            offset[1] += offset_x_inc;
         }
+        offset[0] += offset_y_inc;
     }
-
-    var new_event: cl.event.cl_event = undefined;
-    try cl.kernel.enqueue_nd_range(
-        cmd,
-        kernel,
-        null,
-        &c.work_configuration.global_work_items_gemm,
-        &c.work_configuration.local_work_items_gemm[command_queue.wekua_id],
-        prev_events,
-        &new_event,
-    );
-    errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
-
-    _ = try events_set.appendNewEvent(T, &.{ .read, .read, .write }, &.{ a, b, c }, prev_events, new_event);
 }

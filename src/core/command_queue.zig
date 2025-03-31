@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const cl = @import("opencl");
 
@@ -20,6 +21,7 @@ local_mem_type: cl.device.cl_device_local_mem_type,
 compute_units: u32,
 vector_widths: [10]u32,
 max_work_group_size: u64,
+max_concurrent_kernels: u32,
 wekua_id: usize,
 
 fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl.device.cl_device_id) !void {
@@ -75,6 +77,46 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
         &self.max_work_group_size,
         null,
     );
+
+    var cache_size: u64 = undefined;
+    try cl.device.get_info(device, device_info_enum.global_mem_cache_size, @sizeOf(u64), &cache_size, null);
+
+    var device_memory_size: u64 = undefined;
+    try cl.device.get_info(device, device_info_enum.global_mem_size, @sizeOf(u64), &device_memory_size, null);
+
+    var concurrency_factor: f32 = switch (self.device_type) {
+        .cpu => 1.0,
+        .gpu => 2.0,
+        .accelerator => 1.5,
+        else => 0.75,
+    };
+
+    if (cache_size > 8 * 1024 * 1024) {
+        concurrency_factor *= 1.5;
+    }else if (cache_size > 4 * 1024 * 1024) {
+        concurrency_factor *= 1.25;
+    }else{
+        concurrency_factor *= 0.75;
+    }
+
+    if (device_memory_size > 8 * 1024 * 1024 * 1024) {
+        concurrency_factor *= 1.5;
+    }else if (device_memory_size > 4 * 1024 * 1024 * 1024) {
+        concurrency_factor *= 1.25;
+    }
+
+    concurrency_factor = @ceil( @sqrt(concurrency_factor * @as(f32, @floatFromInt(self.compute_units))) );
+    concurrency_factor *= concurrency_factor;
+
+    var max_concurrent_kernels: u32 = 1;
+    while (std.math.pow(f32, @floatFromInt(max_concurrent_kernels), 2.0) <= concurrency_factor) {
+        max_concurrent_kernels *= 2;
+    }
+
+    self.max_concurrent_kernels = @min(16, switch (builtin.mode) {
+        .Debug => 32,
+        else => std.math.maxInt(u32),
+    });
 }
 
 pub fn init(

@@ -44,7 +44,6 @@ const Dimensions = struct {
 const WorkConfiguration = struct {
     global_work_items: [3]u64,
     global_work_items_without_vectors: [3]u64,
-    global_work_items_gemm: [2]u64,
 
     local_work_items_1d: []u64,
     local_work_items_for_vectors_1d: []u64,
@@ -52,6 +51,9 @@ const WorkConfiguration = struct {
     local_work_items: [][3]u64,
     local_work_items_without_vectors: [][3]u64,
 
+    gemm_blocks_width: []u64,
+    gemm_blocks_height: []u64,
+    global_work_items_gemm: [][2]u64,
     local_work_items_gemm: [][2]u64,
 };
 
@@ -244,29 +246,72 @@ pub fn Tensor(comptime T: type) type {
             const lobal_work_items_for_vectors_1d = try arena_allocator.alloc(u64, command_queues.len);
             const local_work_items = try arena_allocator.alloc([3]u64, command_queues.len);
             const local_work_items_without_vectors = try arena_allocator.alloc([3]u64, command_queues.len);
-            const local_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
 
             const work_configuration = &tensor.work_configuration;
             work_configuration.local_work_items_1d = local_work_items_1d;
             work_configuration.local_work_items_for_vectors_1d = lobal_work_items_for_vectors_1d;
             work_configuration.local_work_items = local_work_items;
             work_configuration.local_work_items_without_vectors = local_work_items_without_vectors;
-            work_configuration.local_work_items_gemm = local_work_items_gemm;
 
             const global_work_items: []u64 = &work_configuration.global_work_items;
             const global_work_items_without_vectors: []u64 = &work_configuration.global_work_items_without_vectors;
-            const global_work_items_gemm: []u64 = &work_configuration.global_work_items_gemm;
 
             global_work_items[0] = depth;
             global_work_items_without_vectors[0] = depth;
-            global_work_items_gemm[0] = padded_penultimate_size / 2;
 
             global_work_items[1] = penultimate_size;
             global_work_items_without_vectors[1] = penultimate_size;
-            global_work_items_gemm[1] = (last_size + (last_size % 2)) / 2;
 
             global_work_items_without_vectors[2] = last_size;
             global_work_items[2] = vl_shape[last_element_index];
+
+            const gemm_blocks_width = try arena_allocator.alloc(u64, command_queues.len);
+            const gemm_blocks_height = try arena_allocator.alloc(u64, command_queues.len);
+            const global_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
+            const local_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
+
+            work_configuration.local_work_items_gemm = local_work_items_gemm;
+            work_configuration.global_work_items_gemm = global_work_items_gemm;
+            work_configuration.gemm_blocks_width = gemm_blocks_width;
+            work_configuration.gemm_blocks_height = gemm_blocks_height;
+
+            const gemm_y_len = padded_penultimate_size / 2;
+            const gemm_x_len = (last_size + (last_size % 2)) / 2;
+
+            for (
+                command_queues,
+                gemm_blocks_width,
+                gemm_blocks_height,
+                global_work_items_gemm,
+                local_work_items_gemm
+            ) |cmd, *gw, *gh, *gw_gemm, *lw_gemm| {
+                var width: u64 = 1;
+                var height: u64 = 1;
+
+                var gi_y = gemm_y_len;
+                var gi_x = gemm_x_len;
+
+                const max_concurrent = std.math.sqrt(cmd.max_concurrent_kernels);
+                while (width < max_concurrent and ((gi_x & 1) == 0)) {
+                    gi_x = (gi_x >> 1);
+                    width = (gemm_x_len / gi_x);
+                }
+
+
+                while (height < max_concurrent and ((gi_y & 1) == 0)) {
+                    gi_y = (gi_y >> 1);
+                    height = (gemm_y_len / gi_y);
+                }
+
+
+                gw.* = width;
+                gh.* = height;
+
+                gw_gemm.*[0] = gi_y;
+                gw_gemm.*[1] = gi_x;
+
+                utils.calculateWorkItems(gw_gemm, lw_gemm, cmd.max_work_group_size);
+            }
 
             for (
                 command_queues,
@@ -274,8 +319,7 @@ pub fn Tensor(comptime T: type) type {
                 lobal_work_items_for_vectors_1d,
                 local_work_items,
                 local_work_items_without_vectors,
-                local_work_items_gemm,
-            ) |cmd, *wa, *wv, *wmv, *wm, *wm_gemm| {
+            ) |cmd, *wa, *wv, *wmv, *wm| {
                 utils.calculateWorkItems(
                     @as([*]const u64, @ptrCast(&number_of_elements))[0..1],
                     @as([*]u64, @ptrCast(wa))[0..1],
@@ -290,7 +334,6 @@ pub fn Tensor(comptime T: type) type {
 
                 utils.calculateWorkItems(global_work_items, wmv, cmd.max_work_group_size);
                 utils.calculateWorkItems(global_work_items_without_vectors, wm, cmd.max_work_group_size);
-                utils.calculateWorkItems(global_work_items_gemm, wm_gemm, cmd.max_work_group_size);
             }
 
             const size = number_of_elements * @sizeOf(T);

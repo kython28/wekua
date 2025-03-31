@@ -4,8 +4,8 @@
 
 // Winograd-Waksman implementation
 __kernel void gemm(
-    __global const wk *const restrict A,
-    __global const wk *const restrict B,
+    __constant const wk *const restrict A,
+    __constant const wk *const restrict B,
 
 #if wk_width == 1
     __global wks *const restrict C,
@@ -18,7 +18,6 @@ __kernel void gemm(
     const ulong C_row_pitch,
 
     const ulong cols
-
 
 #if HAS_ALPHA
     , const wks alpha
@@ -412,7 +411,7 @@ __kernel void gemm(
         C11 += s5 + s2 - s3 + s6;
         C12 += s1 + s3;
         C21 += s2 + s4;
-        C22 += s5 + s1 - s4 -s7;
+        C22 += s5 + s1 - s4 - s7;
     }
 
     const ulong C_index = i*C_row_pitch + j;

@@ -10,7 +10,7 @@ pub const starting_point: u64 = 2;
 
 const niterations = switch (builtin.mode) {
     .Debug => 1,
-    else => 2,
+    else => 1,
 };
 
 const PreferredType = f32;
@@ -71,7 +71,7 @@ fn run_openblas_test(
         );
     }
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
+    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, niterations))) / 1000.0;
 
     return total_diff;
 }
@@ -139,7 +139,7 @@ fn run_old_wekua_test(
         if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
     }
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
+    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, niterations))) / 1000.0;
 
     return total_diff;
 }
@@ -257,7 +257,7 @@ fn run_wekua_test(
     // try c.wait();
 
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
+    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, niterations))) / 1000.0;
 
     return total_diff;
 }
