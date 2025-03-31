@@ -117,7 +117,7 @@ fn axpyWithVectors(
         command_queue,
         "axpy",
         true,
-        x.is_complex,
+        x.flags.is_complex,
         has_alpha,
         substract
     );
@@ -141,11 +141,11 @@ fn axpyWithVectors(
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
-    try set_arg(kernel, 2, @sizeOf(u64), &x.row_pitch_for_vectors);
-    try set_arg(kernel, 3, @sizeOf(u64), &x.slice_pitch_for_vectors);
+    try set_arg(kernel, 2, @sizeOf(u64), &x.memory_layout.row_pitch_for_vectors);
+    try set_arg(kernel, 3, @sizeOf(u64), &x.memory_layout.slice_pitch_for_vectors);
     if (has_alpha) {
         try set_arg(kernel, 4, @sizeOf(T), &real_scalar);
-        if (x.is_complex) {
+        if (x.flags.is_complex) {
             try set_arg(kernel, 5, @sizeOf(T), &imag_scalar);
         }
     }
@@ -155,8 +155,8 @@ fn axpyWithVectors(
         cmd,
         kernel,
         null,
-        &x.global_work_items,
-        &x.local_work_items[command_queue.wekua_id],
+        &x.work_configuration.global_work_items,
+        &x.work_configuration.local_work_items[command_queue.wekua_id],
         prev_events,
         &new_event,
     );
@@ -199,7 +199,7 @@ fn axpyWithoutVectors(
         command_queue,
         "axpy2",
         false,
-        x.is_complex,
+        x.flags.is_complex,
         has_alpha,
         substract
     );
@@ -223,14 +223,14 @@ fn axpyWithoutVectors(
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
-    try set_arg(kernel, 2, @sizeOf(u64), &x.row_pitch);
-    try set_arg(kernel, 3, @sizeOf(u64), &x.slice_pitch);
-    try set_arg(kernel, 4, @sizeOf(u64), &y.row_pitch);
-    try set_arg(kernel, 5, @sizeOf(u64), &y.slice_pitch);
+    try set_arg(kernel, 2, @sizeOf(u64), &x.memory_layout.row_pitch);
+    try set_arg(kernel, 3, @sizeOf(u64), &x.memory_layout.slice_pitch);
+    try set_arg(kernel, 4, @sizeOf(u64), &y.memory_layout.row_pitch);
+    try set_arg(kernel, 5, @sizeOf(u64), &y.memory_layout.slice_pitch);
 
     if (has_alpha) {
         try set_arg(kernel, 6, @sizeOf(T), &real_scalar);
-        if (x.is_complex) {
+        if (x.flags.is_complex) {
             try set_arg(kernel, 7, @sizeOf(T), &imag_scalar);
         }
     }
@@ -240,8 +240,8 @@ fn axpyWithoutVectors(
         cmd,
         kernel,
         null,
-        &x.global_work_items_without_vectors,
-        &x.local_work_items_without_vectors[command_queue.wekua_id],
+        &x.work_configuration.global_work_items_without_vectors,
+        &x.work_configuration.local_work_items_without_vectors[command_queue.wekua_id],
         prev_events,
         &new_event,
     );
@@ -261,7 +261,7 @@ pub inline fn axpy(
     try w_tensor.helpers.eqlTensorsDimensions(T, x, y);
     try w_tensor.helpers.eqlNumberSpace(T, x, y);
 
-    if (x.vectors_enabled and y.vectors_enabled) {
+    if (x.flags.vectors_enabled and y.flags.vectors_enabled) {
         try axpyWithVectors(T, command_queue, x, alpha, ialpha, y);
     } else {
         try axpyWithoutVectors(T, command_queue, x, alpha, ialpha, y);

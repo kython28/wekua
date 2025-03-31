@@ -32,7 +32,7 @@ fn create_check_and_release(comptime T: type, ctx: *wekua.core.Context, config: 
         false,
         @intFromEnum(cl.buffer.enums.map_flags.read),
         0,
-        tensor.size,
+        tensor.memory_layout.size,
         events_to_wait,
         &event_to_map,
     );

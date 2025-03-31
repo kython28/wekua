@@ -49,11 +49,11 @@ pub fn releaseEvent(event: cl.event.cl_event, err: anyerror) void {
 }
 
 pub inline fn eqlNumberSpace(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
-    if (tensor_a.is_complex != tensor_b.is_complex) return w_tensor.Errors.TensorDoesNotSupportComplexNumbers;
+    if (tensor_a.flags.is_complex != tensor_b.flags.is_complex) return w_tensor.Errors.TensorDoesNotSupportComplexNumbers;
 }
 
 pub inline fn eqlTensorsDimensions(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
-    if (!std.mem.eql(u64, tensor_a.shape, tensor_b.shape)) return w_tensor.Errors.UnqualTensorsShape;
+    if (!std.mem.eql(u64, tensor_a.dimensions.shape, tensor_b.dimensions.shape)) return w_tensor.Errors.UnqualTensorsShape;
 }
 
 // pub inline fn eql_tensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {

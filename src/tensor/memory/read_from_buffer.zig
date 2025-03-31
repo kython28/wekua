@@ -15,14 +15,14 @@ pub fn readFromBuffer(
     command_queue: *const CommandQueue,
     buffer: []const T,
 ) !void {
-    if (buffer.len != tensor.number_of_elements_without_padding) {
+    if (buffer.len != tensor.dimensions.number_of_elements_without_padding) {
         return w_tensor.Errors.InvalidBuffer;
     }
 
-    const tensor_shape = tensor.shape;
+    const tensor_shape = tensor.dimensions.shape;
     const ndim = tensor_shape.len;
     const width: usize = (
-        tensor_shape[ndim - 1] * (1 + @as(u64, @intFromBool(tensor.is_complex)))
+        tensor_shape[ndim - 1] * (1 + @as(u64, @intFromBool(tensor.flags.is_complex)))
     ) * @sizeOf(T);
     const height: usize = if (ndim >= 2) tensor_shape[ndim - 2] else 1;
 
@@ -34,8 +34,8 @@ pub fn readFromBuffer(
     const buff_origin: [3]usize = .{ 0, 0, 0 };
     const region: [3]usize = .{ width, height, depth };
 
-    const buf_row_pitch = tensor.row_pitch * @sizeOf(T);
-    const buf_slice_pitch = tensor.slice_pitch * @sizeOf(T);
+    const buf_row_pitch = tensor.memory_layout.row_pitch * @sizeOf(T);
+    const buf_slice_pitch = tensor.memory_layout.slice_pitch * @sizeOf(T);
 
     const host_row_pitch = width;
     const host_slice_pitch = height * host_row_pitch;

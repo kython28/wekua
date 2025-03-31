@@ -38,8 +38,8 @@ pub fn fill(
     const global_seed = seed orelse @as(u64, @bitCast(std.time.timestamp()));
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
-    try set_arg(kernel, 1, @sizeOf(u64), @ptrCast(&tensor.row_pitch));
-    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&tensor.slice_pitch));
+    try set_arg(kernel, 1, @sizeOf(u64), @ptrCast(&tensor.memory_layout.row_pitch));
+    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&tensor.memory_layout.slice_pitch));
     try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&global_seed));
 
     // TODO: Adapt code to use views
@@ -48,8 +48,8 @@ pub fn fill(
         cmd,
         kernel,
         null,
-        &tensor.global_work_items_without_vectors,
-        &tensor.local_work_items_without_vectors[command_queue.wekua_id],
+        &tensor.work_configuration.global_work_items_without_vectors,
+        &tensor.work_configuration.local_work_items_without_vectors[command_queue.wekua_id],
         prev_events,
         &new_event,
     );

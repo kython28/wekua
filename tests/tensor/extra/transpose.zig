@@ -47,10 +47,10 @@ fn test_transpose(
 
     try wekua.tensor.transpose(T, w_cmd, tensor2, tensor, dim0, dim1);
 
-    const numbers1: []T = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const numbers1: []T = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers1);
 
-    const numbers2: []T = try allocator.alloc(T, tensor2.number_of_elements_without_padding);
+    const numbers2: []T = try allocator.alloc(T, tensor2.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers2);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);
@@ -58,16 +58,16 @@ fn test_transpose(
 
     var multi_index: [4]u64 = undefined;
     const factor: u64 = (1 + @as(usize, @intFromBool(is_complex)));
-    const number_of_elements: usize = tensor.number_of_elements_without_padding / factor;
+    const number_of_elements: usize = tensor.dimensions.number_of_elements_without_padding / factor;
     for (0..number_of_elements) |t1i| {
-        wekua.utils.unravelIndex(t1i * factor, tensor.shape, null, &multi_index, is_complex);
+        wekua.utils.unravelIndex(t1i * factor, tensor.dimensions.shape, null, &multi_index, is_complex);
 
         const l_index = multi_index[dim0];
         multi_index[dim0] = multi_index[dim1];
         multi_index[dim1] = l_index;
         const t2i = wekua.utils.ravelMultiIndex(
             &multi_index,
-            tensor2.shape,
+            tensor2.dimensions.shape,
             null,
             is_complex,
         );

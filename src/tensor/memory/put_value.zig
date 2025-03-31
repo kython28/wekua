@@ -15,9 +15,9 @@ pub fn putValue(
     real_scalar: ?T,
     imag_scalar: ?T,
 ) !void {
-    const is_complex = tensor.is_complex;
+    const is_complex = tensor.flags.is_complex;
 
-    if (coor.len != tensor.shape.len) {
+    if (coor.len != tensor.dimensions.shape.len) {
         return w_tensor.Errors.InvalidCoordinates;
     } else if (real_scalar == null and imag_scalar == null) {
         return w_tensor.Errors.InvalidValue;
@@ -32,7 +32,7 @@ pub fn putValue(
     buf[1] = imag_scalar orelse 0;
 
     var offset: usize = 0;
-    for (tensor.pitches, tensor.shape, coor) |p, ds, c| {
+    for (tensor.dimensions.pitches, tensor.dimensions.shape, coor) |p, ds, c| {
         if (c >= ds) return w_tensor.Errors.InvalidCoordinates;
 
         offset += c * p;

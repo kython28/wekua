@@ -309,7 +309,7 @@ pub fn getClNoVectorKernel(
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.cl_kernel {
-    const is_complex = tensor.is_complex;
+    const is_complex = tensor.flags.is_complex;
 
     const type_index: usize = core.getTypeId(T);
     const kernel_index = @intFromBool(is_complex) * core.SupportedTypes.len + type_index;

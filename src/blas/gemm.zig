@@ -87,9 +87,9 @@ inline fn validateTensors(
     op_a: Operation,
     op_b: Operation,
 ) !void {
-    const a_shape = a.shape;
-    const b_shape = b.shape;
-    const c_shape = c.shape;
+    const a_shape = a.dimensions.shape;
+    const b_shape = b.dimensions.shape;
+    const c_shape = c.dimensions.shape;
 
     if (c_shape.len != 2 or a_shape.len != 2 or b_shape.len != 2) {
         return w_tensor.Errors.InvalidValue;
@@ -153,11 +153,11 @@ pub fn perform(
     const imag_beta_scalar = ibeta orelse 0;
 
     const vectors_enabled = (
-        a.vectors_enabled and b.vectors_enabled
+        a.flags.vectors_enabled and b.flags.vectors_enabled
         and op_a == .no_transpose and op_b == .transpose
         and command_queue.vector_widths[Context.getTypeId(T)] > 1
     );
-    const is_complex = a.is_complex;
+    const is_complex = a.flags.is_complex;
 
     const kernel = try getKernel(
         T,
@@ -191,20 +191,20 @@ pub fn perform(
     var cols: u64 = undefined;
 
     if (vectors_enabled) {
-        a_row_pitch = a.row_pitch_for_vectors;
-        b_row_pitch = b.row_pitch_for_vectors;
+        a_row_pitch = a.memory_layout.row_pitch_for_vectors;
+        b_row_pitch = b.memory_layout.row_pitch_for_vectors;
 
         cols = a_row_pitch;
     }else{
-        a_row_pitch = a.row_pitch;
-        b_row_pitch = b.row_pitch;
+        a_row_pitch = a.memory_layout.row_pitch;
+        b_row_pitch = b.memory_layout.row_pitch;
 
-        cols = a.shape[1 - @intFromEnum(op_a)];
+        cols = a.dimensions.shape[1 - @intFromEnum(op_a)];
         cols += cols % 2;
         cols *= (1 + @as(u64, @intFromBool(is_complex)));
     }
 
-    const c_row_pitch = c.row_pitch / (1 + @as(u64, @intFromBool(vectors_enabled)));
+    const c_row_pitch = c.memory_layout.row_pitch / (1 + @as(u64, @intFromBool(vectors_enabled)));
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
@@ -240,8 +240,8 @@ pub fn perform(
         cmd,
         kernel,
         null,
-        &c.global_work_items_gemm,
-        &c.local_work_items_gemm[command_queue.wekua_id],
+        &c.work_configuration.global_work_items_gemm,
+        &c.work_configuration.local_work_items_gemm[command_queue.wekua_id],
         prev_events,
         &new_event,
     );

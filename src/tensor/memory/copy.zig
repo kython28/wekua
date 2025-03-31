@@ -14,10 +14,10 @@ fn copy_tensor_with_different_row_pitch(
     src: *Tensor(T),
     dst: *Tensor(T),
 ) !void {
-    const tensor_shape = src.shape;
+    const tensor_shape = src.dimensions.shape;
     const ndim = tensor_shape.len;
     const width: usize = (
-        tensor_shape[ndim - 1] * (1 + @as(u64, @intFromBool(src.is_complex)))
+        tensor_shape[ndim - 1] * (1 + @as(u64, @intFromBool(src.flags.is_complex)))
     ) * @sizeOf(T);
     const height: usize = if (ndim >= 2) tensor_shape[ndim - 2] else 1;
 
@@ -29,11 +29,11 @@ fn copy_tensor_with_different_row_pitch(
     const buff_origin: [3]usize = .{ 0, 0, 0 };
     const region: [3]usize = .{ width, height, depth };
 
-    const src_row_pitch = src.row_pitch * @sizeOf(T);
-    const src_slice_pitch = src.slice_pitch * @sizeOf(T);
+    const src_row_pitch = src.memory_layout.row_pitch * @sizeOf(T);
+    const src_slice_pitch = src.memory_layout.slice_pitch * @sizeOf(T);
 
-    const dst_row_pitch = dst.row_pitch * @sizeOf(T);
-    const dst_slice_pitch = dst.slice_pitch * @sizeOf(T);
+    const dst_row_pitch = dst.memory_layout.row_pitch * @sizeOf(T);
+    const dst_slice_pitch = dst.memory_layout.slice_pitch * @sizeOf(T);
 
     const src_prev_events = src.events_manager.getPrevEvents(.read);
     const dst_prev_events = dst.events_manager.getPrevEvents(.write);
@@ -85,7 +85,7 @@ fn copy_tensor_with_same_row_pitch(
     errdefer events_set.release();
     const prev_events = events_set.getPrevEvents();
 
-    const size = src.size;
+    const size = src.memory_layout.size;
     var new_event: cl.event.cl_event = undefined;
     try cl.buffer.copy(
         command_queue.cmd,
@@ -106,7 +106,7 @@ pub fn copy(comptime T: type, command_queue: *const CommandQueue, src: *Tensor(T
     try helpers.eqlTensorsDimensions(T, src, dst);
     try helpers.eqlNumberSpace(T, src, dst);
 
-    if (src.row_pitch == dst.row_pitch) {
+    if (src.memory_layout.row_pitch == dst.memory_layout.row_pitch) {
         try copy_tensor_with_same_row_pitch(T, command_queue, src, dst);
     } else {
         try copy_tensor_with_different_row_pitch(T, command_queue, src, dst);

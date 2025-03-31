@@ -11,13 +11,13 @@ fn check_elements(
     expect_value_real: T,
     expect_value_imag: T,
 ) !void {
-    const numbers1 = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const numbers1 = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers1);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);
 
-    if (tensor.is_complex) {
-        const n_elements = tensor.number_of_elements_without_padding / 2;
+    if (tensor.flags.is_complex) {
+        const n_elements = tensor.dimensions.number_of_elements_without_padding / 2;
         for (0..n_elements) |i| {
             switch (@typeInfo(T)) {
                 .int => {

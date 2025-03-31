@@ -55,8 +55,8 @@ pub fn toReal(
     dom: bool,
 ) !void {
     try helpers.eqlTensorsDimensions(T, src, dst);
-    if (!src.is_complex) return w_tensor.Errors.InvalidValue;
-    if (dst.is_complex) return w_tensor.Errors.InvalidValue;
+    if (!src.flags.is_complex) return w_tensor.Errors.InvalidValue;
+    if (dst.flags.is_complex) return w_tensor.Errors.InvalidValue;
 
     const kernel = try getKernel(T, command_queue, dom);
     const cmd = command_queue.cmd;
@@ -79,18 +79,18 @@ pub fn toReal(
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&src.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&dst.buffer));
-    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&src.row_pitch));
-    try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&src.slice_pitch));
-    try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&dst.row_pitch));
-    try set_arg(kernel, 5, @sizeOf(u64), @ptrCast(&dst.slice_pitch));
+    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&src.memory_layout.row_pitch));
+    try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&src.memory_layout.slice_pitch));
+    try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&dst.memory_layout.row_pitch));
+    try set_arg(kernel, 5, @sizeOf(u64), @ptrCast(&dst.memory_layout.slice_pitch));
 
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
         cmd,
         kernel,
         null,
-        &src.global_work_items_without_vectors,
-        &src.local_work_items_without_vectors[command_queue.wekua_id],
+        &src.work_configuration.global_work_items_without_vectors,
+        &src.work_configuration.local_work_items_without_vectors[command_queue.wekua_id],
         prev_events,
         &new_event,
     );

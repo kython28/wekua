@@ -39,10 +39,10 @@ fn test_convertions_to_complex(
 
     try wekua.tensor.convertions.toComplex(T, w_cmd, tensor, tensor2, dom);
 
-    const numbers1: []T = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const numbers1: []T = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers1);
 
-    const numbers2: []T = try allocator.alloc(T, tensor2.number_of_elements_without_padding);
+    const numbers2: []T = try allocator.alloc(T, tensor2.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers2);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);
@@ -121,10 +121,10 @@ fn test_convertions_to_real(
 
     try wekua.tensor.convertions.toReal(T, w_cmd, tensor, tensor2, dom);
 
-    const numbers1: []T = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const numbers1: []T = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers1);
 
-    const numbers2: []T = try allocator.alloc(T, tensor2.number_of_elements_without_padding);
+    const numbers2: []T = try allocator.alloc(T, tensor2.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers2);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);

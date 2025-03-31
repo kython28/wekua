@@ -33,6 +33,42 @@ pub const CreateConfig = struct {
     vectors_enabled: bool = true,
 };
 
+const Dimensions = struct {
+    shape: []u64,
+    vl_shape: []u64,
+    pitches: []u64,
+    number_of_elements: u64,
+    number_of_elements_without_padding: u64,
+};
+
+const WorkConfiguration = struct {
+    global_work_items: [3]u64,
+    global_work_items_without_vectors: [3]u64,
+    global_work_items_gemm: [2]u64,
+
+    local_work_items_1d: []u64,
+    local_work_items_for_vectors_1d: []u64,
+
+    local_work_items: [][3]u64,
+    local_work_items_without_vectors: [][3]u64,
+
+    local_work_items_gemm: [][2]u64,
+};
+
+const MemoryLayout = struct {
+    row_pitch: u64,
+    row_pitch_for_vectors: u64,
+    slice_pitch: u64,
+    slice_pitch_for_vectors: u64,
+    number_of_vectors: u64,
+    size: usize,
+};
+
+const Flags = struct {
+    is_complex: bool,
+    vectors_enabled: bool,
+};
+
 pub fn Tensor(comptime T: type) type {
     switch (T) {
         i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 => {},
@@ -46,38 +82,12 @@ pub fn Tensor(comptime T: type) type {
         arena: std.heap.ArenaAllocator,
 
         buffer: cl.buffer.cl_mem,
-
-        shape: []u64,
-        vl_shape: []u64,
-
-        number_of_elements: u64,
-        number_of_elements_without_padding: u64,
-        number_of_vectors: u64,
-
-        row_pitch: u64,
-        row_pitch_for_vectors: u64,
-
-        slice_pitch: u64,
-        slice_pitch_for_vectors: u64,
-
-        pitches: []u64,
         pitches_buffer: cl.buffer.cl_mem,
 
-        size: usize,
-
-        is_complex: bool,
-        vectors_enabled: bool,
-
-        global_work_items: [3]u64,
-        global_work_items_without_vectors: [3]u64,
-        global_work_items_gemm: [2]u64,
-
-        local_work_items_1d: []u64,
-        local_work_items_for_vectors_1d: []u64,
-
-        local_work_items: [][3]u64,
-        local_work_items_without_vectors: [][3]u64,
-        local_work_items_gemm: [][2]u64,
+        dimensions: Dimensions,
+        work_configuration: WorkConfiguration,
+        memory_layout: MemoryLayout,
+        flags: Flags,
 
         events_manager: EventManager,
 
@@ -132,8 +142,8 @@ pub fn Tensor(comptime T: type) type {
 
             const arena_allocator = tensor.arena.allocator();
 
-            tensor.shape = try arena_allocator.alloc(u64, shape.len);
-            for (tensor.shape, shape) |*d, s| {
+            tensor.dimensions.shape = try arena_allocator.alloc(u64, shape.len);
+            for (tensor.dimensions.shape, shape) |*d, s| {
                 if (s == 0) return Errors.InvalidValue;
 
                 d.* = s;
@@ -142,8 +152,8 @@ pub fn Tensor(comptime T: type) type {
             const is_complex = config.is_complex;
             const vectors_enabled = if (is_complex) false else config.vectors_enabled;
 
-            tensor.is_complex = is_complex;
-            tensor.vectors_enabled = vectors_enabled;
+            tensor.flags.is_complex = is_complex;
+            tensor.flags.vectors_enabled = vectors_enabled;
 
             const multiplier: usize = if (is_complex) 2 else 1;
 
@@ -156,7 +166,7 @@ pub fn Tensor(comptime T: type) type {
             }
 
             const vl_shape = try arena_allocator.dupe(u64, shape);
-            tensor.vl_shape = vl_shape;
+            tensor.dimensions.vl_shape = vl_shape;
 
             const ndim = shape.len;
 
@@ -173,7 +183,7 @@ pub fn Tensor(comptime T: type) type {
             const depth: usize = number_of_elements_without_padding;
 
             number_of_elements_without_padding *= multiplier * last_size * penultimate_size;
-            tensor.number_of_elements_without_padding = number_of_elements_without_padding;
+            tensor.dimensions.number_of_elements_without_padding = number_of_elements_without_padding;
 
             var row_pitch: u64 = last_size;
             if (vectors_enabled and vector_width > 1) {
@@ -195,20 +205,20 @@ pub fn Tensor(comptime T: type) type {
                 row_pitch += vector_width * diff;
             }
 
-            tensor.row_pitch = row_pitch;
-            tensor.row_pitch_for_vectors = row_pitch_for_vectors;
+            tensor.memory_layout.row_pitch = row_pitch;
+            tensor.memory_layout.row_pitch_for_vectors = row_pitch_for_vectors;
 
             const slice_pitch = row_pitch * padded_penultimate_size;
             const number_of_elements = slice_pitch * depth;
-            tensor.number_of_elements = number_of_elements;
-            tensor.slice_pitch = slice_pitch;
-            tensor.slice_pitch_for_vectors = slice_pitch / vector_width;
+            tensor.dimensions.number_of_elements = number_of_elements;
+            tensor.memory_layout.slice_pitch = slice_pitch;
+            tensor.memory_layout.slice_pitch_for_vectors = slice_pitch / vector_width;
 
             const number_of_vectors = number_of_elements / vector_width;
-            tensor.number_of_vectors = number_of_vectors;
+            tensor.memory_layout.number_of_vectors = number_of_vectors;
 
             const pitches = try arena_allocator.alloc(u64, shape.len);
-            tensor.pitches = pitches;
+            tensor.dimensions.pitches = pitches;
 
             const antepenultimate_element_index = penultimate_element_index -| 1;
             var pitch: u64 = number_of_elements;
@@ -236,15 +246,16 @@ pub fn Tensor(comptime T: type) type {
             const local_work_items_without_vectors = try arena_allocator.alloc([3]u64, command_queues.len);
             const local_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
 
-            tensor.local_work_items_1d = local_work_items_1d;
-            tensor.local_work_items_for_vectors_1d = lobal_work_items_for_vectors_1d;
-            tensor.local_work_items = local_work_items;
-            tensor.local_work_items_without_vectors = local_work_items_without_vectors;
-            tensor.local_work_items_gemm = local_work_items_gemm;
+            const work_configuration = &tensor.work_configuration;
+            work_configuration.local_work_items_1d = local_work_items_1d;
+            work_configuration.local_work_items_for_vectors_1d = lobal_work_items_for_vectors_1d;
+            work_configuration.local_work_items = local_work_items;
+            work_configuration.local_work_items_without_vectors = local_work_items_without_vectors;
+            work_configuration.local_work_items_gemm = local_work_items_gemm;
 
-            const global_work_items: []u64 = &tensor.global_work_items;
-            const global_work_items_without_vectors: []u64 = &tensor.global_work_items_without_vectors;
-            const global_work_items_gemm: []u64 = &tensor.global_work_items_gemm;
+            const global_work_items: []u64 = &work_configuration.global_work_items;
+            const global_work_items_without_vectors: []u64 = &work_configuration.global_work_items_without_vectors;
+            const global_work_items_gemm: []u64 = &work_configuration.global_work_items_gemm;
 
             global_work_items[0] = depth;
             global_work_items_without_vectors[0] = depth;
@@ -283,7 +294,7 @@ pub fn Tensor(comptime T: type) type {
             }
 
             const size = number_of_elements * @sizeOf(T);
-            tensor.size = size;
+            tensor.memory_layout.size = size;
 
             tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
             errdefer cl.buffer.release(tensor.buffer);
@@ -321,7 +332,7 @@ pub fn Tensor(comptime T: type) type {
                 &zero,
                 @sizeOf(T),
                 0,
-                tensor.size,
+                tensor.memory_layout.size,
                 prev_events,
                 &new_event,
             );

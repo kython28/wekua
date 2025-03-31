@@ -49,9 +49,17 @@ test "fill and get random value" {
 
             var actual_scalar: T = undefined;
 
-            const coor: [3]u64 = .{ randprg.intRangeLessThan(u64, 1, tensor.shape[0]), randprg.intRangeLessThan(u64, 1, tensor.shape[1]), randprg.intRangeLessThan(u64, 1, tensor.shape[2]) };
+            const coor: [3]u64 = .{
+                randprg.intRangeLessThan(u64, 1, tensor.dimensions.shape[0]),
+                randprg.intRangeLessThan(u64, 1, tensor.dimensions.shape[1]),
+                randprg.intRangeLessThan(u64, 1, tensor.dimensions.shape[2]),
+            };
 
-            const coor2: [3]u64 = .{ randprg.intRangeLessThan(u64, 1, tensor.shape[0]), randprg.intRangeLessThan(u64, 1, tensor.shape[1]), randprg.intRangeLessThan(u64, 1, tensor.shape[2]) };
+            const coor2: [3]u64 = .{
+                randprg.intRangeLessThan(u64, 1, tensor.dimensions.shape[0]),
+                randprg.intRangeLessThan(u64, 1, tensor.dimensions.shape[1]),
+                randprg.intRangeLessThan(u64, 1, tensor.dimensions.shape[2]),
+            };
 
             const w_cmd = &ctx.command_queues[0];
             try wekua.tensor.memory.putValue(T, tensor, w_cmd, &coor2, scalar2, null);
@@ -97,7 +105,11 @@ test "fill and get random complex value" {
             var new_scalar: T = undefined;
             var new_scalar_imag: T = undefined;
 
-            const coor: [3]u64 = .{ randprg.intRangeLessThan(u64, 0, tensor.shape[0]), randprg.intRangeLessThan(u64, 0, tensor.shape[1]), randprg.intRangeLessThan(u64, 0, tensor.shape[2]) };
+            const coor: [3]u64 = .{
+                randprg.intRangeLessThan(u64, 0, tensor.dimensions.shape[0]),
+                randprg.intRangeLessThan(u64, 0, tensor.dimensions.shape[1]),
+                randprg.intRangeLessThan(u64, 0, tensor.dimensions.shape[2]),
+            };
 
             const w_cmd = &ctx.command_queues[0];
             try wekua.tensor.memory.getValue(T, tensor, w_cmd, &coor, &new_scalar, &new_scalar_imag);

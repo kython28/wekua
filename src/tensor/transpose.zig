@@ -21,13 +21,13 @@ pub fn transpose(
 ) !void {
     try helpers.eqlNumberSpace(T, tensor, result_tensor);
 
-    const shape_a = result_tensor.shape;
-    const shape_b = tensor.shape;
+    const shape_a = result_tensor.dimensions.shape;
+    const shape_b = tensor.dimensions.shape;
     if (shape_a.len != shape_b.len) {
         return w_tensor.Errors.UnqualTensorsDimension;
     } else if (dim0 >= shape_a.len or dim1 >= shape_a.len) {
         return w_tensor.Errors.InvalidValue;
-    } else if (tensor.number_of_elements_without_padding != result_tensor.number_of_elements_without_padding) {
+    } else if (tensor.dimensions.number_of_elements_without_padding != result_tensor.dimensions.number_of_elements_without_padding) {
         return w_tensor.Errors.UnqualTensorsDimension;
     } else if (shape_a[dim0] != shape_b[dim1] or shape_a[dim1] != shape_b[dim0]) {
         return w_tensor.Errors.InvalidValue;
@@ -64,7 +64,7 @@ pub fn transpose(
     const set_arg = cl.kernel.set_arg;
     const u64_size = @sizeOf(u64);
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
-    const shape = tensor.shape;
+    const shape = tensor.dimensions.shape;
     const ndim: u64 = @intCast(shape.len);
     var dim0_: u64 = undefined;
     var dim1_: u64 = undefined;
@@ -77,11 +77,11 @@ pub fn transpose(
         dim1_ = dim1;
     }
 
-    const multiplier: u64 = 1 + @as(u64, @intFromBool(tensor.is_complex));
-    const row_pitch = tensor.row_pitch;
+    const multiplier: u64 = 1 + @as(u64, @intFromBool(tensor.flags.is_complex));
+    const row_pitch = tensor.memory_layout.row_pitch;
 
-    const tensor_width = tensor.global_work_items_without_vectors[2] * multiplier;
-    const tensor_height = tensor.global_work_items_without_vectors[1] * row_pitch;
+    const tensor_width = tensor.work_configuration.global_work_items_without_vectors[2] * multiplier;
+    const tensor_height = tensor.work_configuration.global_work_items_without_vectors[1] * row_pitch;
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitches_buffer));
@@ -90,7 +90,7 @@ pub fn transpose(
     try set_arg(kernel, 3, cl_mem_size, @ptrCast(&result_tensor.pitches_buffer));
 
     try set_arg(kernel, 4, u64_size, @ptrCast(&row_pitch));
-    try set_arg(kernel, 5, u64_size, @ptrCast(&tensor.slice_pitch));
+    try set_arg(kernel, 5, u64_size, @ptrCast(&tensor.memory_layout.slice_pitch));
     try set_arg(kernel, 6, u64_size, @ptrCast(&tensor_height));
     try set_arg(kernel, 7, u64_size, @ptrCast(&tensor_width));
 
@@ -106,8 +106,8 @@ pub fn transpose(
         cmd,
         kernel,
         null,
-        &[1]u64{tensor.number_of_elements},
-        tensor.local_work_items_1d[wekua_id .. wekua_id + 1],
+        &[1]u64{tensor.dimensions.number_of_elements},
+        tensor.work_configuration.local_work_items_1d[wekua_id .. wekua_id + 1],
         prev_events,
         &new_event,
     );

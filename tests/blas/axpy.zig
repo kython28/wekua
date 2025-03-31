@@ -53,7 +53,7 @@ fn test_axpy(
     try wekua.tensor.random.fill(T, w_cmd, tensor, 0);
     try wekua.tensor.random.fill(T, w_cmd, tensor2, 0);
 
-    const numbers2: []T = try allocator.alloc(T, tensor2.number_of_elements_without_padding);
+    const numbers2: []T = try allocator.alloc(T, tensor2.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers2);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor2, w_cmd, numbers2);
@@ -63,17 +63,17 @@ fn test_axpy(
 
     try wekua.blas.axpy(T, w_cmd, tensor, alpha, beta, tensor2);
 
-    const numbers1: []T = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const numbers1: []T = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers1);
 
-    const numbers3: []T = try allocator.alloc(T, tensor2.number_of_elements_without_padding);
+    const numbers3: []T = try allocator.alloc(T, tensor2.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers3);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);
     try wekua.tensor.memory.writeToBuffer(T, tensor2, w_cmd, numbers3);
     if (is_complex) {
         const eps: T = @floatCast(comptime std.math.floatEps(f32));
-        for (0..(tensor.number_of_elements_without_padding / 2)) |i| {
+        for (0..(tensor.dimensions.number_of_elements_without_padding / 2)) |i| {
             const index = i * 2;
             var expected = complex_mul(T, numbers1[index], numbers1[index + 1], alpha, beta.?);
             expected[0] += numbers2[index];

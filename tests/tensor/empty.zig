@@ -10,19 +10,19 @@ fn create_and_release(comptime T: type, ctx: *wekua.core.Context, config: wekua.
     defer tensor.release();
 
     if (config.is_complex) {
-        try std.testing.expect(tensor.is_complex);
-        try std.testing.expect(!tensor.vectors_enabled);
-        try std.testing.expectEqual(2*20*10, tensor.number_of_elements_without_padding);
-        try std.testing.expectEqual(tensor.row_pitch, tensor.row_pitch_for_vectors);
-        try std.testing.expectEqual(2, tensor.pitches[tensor.pitches.len - 1]);
+        try std.testing.expect(tensor.flags.is_complex);
+        try std.testing.expect(!tensor.flags.vectors_enabled);
+        try std.testing.expectEqual(2*20*10, tensor.dimensions.number_of_elements_without_padding);
+        try std.testing.expectEqual(tensor.memory_layout.row_pitch, tensor.memory_layout.row_pitch_for_vectors);
+        try std.testing.expectEqual(2, tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
     }else{
-        try std.testing.expect(!tensor.is_complex);
-        try std.testing.expect(tensor.vectors_enabled);
-        try std.testing.expectEqual(20*10, tensor.number_of_elements_without_padding);
-        try std.testing.expectEqual(1, tensor.pitches[tensor.pitches.len - 1]);
+        try std.testing.expect(!tensor.flags.is_complex);
+        try std.testing.expect(tensor.flags.vectors_enabled);
+        try std.testing.expectEqual(20*10, tensor.dimensions.number_of_elements_without_padding);
+        try std.testing.expectEqual(1, tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
     }
 
-    try std.testing.expectEqualSlices(u64, shape_expected, tensor.shape);
+    try std.testing.expectEqualSlices(u64, shape_expected, tensor.dimensions.shape);
 }
 
 fn test_tensor_creation(allocator: std.mem.Allocator, ctx: *wekua.core.Context) !void {

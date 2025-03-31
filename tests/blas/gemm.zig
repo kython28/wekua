@@ -161,16 +161,16 @@ fn test_gemm(
         try wekua.tensor.random.fill(T, w_cmd, tensor3, 0);
     }
 
-    const numbers1: []T = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const numbers1: []T = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers1);
 
-    const numbers2: []T = try allocator.alloc(T, tensor2.number_of_elements_without_padding);
+    const numbers2: []T = try allocator.alloc(T, tensor2.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers2);
 
-    const expected_result: []T = try allocator.alloc(T, tensor3.number_of_elements_without_padding);
+    const expected_result: []T = try allocator.alloc(T, tensor3.dimensions.number_of_elements_without_padding);
     defer allocator.free(expected_result);
 
-    const numbers3: []T = try allocator.alloc(T, tensor3.number_of_elements_without_padding);
+    const numbers3: []T = try allocator.alloc(T, tensor3.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers3);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers1);

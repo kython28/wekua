@@ -29,7 +29,7 @@ fn checkVariance(
     command_queue: *const wekua.core.CommandQueue,
     tensor: *wekua.Tensor(T),
 ) !void {
-    const buf = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const buf = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(buf);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, command_queue, buf);
@@ -45,7 +45,7 @@ fn checkVariance(
         mean += val;
     }
 
-    const number_of_elements_float: f64 = @floatFromInt(tensor.number_of_elements_without_padding);
+    const number_of_elements_float: f64 = @floatFromInt(tensor.dimensions.number_of_elements_without_padding);
     mean /= number_of_elements_float;
 
     var sq_diff: f64 = 0.0;
