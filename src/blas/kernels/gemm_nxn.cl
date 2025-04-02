@@ -22,41 +22,27 @@ __kernel void gemm(
     const ulong i = get_global_id(0) << STRIDE;
     const ulong j = get_global_id(1) << STRIDE;
 
-    const ulong local_y = get_local_id(0);
-    const ulong local_x = get_local_id(1);
-
-    const ulong local_y_len = get_local_size(0);
-    const ulong local_x_len = get_local_size(1);
-
-    //local wk A_local_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
-    //local wk B_local_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
-    //local wks C_local_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE))) = {0};
-
     private wk A_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     private wk B_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
-    private wks C_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE))) = {0};
+    private wk C_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE))) = {0};
 
-    /*
-    for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-        __attribute__((opencl_unroll_hint))
-        for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-#if HAS_BETA
-            C_tmp_buffer[y * BLOCK_SIZE + x] = beta * C[C_base + x];
-#endif
-        }
-        C_base += C_row_pitch;
-    }
-    */
-
-    for (ulong k = 0; k < cols; k += (BLOCK_SIZE )) {
+    for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
         ulong base_index;
 #if A_TRANS
+        base_index = k * A_row_pitch + i;
+        for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
+            __attribute__((opencl_unroll_hint))
+            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
+                A_tmp_buffer[y * BLOCK_SIZE + x] = A[base_index + x * A_row_pitch];
+            }
+            base_index += 1;
+        }
 #else
         base_index = i * A_row_pitch + k;
         for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
             __attribute__((opencl_unroll_hint))
-            for (ulong x = 0; x < (BLOCK_SIZE ); x += 1) {
-                A_tmp_buffer[y * (BLOCK_SIZE ) + x] = A[base_index + x];
+            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
+                A_tmp_buffer[y * BLOCK_SIZE + x] = A[base_index + x];
             }
             base_index += A_row_pitch;
         }
@@ -66,8 +52,8 @@ __kernel void gemm(
         base_index = j * B_row_pitch + k;
         for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
             __attribute__((opencl_unroll_hint))
-            for (ulong x = 0; x < (BLOCK_SIZE ); x += 1) {
-                B_tmp_buffer[y * ( BLOCK_SIZE ) + x] = B[base_index + x];
+            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
+                B_tmp_buffer[y * BLOCK_SIZE + x] = B[base_index + x];
             }
             base_index += B_row_pitch;
         }
@@ -96,18 +82,19 @@ __kernel void gemm(
                 wk C22 = (wk)(0);
 #endif
 
-                for (ulong z = 0; z < (BLOCK_SIZE ); z += 2) {
-                    base_index = y * (BLOCK_SIZE ) + z;
+                __attribute__((opencl_unroll_hint))
+                for (ulong z = 0; z < BLOCK_SIZE; z += 2) {
+                    base_index = y * BLOCK_SIZE + z;
                     const wk A11 = A_tmp_buffer[base_index];
                     const wk A12 = A_tmp_buffer[base_index + 1];
-                    const wk A21 = A_tmp_buffer[base_index + (BLOCK_SIZE )];
-                    const wk A22 = A_tmp_buffer[base_index + (BLOCK_SIZE ) + 1];
+                    const wk A21 = A_tmp_buffer[base_index + BLOCK_SIZE];
+                    const wk A22 = A_tmp_buffer[base_index + BLOCK_SIZE + 1];
 
-                    base_index = x * (BLOCK_SIZE ) + z;
+                    base_index = x * BLOCK_SIZE + z;
                     const wk B11 = B_tmp_buffer[base_index];
                     const wk B21 = B_tmp_buffer[base_index];
-                    const wk B12 = B_tmp_buffer[base_index + (BLOCK_SIZE )];
-                    const wk B22 = B_tmp_buffer[base_index + (BLOCK_SIZE ) + 1];
+                    const wk B12 = B_tmp_buffer[base_index + BLOCK_SIZE];
+                    const wk B22 = B_tmp_buffer[base_index + BLOCK_SIZE + 1];
 
                     const wk s1 = (B12 - B22) * A11;
                     const wk s2 = (B21 - B11) * A22;
@@ -124,26 +111,21 @@ __kernel void gemm(
                 }
 
                 base_index = y * BLOCK_SIZE + x;
-#if WK_VECTOR_WIDTH == 1
                 C_tmp_buffer[base_index] += C11;
                 C_tmp_buffer[base_index + 1] += C12;
                 C_tmp_buffer[base_index + BLOCK_SIZE] += C21;
                 C_tmp_buffer[base_index + BLOCK_SIZE + 1] += C22;
-#else
-                C_tmp_buffer[base_index] += sum(C11);
-                C_tmp_buffer[base_index + 1] += sum(C12);
-                C_tmp_buffer[base_index + BLOCK_SIZE] += sum(C21);
-                C_tmp_buffer[base_index + BLOCK_SIZE + 1] += sum(C22);
-#endif
             }
         }
 
     }
 
     ulong C_base = i * C_row_pitch + j;
+    __attribute__((opencl_unroll_hint))
     for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
         __attribute__((opencl_unroll_hint))
         for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
+#if WK_VECTOR_WIDTH == 1
 #if HAS_ALPHA
 #if HAS_BETA
             C[C_base + x] = alpha * C_tmp_buffer[y * BLOCK_SIZE + x] + beta * C[C_base + x];
@@ -152,6 +134,17 @@ __kernel void gemm(
 #endif
 #else
             C[C_base + x] = C_tmp_buffer[y * BLOCK_SIZE + x];
+#endif
+#else
+#if HAS_ALPHA
+#if HAS_BETA
+            C[C_base + x] = alpha * sum(C_tmp_buffer[y * BLOCK_SIZE + x]) + beta * C[C_base + x];
+#else
+            C[C_base + x] = alpha * sum(C_tmp_buffer[y * BLOCK_SIZE + x]);
+#endif
+#else
+            C[C_base + x] = sum(C_tmp_buffer[y * BLOCK_SIZE + x]);
+#endif
 #endif
         }
         C_base += C_row_pitch;

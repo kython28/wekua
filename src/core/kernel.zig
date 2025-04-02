@@ -121,6 +121,7 @@ pub fn compileKernel(
     comptime var default_arguments: []const u8 = "-DWK_VECTOR_WIDTH={d} -DWK_DTYPE={d} -DWK_MEM_TYPE={d} -DWK_COMPLEX={d} -DWK_CACHE_LINE_SIZE={d}";
     switch (builtin.mode) {
         .Debug => default_arguments = default_arguments ++ " -cl-opt-disable -g",
+        .ReleaseFast, .ReleaseSmall => default_arguments = default_arguments ++ " -cl-fast-relaxed-math",
         else => {},
     }
 
