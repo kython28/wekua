@@ -108,7 +108,6 @@ fn test_gemm(
     alphai: ?T,
     beta: ?T,
     betai: ?T,
-
     m_size: u64,
     k_size: u64,
     n_size: u64,
@@ -214,27 +213,40 @@ fn test_gemm(
     }
 }
 
-test "Generic gemm" {
+fn test_gemm_kernel(
+    min_random: u64,
+    max_random: u64,
+    padding: u64,
+    comptime test_complex: bool,
+    comptime types: []const type
+) !void {
     const allocator = std.testing.allocator;
     const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
     defer ctx.release();
 
     const randprg = std.crypto.random;
     const bool_array = [_]bool{ false, true };
-    const op_array = [_]wekua.blas.gemm.Operation{ wekua.blas.gemm.Operation.no_transpose, wekua.blas.gemm.Operation.transpose };
+    const op_array = [_]wekua.blas.gemm.Operation{
+        wekua.blas.gemm.Operation.no_transpose,
+        wekua.blas.gemm.Operation.transpose,
+    };
 
     // Hard to test with integers due overflow :-/
-    inline for (&.{ f32, f64 }) |T| {
+    inline for (types) |T| {
         // TODO: This look very ugly, find a better way to do this
         inline for (bool_array) |is_complex| {
-            if (is_complex) continue;
+            if (is_complex and !test_complex) continue;
             for (bool_array) |vectors_enabled| {
                 for (bool_array) |vectors_enabled2| {
                     for (op_array) |op_a| {
                         for (op_array) |op_b| {
-                            const m_size = randprg.intRangeAtMost(u64, 5, 20);
-                            const k_size = randprg.intRangeAtMost(u64, 5, 20);
-                            const n_size = randprg.intRangeAtMost(u64, 5, 20);
+                            var m_size = randprg.intRangeAtMost(u64, min_random, max_random);
+                            var k_size = randprg.intRangeAtMost(u64, min_random, max_random);
+                            var n_size = randprg.intRangeAtMost(u64, min_random, max_random);
+
+                            if (m_size % padding != 0) m_size += padding - (m_size % padding);
+                            if (k_size % padding != 0) k_size += padding - (k_size % padding);
+                            if (n_size % padding != 0) n_size += padding - (n_size % padding);
 
                             test_gemm(
                                 T,
@@ -318,131 +330,10 @@ test "Generic gemm" {
     }
 }
 
-// test "Big matrix gemm" {
-//     const allocator = std.testing.allocator;
-//     const ctx = try wekua.core.Context.create_from_best_device(allocator, null, cl.device.enums.device_type.all);
-//     defer ctx.release();
-
-//     if (!ctx.command_queues[0].typeIsSupported(f64)) {
-//         return;
-//     }
-
-//     try test_gemm(
-//         f64,
-//         allocator,
-//         ctx,
-//         false,
-//         true,
-//         true,
-//         .no_transpose,
-//         .transpose,
-//         null,
-//         null,
-//         null,
-//         null,
-
-//         1024,
-//         1024,
-//         1024,
-//     );
-
-// }
-
-// test "Hopcroft-Kerr gemm" {
-//     const allocator = std.testing.allocator;
-//     const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
-//     defer ctx.release();
-
-//     const m_size = 4;
-//     const k_size = 4;
-//     const n_size = 4;
-
-//     const randprg = std.crypto.random;
-//     const bool_array = [_]bool{ false, true };
-//     const op_array = [_]wekua.blas.gemm.Operation{ wekua.blas.gemm.Operation.no_transpose, wekua.blas.gemm.Operation.transpose };
-
-//     // Hard to test with integers due overflow :-/
-//     inline for (&.{ f32, f64 }) |T| {
-//         // TODO: This look very ugly, find a better way to do this
-//         for (bool_array) |vectors_enabled| {
-//             for (bool_array) |vectors_enabled2| {
-//                 for (op_array) |op_a| {
-//                     for (op_array) |op_b| {
-//                         test_gemm(
-//                             T,
-//                             allocator,
-//                             ctx,
-//                             false,
-//                             vectors_enabled,
-//                             vectors_enabled2,
-//                             op_a,
-//                             op_b,
-//                             null,
-//                             null,
-//                             null,
-//                             null,
-
-//                             m_size,
-//                             k_size,
-//                             n_size,
-//                         ) catch |err| {
-//                             std.log.warn(
-//                                 \\ An error while testing gemm Hopcroft-Kerr with vectors_enabled: {},
-//                                 \\ vectors_enabled2: {}, op_a: {}, op_b: {}: {s}
-//                             , .{
-//                                 vectors_enabled,
-//                                 vectors_enabled2,
-//                                 op_a,
-//                                 op_b,
-//                                 @errorName(err),
-//                             });
-//                             return err;
-//                         };
-
-//                         const alpha = get_random_number(T, randprg);
-//                         const ialpha = get_random_number(T, randprg);
-
-//                         const beta = get_random_number(T, randprg);
-//                         const ibeta = get_random_number(T, randprg);
-
-//                         test_gemm(
-//                             T,
-//                             allocator,
-//                             ctx,
-//                             false,
-//                             vectors_enabled,
-//                             vectors_enabled2,
-//                             op_a,
-//                             op_b,
-//                             alpha,
-//                             ialpha,
-//                             beta,
-//                             ibeta,
-
-//                             m_size,
-//                             k_size,
-//                             n_size,
-//                         ) catch |err| {
-//                             std.log.warn(
-//                                 \\ An error while testing gemm Hopcroft-Kerr with vectors_enabled: {},
-//                                 \\ vectors_enabled2: {}, op_a: {}, op_b: {}: {s} -
-//                                 \\ alpha: {d}, ialpha: {d}, beta: {d}, ibeta: {d}
-//                             , .{
-//                                 vectors_enabled,
-//                                 vectors_enabled2,
-//                                 op_a,
-//                                 op_b,
-//                                 @errorName(err),
-//                                 alpha,
-//                                 ialpha,
-//                                 beta,
-//                                 ibeta,
-//                             });
-//                             return err;
-//                         };
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
+test {
+    try test_gemm_kernel(5, 20, 1, true, &.{ f32, f64 });
+    try test_gemm_kernel(32, 60, 4, false, &.{ f64 });
+    try test_gemm_kernel(64, 120, 8, false, &.{ f64 });
+    try test_gemm_kernel(128, 240, 16, false, &.{ f64 });
+    try test_gemm_kernel(256, 300, 32, false, &.{ f64 });
+}

@@ -6,11 +6,11 @@ const cl = wekua.opencl;
 const utils = @import("utils.zig");
 
 pub const name: []const u8 = "GEMM";
-pub const starting_point: u64 = 2;
+pub const starting_point: u64 = 4;
 
 const niterations = switch (builtin.mode) {
     .Debug => 1,
-    else => 1,
+    else => 2,
 };
 
 const PreferredType = f32;
@@ -88,7 +88,7 @@ fn run_old_wekua_test(
     buf3: []PreferredType,
 ) !f64 {
     const ctx: utils.wekua_c.wekuaContext = utils.wekua_c.createSomeWekuaContext(
-        @intFromEnum(cl.device.enums.device_type.all),
+        @intFromEnum(cl.device.enums.device_type.cpu),
         1,
         0,
     ) orelse return error.OutOfMemory;
@@ -155,7 +155,7 @@ fn run_wekua_test(
     ops_b: []wekua.blas.gemm.Operation,
     buf3: []PreferredType,
 ) !f64 {
-    const ctx = try wekua.core.Context.create_from_best_device(allocator, null, cl.device.enums.device_type.all);
+    const ctx = try wekua.core.Context.create_from_best_device(allocator, null, cl.device.enums.device_type.cpu);
     defer ctx.release();
 
     const cmd = &ctx.command_queues[0];

@@ -72,6 +72,7 @@ const WorkConfiguration = struct {
 
     pub fn init(
         self: *WorkConfiguration,
+        comptime T: type,
         arena_allocator: std.mem.Allocator,
         command_queues: []CommandQueue,
         depth: u64,
@@ -81,6 +82,7 @@ const WorkConfiguration = struct {
         number_of_vectors: u64,
         last_size: u64,
         vl_shape: []const u64,
+        vector_width: u64,
     ) !void {
         const local_work_items_1d = try arena_allocator.alloc(u64, command_queues.len);
         const lobal_work_items_for_vectors_1d = try arena_allocator.alloc(u64, command_queues.len);
@@ -144,70 +146,73 @@ const WorkConfiguration = struct {
             );
         }
 
-        if (gwi_h >= 256 and gwi_w >= 256 and (gwi_h % 32 == 0) and (gwi_w % 32 == 0)) {
-            self.global_work_items_gemm_32x32[0] = gwi_h / 16;
-            self.global_work_items_gemm_32x32[1] = gwi_w / 16;
-
-            self.gemm_algorithm = .@"32x32";
-
-            self.local_work_items_gemm_32x32 = try arena_allocator.alloc([2]u64, command_queues.len);
-            for (command_queues, self.local_work_items_gemm_32x32) |cmd, lw_gemm| {
-                utils.calculateWorkItems(
-                    &lw_gemm,
-                    &self.global_work_items_gemm_32x32,
-                    cmd.max_work_group_size,
-                );
-            }
-        }
-
-        if (gwi_h >= 128 and gwi_w >= 128 and (gwi_h % 16 == 0) and (gwi_w % 16 == 0)) {
-            self.global_work_items_gemm_16x16[0] = gwi_h / 8;
-            self.global_work_items_gemm_16x16[1] = gwi_w / 8;
-
-            self.gemm_algorithm = .@"16x16";
-
-            self.local_work_items_gemm_16x16 = try arena_allocator.alloc([2]u64, command_queues.len);
-            for (command_queues, self.local_work_items_gemm_16x16) |cmd, lw_gemm| {
-                utils.calculateWorkItems(
-                    &lw_gemm,
-                    &self.global_work_items_gemm_16x16,
-                    cmd.max_work_group_size,
-                );
-            }
-        }
-
-        if (gwi_h >= 64 and gwi_w >= 64 and (gwi_h % 8 == 0) and (gwi_w % 8 == 0)) {
-            self.global_work_items_gemm_8x8[0] = gwi_h / 4;
-            self.global_work_items_gemm_8x8[1] = gwi_w / 4;
-
-            self.gemm_algorithm = .@"8x8";
-
-            self.local_work_items_gemm_8x8 = try arena_allocator.alloc([2]u64, command_queues.len);
-            for (command_queues, self.local_work_items_gemm_8x8) |cmd, lw_gemm| {
-                utils.calculateWorkItems(
-                    &lw_gemm,
-                    &self.global_work_items_gemm_8x8,
-                    cmd.max_work_group_size,
-                );
-            }
-        }
-
-        if (gwi_h >= 32 and gwi_w >= 32 and (gwi_h % 4 == 0) and (gwi_w % 4 == 0)) {
+        if ((gwi_h % 2 == 0) and (gwi_w % 2 == 0) and (vector_width * 4 * 4 * @sizeOf(T)) < 16 * 1024) {
             self.global_work_items_gemm_4x4[0] = gwi_h / 2;
             self.global_work_items_gemm_4x4[1] = gwi_w / 2;
 
             self.gemm_algorithm = .@"4x4";
 
             self.local_work_items_gemm_4x4 = try arena_allocator.alloc([2]u64, command_queues.len);
-            for (command_queues, self.local_work_items_gemm_4x4) |cmd, lw_gemm| {
+            for (command_queues, self.local_work_items_gemm_4x4) |cmd, *lw_gemm| {
+                _ = cmd;
                 utils.calculateWorkItems(
-                    &lw_gemm,
                     &self.global_work_items_gemm_4x4,
-                    cmd.max_work_group_size,
+                    lw_gemm,
+                    16,
                 );
             }
         }
 
+        if ((gwi_h % 4 == 0) and (gwi_w % 4 == 0) and (vector_width * 8 * 8 * @sizeOf(T)) < 16 * 1024) {
+            self.global_work_items_gemm_8x8[0] = gwi_h / 4;
+            self.global_work_items_gemm_8x8[1] = gwi_w / 4;
+
+            self.gemm_algorithm = .@"8x8";
+
+            self.local_work_items_gemm_8x8 = try arena_allocator.alloc([2]u64, command_queues.len);
+            for (command_queues, self.local_work_items_gemm_8x8) |cmd, *lw_gemm| {
+                _ = cmd;
+                utils.calculateWorkItems(
+                    &self.global_work_items_gemm_8x8,
+                    lw_gemm,
+                    64,
+                );
+            }
+        }
+
+        if ((gwi_h % 8 == 0) and (gwi_w % 8 == 0) and (vector_width * 16 * 16 * @sizeOf(T)) < 16 * 1024) {
+            self.global_work_items_gemm_16x16[0] = gwi_h / 8;
+            self.global_work_items_gemm_16x16[1] = gwi_w / 8;
+
+            self.gemm_algorithm = .@"16x16";
+
+            self.local_work_items_gemm_16x16 = try arena_allocator.alloc([2]u64, command_queues.len);
+            for (command_queues, self.local_work_items_gemm_16x16) |cmd, *lw_gemm| {
+                _ = cmd;
+                utils.calculateWorkItems(
+                    &self.global_work_items_gemm_16x16,
+                    lw_gemm,
+                    128,
+                );
+            }
+        }
+
+        if ((gwi_h % 16 == 0) and (gwi_w % 16 == 0) and (vector_width * 32 * 32 * @sizeOf(T)) < 16 * 1024) {
+            self.global_work_items_gemm_32x32[0] = gwi_h / 16;
+            self.global_work_items_gemm_32x32[1] = gwi_w / 16;
+
+            self.gemm_algorithm = .@"32x32";
+
+            self.local_work_items_gemm_32x32 = try arena_allocator.alloc([2]u64, command_queues.len);
+            for (command_queues, self.local_work_items_gemm_32x32) |cmd, *lw_gemm| {
+                _ = cmd;
+                utils.calculateWorkItems(
+                    &self.global_work_items_gemm_32x32,
+                    lw_gemm,
+                    256,
+                );
+            }
+        }
     }
 };
 
@@ -397,6 +402,7 @@ pub fn Tensor(comptime T: type) type {
             pitches[last_element_index] = multiplier;
 
             try tensor.work_configuration.init(
+                T,
                 arena_allocator,
                 command_queues,
                 depth,
@@ -406,6 +412,7 @@ pub fn Tensor(comptime T: type) type {
                 number_of_vectors,
                 last_size,
                 vl_shape,
+                vector_width,
             );
 
             const size = number_of_elements * @sizeOf(T);

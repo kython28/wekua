@@ -95,13 +95,7 @@ fn getKernel(
             @intFromBool(has_beta),
             @intFromEnum(op_a),
             @intFromEnum(op_b),
-            @as(u8, switch (algorithm) {
-                .generic => 1,
-                .@"4x4" => 2,
-                .@"8x8" => 4,
-                .@"16x16" => 8,
-                .@"32x32" => 16,
-            }),
+            @intFromEnum(algorithm),
             @as(u8, switch (algorithm) {
                 .generic => 2,
                 .@"4x4" => 4,
