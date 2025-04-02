@@ -5,11 +5,11 @@ __kernel void axpy(
     __global wk *restrict B,
 
     const ulong row_pitch,
-    const ulong slice_pitch,
+    const ulong slice_pitch
 
 #if HAS_ALPHA
-	const wks alpha
-#if com == 1
+	, const wks alpha
+#if WK_COMPLEX == 1
 	, const wks ialpha
 #endif
 #endif
@@ -18,7 +18,7 @@ __kernel void axpy(
     const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-#if com == 1
+#if WK_COMPLEX == 1
     const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
 
 #if HAS_ALPHA
@@ -68,11 +68,11 @@ __kernel void axpy2(
     const ulong slice_pitch_A,
 
     const ulong row_pitch_B,
-    const ulong slice_pitch_B,
+    const ulong slice_pitch_B
 
 #if HAS_ALPHA
-	const wks alpha
-#if com == 1
+	, const wks alpha
+#if WK_COMPLEX == 1
 	, const wks ialpha
 #endif
 #endif
@@ -81,7 +81,7 @@ __kernel void axpy2(
     const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-#if com == 1
+#if WK_COMPLEX == 1
     const ulong col = k << 1;
     const ulong index_A = i * slice_pitch_A + j * row_pitch_A + col;
     const ulong index_B = i * slice_pitch_B + j * row_pitch_B + col;

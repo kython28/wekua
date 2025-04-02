@@ -7,11 +7,7 @@ __kernel void gemm(
     __constant const wk *const restrict A,
     __constant const wk *const restrict B,
 
-#if wk_width == 1
     __global wks *const restrict C,
-#else
-    __global wk2 *const restrict C,
-#endif
 
     const ulong A_row_pitch,
     const ulong B_row_pitch,
@@ -26,7 +22,7 @@ __kernel void gemm(
 #endif
 #endif
 
-#if com
+#if WK_COMPLEX
 #if HAS_ALPHA
     , const wks ialpha
 #if HAS_BETA
@@ -37,11 +33,7 @@ __kernel void gemm(
 #endif
 ) {
     const ulong i = get_global_id(0) << 1;
-#if wk_width == 1
     const ulong j = get_global_id(1) << 1;
-#else
-    const ulong j = get_global_id(1);
-#endif
 
 #if A_TRANS == 0
     const ulong row_A = i*A_row_pitch;
@@ -49,15 +41,11 @@ __kernel void gemm(
 #endif
 
 #if B_TRANS
-#if wk_width == 1
     const ulong row_B = j*B_row_pitch;
-#else
-    const ulong row_B = (j << 1)*B_row_pitch;
-#endif
     const ulong next_row_B = row_B + B_row_pitch;
 #endif
 
-    #if wk_width == 1
+    #if WK_VECTOR_WIDTH == 1
     wk C11 = 0;
     wk C12 = 0;
     wk C21 = 0;
@@ -69,8 +57,8 @@ __kernel void gemm(
     wk C22 = (wk)(0);
     #endif
 
-#if com
-    #if wk_width == 1
+#if WK_COMPLEX
+    #if WK_VECTOR_WIDTH == 1
     wk C11_i = 0;
     wk C12_i = 0;
     wk C21_i = 0;
@@ -203,7 +191,7 @@ __kernel void gemm(
     const ulong C_index = i*C_row_pitch + (j << 1);
     const ulong C_index2 = C_index + C_row_pitch;
 
-#if wk_width == 1
+#if WK_VECTOR_WIDTH == 1
 
 #if HAS_ALPHA
 #if HAS_BETA
@@ -417,7 +405,7 @@ __kernel void gemm(
     const ulong C_index = i*C_row_pitch + j;
     const ulong C_index2 = C_index + C_row_pitch;
 
-#if wk_width == 1
+#if WK_VECTOR_WIDTH == 1
 
 #if HAS_ALPHA
 #if HAS_BETA
@@ -442,35 +430,21 @@ __kernel void gemm(
 
 #if HAS_ALPHA
 #if HAS_BETA
-    C[C_index] = alpha * (wk2)(sum(C11), sum(C12)) + C[C_index] * beta;
-    C[C_index2] = alpha * (wk2)(sum(C21), sum(C22)) + C[C_index2] * beta;
-    /*
     C[C_index] = alpha*sum(C11) + beta*C[C_index];
     C[C_index + 1] = alpha*sum(C12) + beta*C[C_index + 1];
     C[C_index2] = alpha*sum(C21) + beta*C[C_index2];
     C[C_index2 + 1] = alpha*sum(C22) + beta*C[C_index2 + 1];
-    */
 #else
-    C[C_index] = alpha * (wk2)(sum(C11), sum(C12));
-    C[C_index2] = alpha * (wk2)(sum(C21), sum(C22));
-
-    /*
     C[C_index] = alpha*sum(C11);
     C[C_index + 1] = alpha*sum(C12);
     C[C_index2] = alpha*sum(C21);
     C[C_index2 + 1] = alpha*sum(C22);
-    */
 #endif
 #else
-    C[C_index] = (wk2)(sum(C11), sum(C12));
-    C[C_index2] = (wk2)(sum(C21), sum(C22));
-
-    /*
     C[C_index] = sum(C11);
     C[C_index + 1] = sum(C12);
     C[C_index2] = sum(C21);
     C[C_index2 + 1] = sum(C22);
-    */
 #endif
 
 #endif

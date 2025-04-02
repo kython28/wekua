@@ -3,6 +3,7 @@ const std = @import("std");
 
 const core = @import("../core/main.zig");
 const Context = core.Context;
+const CommandQueue = core.CommandQueue;
 
 pub const EventManager = @import("event_manager.zig");
 const utils = @import("../utils/utils.zig");
@@ -15,6 +16,8 @@ pub const random = @import("random/main.zig");
 pub usingnamespace @import("transpose.zig");
 pub const convertions = @import("convertions/main.zig");
 pub usingnamespace @import("identity.zig");
+
+const blas = @import("../blas/main.zig");
 
 pub const Errors = error{
     InvalidValue,
@@ -51,10 +54,161 @@ const WorkConfiguration = struct {
     local_work_items: [][3]u64,
     local_work_items_without_vectors: [][3]u64,
 
-    gemm_blocks_width: []u64,
-    gemm_blocks_height: []u64,
-    global_work_items_gemm: [][2]u64,
-    local_work_items_gemm: [][2]u64,
+    gemm_algorithm: blas.gemm.Algorithm,
+    global_work_items_gemm_generic: [2]u64,
+    local_work_items_gemm_generic: [][2]u64,
+
+    global_work_items_gemm_4x4: [2]u64,
+    local_work_items_gemm_4x4: [][2]u64,
+
+    global_work_items_gemm_8x8: [2]u64,
+    local_work_items_gemm_8x8: [][2]u64,
+
+    global_work_items_gemm_16x16: [2]u64,
+    local_work_items_gemm_16x16: [][2]u64,
+
+    global_work_items_gemm_32x32: [2]u64,
+    local_work_items_gemm_32x32: [][2]u64,
+
+    pub fn init(
+        self: *WorkConfiguration,
+        arena_allocator: std.mem.Allocator,
+        command_queues: []CommandQueue,
+        depth: u64,
+        penultimate_size: u64,
+        padded_penultimate_size: u64,
+        number_of_elements: u64,
+        number_of_vectors: u64,
+        last_size: u64,
+        vl_shape: []const u64,
+    ) !void {
+        const local_work_items_1d = try arena_allocator.alloc(u64, command_queues.len);
+        const lobal_work_items_for_vectors_1d = try arena_allocator.alloc(u64, command_queues.len);
+        const local_work_items = try arena_allocator.alloc([3]u64, command_queues.len);
+        const local_work_items_without_vectors = try arena_allocator.alloc([3]u64, command_queues.len);
+
+        self.local_work_items_1d = local_work_items_1d;
+        self.local_work_items_for_vectors_1d = lobal_work_items_for_vectors_1d;
+        self.local_work_items = local_work_items;
+        self.local_work_items_without_vectors = local_work_items_without_vectors;
+
+        const global_work_items: []u64 = &self.global_work_items;
+        const global_work_items_without_vectors: []u64 = &self.global_work_items_without_vectors;
+
+        global_work_items[0] = depth;
+        global_work_items_without_vectors[0] = depth;
+
+        global_work_items[1] = penultimate_size;
+        global_work_items_without_vectors[1] = penultimate_size;
+
+        global_work_items_without_vectors[2] = last_size;
+        global_work_items[2] = vl_shape[vl_shape.len - 1];
+
+        const local_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
+        self.local_work_items_gemm_generic = local_work_items_gemm;
+
+        self.gemm_algorithm = .generic;
+
+        const gwi_h = padded_penultimate_size / 2;
+        const gwi_w = (last_size + (last_size % 2)) / 2;
+
+        self.global_work_items_gemm_generic[0] = gwi_h;
+        self.global_work_items_gemm_generic[1] = gwi_w;
+
+        for (
+            command_queues,
+            local_work_items_1d,
+            lobal_work_items_for_vectors_1d,
+            local_work_items,
+            local_work_items_without_vectors,
+            local_work_items_gemm,
+        ) |cmd, *wa, *wv, *wmv, *wm, *lw_gemm| {
+            utils.calculateWorkItems(
+                @as([*]const u64, @ptrCast(&number_of_elements))[0..1],
+                @as([*]u64, @ptrCast(wa))[0..1],
+                cmd.max_work_group_size,
+            );
+
+            utils.calculateWorkItems(
+                @as([*]const u64, @ptrCast(&number_of_vectors))[0..1],
+                @as([*]u64, @ptrCast(wv))[0..1],
+                cmd.max_work_group_size,
+            );
+
+            utils.calculateWorkItems(global_work_items, wmv, cmd.max_work_group_size);
+            utils.calculateWorkItems(global_work_items_without_vectors, wm, cmd.max_work_group_size);
+            utils.calculateWorkItems(
+                &self.global_work_items_gemm_generic,
+                lw_gemm,
+                cmd.max_work_group_size,
+            );
+        }
+
+        if (gwi_h >= 256 and gwi_w >= 256 and (gwi_h % 32 == 0) and (gwi_w % 32 == 0)) {
+            self.global_work_items_gemm_32x32[0] = gwi_h / 16;
+            self.global_work_items_gemm_32x32[1] = gwi_w / 16;
+
+            self.gemm_algorithm = .@"32x32";
+
+            self.local_work_items_gemm_32x32 = try arena_allocator.alloc([2]u64, command_queues.len);
+            for (command_queues, self.local_work_items_gemm_32x32) |cmd, lw_gemm| {
+                utils.calculateWorkItems(
+                    &lw_gemm,
+                    &self.global_work_items_gemm_32x32,
+                    cmd.max_work_group_size,
+                );
+            }
+        }
+
+        if (gwi_h >= 128 and gwi_w >= 128 and (gwi_h % 16 == 0) and (gwi_w % 16 == 0)) {
+            self.global_work_items_gemm_16x16[0] = gwi_h / 8;
+            self.global_work_items_gemm_16x16[1] = gwi_w / 8;
+
+            self.gemm_algorithm = .@"16x16";
+
+            self.local_work_items_gemm_16x16 = try arena_allocator.alloc([2]u64, command_queues.len);
+            for (command_queues, self.local_work_items_gemm_16x16) |cmd, lw_gemm| {
+                utils.calculateWorkItems(
+                    &lw_gemm,
+                    &self.global_work_items_gemm_16x16,
+                    cmd.max_work_group_size,
+                );
+            }
+        }
+
+        if (gwi_h >= 64 and gwi_w >= 64 and (gwi_h % 8 == 0) and (gwi_w % 8 == 0)) {
+            self.global_work_items_gemm_8x8[0] = gwi_h / 4;
+            self.global_work_items_gemm_8x8[1] = gwi_w / 4;
+
+            self.gemm_algorithm = .@"8x8";
+
+            self.local_work_items_gemm_8x8 = try arena_allocator.alloc([2]u64, command_queues.len);
+            for (command_queues, self.local_work_items_gemm_8x8) |cmd, lw_gemm| {
+                utils.calculateWorkItems(
+                    &lw_gemm,
+                    &self.global_work_items_gemm_8x8,
+                    cmd.max_work_group_size,
+                );
+            }
+        }
+
+        if (gwi_h >= 32 and gwi_w >= 32 and (gwi_h % 4 == 0) and (gwi_w % 4 == 0)) {
+            self.global_work_items_gemm_4x4[0] = gwi_h / 2;
+            self.global_work_items_gemm_4x4[1] = gwi_w / 2;
+
+            self.gemm_algorithm = .@"4x4";
+
+            self.local_work_items_gemm_4x4 = try arena_allocator.alloc([2]u64, command_queues.len);
+            for (command_queues, self.local_work_items_gemm_4x4) |cmd, lw_gemm| {
+                utils.calculateWorkItems(
+                    &lw_gemm,
+                    &self.global_work_items_gemm_4x4,
+                    cmd.max_work_group_size,
+                );
+            }
+        }
+
+    }
 };
 
 const MemoryLayout = struct {
@@ -242,99 +396,17 @@ pub fn Tensor(comptime T: type) type {
 
             pitches[last_element_index] = multiplier;
 
-            const local_work_items_1d = try arena_allocator.alloc(u64, command_queues.len);
-            const lobal_work_items_for_vectors_1d = try arena_allocator.alloc(u64, command_queues.len);
-            const local_work_items = try arena_allocator.alloc([3]u64, command_queues.len);
-            const local_work_items_without_vectors = try arena_allocator.alloc([3]u64, command_queues.len);
-
-            const work_configuration = &tensor.work_configuration;
-            work_configuration.local_work_items_1d = local_work_items_1d;
-            work_configuration.local_work_items_for_vectors_1d = lobal_work_items_for_vectors_1d;
-            work_configuration.local_work_items = local_work_items;
-            work_configuration.local_work_items_without_vectors = local_work_items_without_vectors;
-
-            const global_work_items: []u64 = &work_configuration.global_work_items;
-            const global_work_items_without_vectors: []u64 = &work_configuration.global_work_items_without_vectors;
-
-            global_work_items[0] = depth;
-            global_work_items_without_vectors[0] = depth;
-
-            global_work_items[1] = penultimate_size;
-            global_work_items_without_vectors[1] = penultimate_size;
-
-            global_work_items_without_vectors[2] = last_size;
-            global_work_items[2] = vl_shape[last_element_index];
-
-            const gemm_blocks_width = try arena_allocator.alloc(u64, command_queues.len);
-            const gemm_blocks_height = try arena_allocator.alloc(u64, command_queues.len);
-            const global_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
-            const local_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
-
-            work_configuration.local_work_items_gemm = local_work_items_gemm;
-            work_configuration.global_work_items_gemm = global_work_items_gemm;
-            work_configuration.gemm_blocks_width = gemm_blocks_width;
-            work_configuration.gemm_blocks_height = gemm_blocks_height;
-
-            const gemm_y_len = padded_penultimate_size / 2;
-            const gemm_x_len = (last_size + (last_size % 2)) / 2;
-
-            for (
+            try tensor.work_configuration.init(
+                arena_allocator,
                 command_queues,
-                gemm_blocks_width,
-                gemm_blocks_height,
-                global_work_items_gemm,
-                local_work_items_gemm
-            ) |cmd, *gw, *gh, *gw_gemm, *lw_gemm| {
-                var width: u64 = 1;
-                var height: u64 = 1;
-
-                var gi_y = gemm_y_len;
-                var gi_x = gemm_x_len;
-
-                const max_concurrent = std.math.sqrt(cmd.max_concurrent_kernels);
-                while (width < max_concurrent and ((gi_x & 1) == 0)) {
-                    gi_x = (gi_x >> 1);
-                    width = (gemm_x_len / gi_x);
-                }
-
-
-                while (height < max_concurrent and ((gi_y & 1) == 0)) {
-                    gi_y = (gi_y >> 1);
-                    height = (gemm_y_len / gi_y);
-                }
-
-
-                gw.* = width;
-                gh.* = height;
-
-                gw_gemm.*[0] = gi_y;
-                gw_gemm.*[1] = gi_x;
-
-                utils.calculateWorkItems(gw_gemm, lw_gemm, cmd.max_work_group_size);
-            }
-
-            for (
-                command_queues,
-                local_work_items_1d,
-                lobal_work_items_for_vectors_1d,
-                local_work_items,
-                local_work_items_without_vectors,
-            ) |cmd, *wa, *wv, *wmv, *wm| {
-                utils.calculateWorkItems(
-                    @as([*]const u64, @ptrCast(&number_of_elements))[0..1],
-                    @as([*]u64, @ptrCast(wa))[0..1],
-                    cmd.max_work_group_size,
-                );
-
-                utils.calculateWorkItems(
-                    @as([*]const u64, @ptrCast(&number_of_vectors))[0..1],
-                    @as([*]u64, @ptrCast(wv))[0..1],
-                    cmd.max_work_group_size,
-                );
-
-                utils.calculateWorkItems(global_work_items, wmv, cmd.max_work_group_size);
-                utils.calculateWorkItems(global_work_items_without_vectors, wm, cmd.max_work_group_size);
-            }
+                depth,
+                penultimate_size,
+                padded_penultimate_size,
+                number_of_elements,
+                number_of_vectors,
+                last_size,
+                vl_shape,
+            );
 
             const size = number_of_elements * @sizeOf(T);
             tensor.memory_layout.size = size;

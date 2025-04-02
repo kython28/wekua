@@ -40,14 +40,14 @@ ulong xxhash64(ulong index, ulong global_seed) {
 
     const uint *blk = (uint *)&index;
 #if __ENDIAN_LITTLE__
-    const ulong combined = (((ulong)blk[0]) << 32) + blk[1];
+    const ulong WK_COMPLEXbined = (((ulong)blk[0]) << 32) + blk[1];
 #else
     const ulong blk0 = bswap32(blk[0]);
     const ulong blk1 = bswap32(blk[1]);
-    const ulong combined = (((ulong)blk0) << 32) + blk1;
+    const ulong WK_COMPLEXbined = (((ulong)blk0) << 32) + blk1;
 #endif
 
-    const ulong x0 = combined ^ key;
+    const ulong x0 = WK_COMPLEXbined ^ key;
     const ulong x1 = x0 ^ rotl64(x0, 49) ^ rotl64(x0, 24) * PRIME_MULTIPLIER;
     const ulong x2 = x1 ^ ((x1 >> 35) + 8) * PRIME_MULTIPLIER;
     return x2 ^ (x2 >> 28);
@@ -65,24 +65,24 @@ __kernel void random(
 	const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-#if com
+#if WK_COMPLEX
     const ulong index = i*slice_pitch + j*row_pitch + (k << 1);
 #else
     const ulong index = i*slice_pitch + j*row_pitch + k;
 #endif
 
-#if dtype >= 8
+#if WK_DTYPE >= 8
 
-#if com == 1
+#if WK_COMPLEX
     numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
     numbers[index + 1] = xxhash64(index + 1, global_seed)/((wks)ULONG_MAX);
 #else
     numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
 #endif
 
-#elif dtype >= 6
+#elif WK_DTYPE >= 6
 
-#if com == 1
+#if WK_COMPLEX
     const uwks real_value = (uwks) xxhash64(index, global_seed);
     const uwks imag_value = (uwks) xxhash64(index + 1, global_seed);
 
@@ -107,7 +107,7 @@ __kernel void random(
 
 #else
 
-#if com == 1
+#if WK_COMPLEX == 1
     const uwks real_value = (uwks) (xxhash64(index, global_seed) & (WK_UINT_MAX - 1));
     const uwks imag_value = (uwks) (xxhash64(index + 1, global_seed) & (WK_UINT_MAX - 1));
 

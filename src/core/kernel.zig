@@ -8,7 +8,7 @@ const w_tensor = @import("../tensor/main.zig");
 const CommandQueue = core.CommandQueue;
 const Tensor = w_tensor.Tensor;
 
-const header_content: []const u8 = @embedFile("wekua_cl_lib.h");
+const header_content: []const u8 = @embedFile("wekua_cl_lib.cl");
 
 pub const KernelsID = enum(u16) {
     Fill,
@@ -118,28 +118,36 @@ pub fn compileKernel(
 
     if (vector_width == 0) return error.TypeNotSupported;
 
+    comptime var default_arguments: []const u8 = "-DWK_VECTOR_WIDTH={d} -DWK_DTYPE={d} -DWK_MEM_TYPE={d} -DWK_COMPLEX={d} -DWK_CACHE_LINE_SIZE={d}";
+    switch (builtin.mode) {
+        .Debug => default_arguments = default_arguments ++ " -cl-opt-disable -g",
+        else => {},
+    }
+
     var args: []u8 = undefined;
     if (options.extra_args) |v| {
         args = try std.fmt.allocPrint(
             allocator,
-            "-Dwk_width={d} -Ddtype={d} -Dmem_type={d} -Dcom={d} {s}\x00",
+            default_arguments ++ " {s}\x00",
             .{
                 vector_width,
                 type_index,
                 command_queue.local_mem_type,
                 @intFromBool(options.is_complex),
+                command_queue.cache_line_size,
                 v,
             },
         );
     } else {
         args = try std.fmt.allocPrint(
             allocator,
-            "-Dwk_width={d} -Ddtype={d} -Dmem_type={d} -Dcom={d}\x00",
+            default_arguments ++ "\x00",
             .{
                 vector_width,
                 type_index,
                 command_queue.local_mem_type,
                 @intFromBool(options.is_complex),
+                command_queue.cache_line_size,
             },
         );
     }

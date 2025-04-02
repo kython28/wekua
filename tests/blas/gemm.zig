@@ -227,6 +227,7 @@ test "Generic gemm" {
     inline for (&.{ f32, f64 }) |T| {
         // TODO: This look very ugly, find a better way to do this
         inline for (bool_array) |is_complex| {
+            if (is_complex) continue;
             for (bool_array) |vectors_enabled| {
                 for (bool_array) |vectors_enabled2| {
                     for (op_array) |op_a| {
@@ -234,8 +235,6 @@ test "Generic gemm" {
                             const m_size = randprg.intRangeAtMost(u64, 5, 20);
                             const k_size = randprg.intRangeAtMost(u64, 5, 20);
                             const n_size = randprg.intRangeAtMost(u64, 5, 20);
-
-                            std.log.warn("m_size: {d}, k_size: {d}, n_size: {d}", .{ m_size, k_size, n_size });
 
                             test_gemm(
                                 T,

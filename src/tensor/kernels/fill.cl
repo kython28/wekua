@@ -7,7 +7,7 @@ __kernel void fill(
     const ulong slice_pitch,
 
     const wks real_scalar
-#if com
+#if WK_COMPLEX
     , const wks imag_scalar
 #endif
 ) {
@@ -15,7 +15,7 @@ __kernel void fill(
     const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-#if com
+#if WK_COMPLEX
     const ulong index = i*slice_pitch + j*row_pitch + (k << 1);
 
     buffer[index] = real_scalar;

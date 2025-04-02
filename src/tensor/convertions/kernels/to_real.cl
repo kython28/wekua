@@ -1,12 +1,8 @@
 #include "wekua.h"
 
-#ifndef OFFSET
-#define	OFFSET 0
-#endif
-
 __kernel void to_real(
-	__global const wks *restrict src,
-    __global wks *restrict dst,
+	__constant const wks *restrict const src,
+    __global wks *restrict const dst,
 
 	const ulong src_row_pitch,
 	const ulong src_slice_pitch,
