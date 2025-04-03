@@ -12,7 +12,7 @@ const header_content: []const u8 = @embedFile("wekua_cl_lib.cl");
 
 pub const KernelsID = enum(u16) {
     Fill,
-    FillRandom,
+    RandomUniform,
     RandRange,
     Transpose,
     ToComplex,

@@ -53,13 +53,18 @@ ulong xxhash64(ulong index, ulong global_seed) {
     return x2 ^ (x2 >> 28);
 }
 
-__kernel void random(
+__kernel void uniform(
     __global wks *restrict numbers,
 
 	const ulong row_pitch,
     const ulong slice_pitch,
 
     const ulong global_seed
+
+#if RANGE_DEFINED
+    , const wks min_value,
+    const wks max_value
+#endif
 ) {
 	const ulong i = get_global_id(0);
 	const ulong j = get_global_id(1);
@@ -70,6 +75,32 @@ __kernel void random(
 #else
     const ulong index = i*slice_pitch + j*row_pitch + k;
 #endif
+
+#if RANGE_DEFINED
+
+    // TODO: Find a way without using floating point
+#ifdef cl_khr_fp64
+    const double normalized = (double) xxhash64(index, global_seed) / ULONG_MAX;
+
+#if WK_COMPLEX
+    const double inormalized = (double) xxhash64(index + 1, global_seed) / ULONG_MAX;
+#endif
+
+#else
+    const float normalized = (float) xxhash64(index, global_seed) / ULONG_MAX;
+
+#if WK_COMPLEX
+    const float inormalized = (float) xxhash64(index + 1, global_seed) / ULONG_MAX;
+#endif
+
+#endif
+
+    numbers[index] = min_value + (wks)(normalized * (max_value - min_value + 1));
+#if WK_COMPLEX
+    numbers[index + 1] = min_value + (wks)(inormalized * (max_value - min_value + 1));
+#endif
+
+#else
 
 #if WK_DTYPE >= 8
 
@@ -108,8 +139,8 @@ __kernel void random(
 #else
 
 #if WK_COMPLEX == 1
-    const uwks real_value = (uwks) (xxhash64(index, global_seed) & (WK_UINT_MAX - 1));
-    const uwks imag_value = (uwks) (xxhash64(index + 1, global_seed) & (WK_UINT_MAX - 1));
+    const uwks real_value = (uwks) (xxhash64(index, global_seed) & WK_UINT_MAX);
+    const uwks imag_value = (uwks) (xxhash64(index + 1, global_seed) & WK_UINT_MAX);
 
 #if WKS_IS_UNSIGNED
     numbers[index] = real_value;
@@ -120,12 +151,14 @@ __kernel void random(
 #endif
 
 #else
-    const uwks real_value = (uwks) (xxhash64(index, global_seed) & (WK_UINT_MAX - 1));
+    const uwks real_value = (uwks) (xxhash64(index, global_seed) & WK_UINT_MAX);
 
 #if WKS_IS_UNSIGNED
     numbers[index] = real_value;
 #else
     numbers[index] =  *((wks*)&real_value);
+#endif
+
 #endif
 
 #endif

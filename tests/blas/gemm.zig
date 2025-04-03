@@ -152,11 +152,11 @@ fn test_gemm(
     );
     defer tensor3.release();
 
-    try wekua.tensor.random.fill(T, w_cmd, tensor, 0);
-    try wekua.tensor.random.fill(T, w_cmd, tensor2, 0);
+    try wekua.tensor.random.uniform(T, w_cmd, tensor, 0, null, null);
+    try wekua.tensor.random.uniform(T, w_cmd, tensor2, 0, null, null);
 
     if (beta != null or betai != null) {
-        try wekua.tensor.random.fill(T, w_cmd, tensor3, 0);
+        try wekua.tensor.random.uniform(T, w_cmd, tensor3, 0, null, null);
     }
 
     const numbers1: []T = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);

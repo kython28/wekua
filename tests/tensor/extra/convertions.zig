@@ -29,7 +29,7 @@ fn test_convertions_to_complex(
     });
     defer tensor.release();
 
-    try wekua.tensor.random.fill(T, w_cmd, tensor, 0);
+    try wekua.tensor.random.uniform(T, w_cmd, tensor, 0, null, null);
 
     const tensor2 = try wekua.Tensor(T).alloc(ctx, &shape, .{
         .is_complex = true,
@@ -111,7 +111,7 @@ fn test_convertions_to_real(
     });
     defer tensor.release();
 
-    try wekua.tensor.random.fill(T, w_cmd, tensor, 0);
+    try wekua.tensor.random.uniform(T, w_cmd, tensor, 0, null, null);
 
     const tensor2 = try wekua.Tensor(T).alloc(ctx, &shape, .{
         .is_complex = false,

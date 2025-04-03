@@ -30,7 +30,7 @@ fn test_transpose(
     });
     defer tensor.release();
 
-    try wekua.tensor.random.fill(T, w_cmd, tensor, null);
+    try wekua.tensor.random.uniform(T, w_cmd, tensor, null, null, null);
 
     const dim0: u64 = randprg.intRangeAtMost(u64, 0, 2);
     const dim1: u64 = randprg.intRangeAtMost(u64, dim0 + 1, 3);

@@ -50,8 +50,8 @@ fn test_axpy(
     });
     defer tensor2.release();
 
-    try wekua.tensor.random.fill(T, w_cmd, tensor, 0);
-    try wekua.tensor.random.fill(T, w_cmd, tensor2, 0);
+    try wekua.tensor.random.uniform(T, w_cmd, tensor, 0, null, null);
+    try wekua.tensor.random.uniform(T, w_cmd, tensor2, 0, null, null);
 
     const numbers2: []T = try allocator.alloc(T, tensor2.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers2);
