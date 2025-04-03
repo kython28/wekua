@@ -11,6 +11,7 @@ const Tensor = w_tensor.Tensor;
 
 const gemm_cl_kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
 const gemm_nxn_cl_kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
+const gemm_nxn_gpu_cl_kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
 
 pub const Algorithm = enum(u8) {
     generic = 0,
@@ -48,7 +49,7 @@ fn getKernel(
     );
 
     const algorithm: Algorithm = blk: {
-        if (is_complex or command_queue.device_type == .gpu) {
+        if (is_complex) {
             break :blk .generic; // TODO: Implement complex gemm algorithm
         }
 
@@ -120,7 +121,10 @@ fn getKernel(
         &program,
         switch (algorithm) {
             .generic => gemm_cl_kernel,
-            else => gemm_nxn_cl_kernel,
+            else => switch (command_queue.local_mem_type) {
+                .local => gemm_nxn_gpu_cl_kernel,
+                else => gemm_nxn_cl_kernel,
+            },
         },
     );
 
@@ -273,19 +277,19 @@ pub fn perform(
             local_work_items = &c.work_configuration.local_work_items_gemm_generic[wekua_id];
         },
         .@"4x4" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_4x4;
+            global_work_items = &c.work_configuration.global_work_items_gemm_4x4[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_4x4[wekua_id];
         },
         .@"8x8" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_8x8;
+            global_work_items = &c.work_configuration.global_work_items_gemm_8x8[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_8x8[wekua_id];
         },
         .@"16x16" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_16x16;
+            global_work_items = &c.work_configuration.global_work_items_gemm_16x16[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_16x16[wekua_id];
         },
         .@"32x32" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_32x32;
+            global_work_items = &c.work_configuration.global_work_items_gemm_32x32[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_32x32[wekua_id];
         }
     }

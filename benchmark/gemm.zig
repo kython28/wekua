@@ -10,7 +10,7 @@ pub const starting_point: u64 = 4;
 
 const niterations = switch (builtin.mode) {
     .Debug => 1,
-    else => 2,
+    else => 10,
 };
 
 const PreferredType = f32;
@@ -65,6 +65,7 @@ fn run_openblas_test(
 }
 
 fn run_old_wekua_test(
+    device_type: cl.device.enums.device_type,
     allocator: std.mem.Allocator,
     size: usize,
     alphas: []PreferredType,
@@ -74,7 +75,7 @@ fn run_old_wekua_test(
     buf3: []PreferredType,
 ) !f64 {
     const ctx: utils.wekua_c.wekuaContext = utils.wekua_c.createSomeWekuaContext(
-        @intFromEnum(cl.device.enums.device_type.cpu),
+        @intFromEnum(device_type),
         1,
         0,
     ) orelse return error.OutOfMemory;
@@ -127,7 +128,7 @@ fn run_old_wekua_test(
     return total_diff;
 }
 
-fn run_wekua_test(
+inline fn run_old_wekua_cpu_test(
     allocator: std.mem.Allocator,
     size: usize,
     alphas: []PreferredType,
@@ -136,7 +137,32 @@ fn run_wekua_test(
     buf2: []PreferredType,
     buf3: []PreferredType,
 ) !f64 {
-    const ctx = try wekua.core.Context.create_from_best_device(allocator, null, cl.device.enums.device_type.cpu);
+    return run_old_wekua_test(.cpu, allocator, size, alphas, betas, buf1, buf2, buf3);
+}
+
+inline fn run_old_wekua_gpu_test(
+    allocator: std.mem.Allocator,
+    size: usize,
+    alphas: []PreferredType,
+    betas: []PreferredType,
+    buf1: []PreferredType,
+    buf2: []PreferredType,
+    buf3: []PreferredType,
+) !f64 {
+    return run_old_wekua_test(.gpu, allocator, size, alphas, betas, buf1, buf2, buf3);
+}
+
+fn run_wekua_test(
+    device_type: cl.device.enums.device_type,
+    allocator: std.mem.Allocator,
+    size: usize,
+    alphas: []PreferredType,
+    betas: []PreferredType,
+    buf1: []PreferredType,
+    buf2: []PreferredType,
+    buf3: []PreferredType,
+) !f64 {
+    const ctx = try wekua.core.Context.create_from_best_device(allocator, null, device_type);
     defer ctx.release();
 
     const cmd = &ctx.command_queues[0];
@@ -201,10 +227,36 @@ fn run_wekua_test(
     return total_diff;
 }
 
+inline fn run_wekua_cpu_test(
+    allocator: std.mem.Allocator,
+    size: usize,
+    alphas: []PreferredType,
+    betas: []PreferredType,
+    buf1: []PreferredType,
+    buf2: []PreferredType,
+    buf3: []PreferredType,
+) !f64 {
+    return run_wekua_test(.cpu, allocator, size, alphas, betas, buf1, buf2, buf3);
+}
+
+inline fn run_wekua_gpu_test(
+    allocator: std.mem.Allocator,
+    size: usize,
+    alphas: []PreferredType,
+    betas: []PreferredType,
+    buf1: []PreferredType,
+    buf2: []PreferredType,
+    buf3: []PreferredType,
+) !f64 {
+    return run_wekua_test(.gpu, allocator, size, alphas, betas, buf1, buf2, buf3);
+}
+
 const tests = .{
     .{ "OpenBLAS", run_openblas_test },
-    .{ "Wekua (C)", run_old_wekua_test },
-    .{ "wekua (Zig)", run_wekua_test },
+    .{ "Wekua (C)", run_old_wekua_cpu_test },
+    .{ "Wekua (C) GPU", run_old_wekua_gpu_test },
+    .{ "wekua (Zig)", run_wekua_cpu_test },
+    .{ "wekua (Zig) GPU", run_wekua_gpu_test },
 };
 
 pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
@@ -256,7 +308,6 @@ pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
                 c,
             );
 
-            std.log.info("Time: {} - S: {} - Name: {s}", .{t.*, size, test_name});
             size *= 2;
         }
 

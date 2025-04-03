@@ -58,16 +58,16 @@ const WorkConfiguration = struct {
     global_work_items_gemm_generic: [2]u64,
     local_work_items_gemm_generic: [][2]u64,
 
-    global_work_items_gemm_4x4: [2]u64,
+    global_work_items_gemm_4x4: [][2]u64,
     local_work_items_gemm_4x4: [][2]u64,
 
-    global_work_items_gemm_8x8: [2]u64,
+    global_work_items_gemm_8x8: [][2]u64,
     local_work_items_gemm_8x8: [][2]u64,
 
-    global_work_items_gemm_16x16: [2]u64,
+    global_work_items_gemm_16x16: [][2]u64,
     local_work_items_gemm_16x16: [][2]u64,
 
-    global_work_items_gemm_32x32: [2]u64,
+    global_work_items_gemm_32x32: [][2]u64,
     local_work_items_gemm_32x32: [][2]u64,
 
     pub fn init(
@@ -147,7 +147,7 @@ const WorkConfiguration = struct {
             );
         }
 
-        var max_block_size: u8 = 0;
+        var max_block_length: u8 = 0;
         comptime var block_length = 4;
         inline while (block_length < 64) : (block_length *= 2) {
             if ((gwi_h % block_length == 0) and (gwi_w % block_length == 0)) {
@@ -155,11 +155,9 @@ const WorkConfiguration = struct {
                 const global_field_name = std.fmt.comptimePrint("global_work_items_gemm_{s}", .{algorithm_name});
                 const local_field_name = std.fmt.comptimePrint("local_work_items_gemm_{s}", .{algorithm_name});
 
-                @field(self, global_field_name)[0] = gwi_h / block_length;
-                @field(self, global_field_name)[1] = gwi_w / block_length;
-
+                @field(self, global_field_name) = try arena_allocator.alloc([2]u64, command_queues.len);
                 @field(self, local_field_name) = try arena_allocator.alloc([2]u64, command_queues.len);
-                max_block_size = block_length;
+                max_block_length = block_length;
             }
         }
 
@@ -167,26 +165,40 @@ const WorkConfiguration = struct {
             const type_index = core.Context.getTypeId(T);
 
             comptime var block_length2 = 4;
-            comptime var max_local_work_items = 16;
 
             var algorithm: blas.gemm.Algorithm = .generic;
             inline while (block_length2 < 64) : (block_length2 *= 2) {
-                const block_size = cmd.vector_widths[type_index] * block_length2 * block_length2 * @sizeOf(T);
-                if (block_length2 <= max_block_size and block_size < 16 * 1024) {
-                    const algorithm_name = std.fmt.comptimePrint("{0}x{0}", .{block_length2});
+                const block_size = cmd.vector_widths[type_index] * block_length2 * @sizeOf(T);
+                const blocks_fit_in_local_mem = switch (cmd.local_mem_type) {
+                    .local => (block_size * 2 * 4 <= cmd.local_mem_size),
+                    .global => ((block_size * block_length2) <= 16 * 1024),
+                    else => unreachable,
+                };
 
+                if (block_length2 <= max_block_length and blocks_fit_in_local_mem) {
+                    const algorithm_name = std.fmt.comptimePrint("{0}x{0}", .{block_length2});
                     const g_field_name = std.fmt.comptimePrint("global_work_items_gemm_{s}", .{algorithm_name});
                     const l_field_name = std.fmt.comptimePrint("local_work_items_gemm_{s}", .{algorithm_name});
+
+                    const g_values = &@field(self, g_field_name)[i];
+
+                    switch (cmd.local_mem_type) {
+                        .local => @memcpy(g_values, &self.global_work_items_gemm_generic),
+                        .global => {
+                            g_values[0] = gwi_h / block_length2;
+                            g_values[1] = gwi_w / block_length2;
+                        },
+                        else => unreachable,
+                    }
 
                     algorithm = @field(blas.gemm.Algorithm, algorithm_name);
 
                     utils.calculateWorkItems(
-                        &@field(self, g_field_name),
+                        g_values,
                         &@field(self, l_field_name)[i],
-                        max_local_work_items
+                        @min(block_length2 * block_length2, cmd.max_work_group_size)
                     );
                 }
-                max_local_work_items *= 2;
             }
 
             self.gemm_algorithm_per_device[i] = algorithm;

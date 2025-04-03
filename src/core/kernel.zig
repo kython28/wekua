@@ -133,7 +133,7 @@ pub fn compileKernel(
             .{
                 vector_width,
                 type_index,
-                command_queue.local_mem_type,
+                @intFromEnum(command_queue.local_mem_type),
                 @intFromBool(options.is_complex),
                 command_queue.cache_line_size,
                 v,
@@ -146,7 +146,7 @@ pub fn compileKernel(
             .{
                 vector_width,
                 type_index,
-                command_queue.local_mem_type,
+                @intFromEnum(command_queue.local_mem_type),
                 @intFromBool(options.is_complex),
                 command_queue.cache_line_size,
             },

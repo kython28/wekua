@@ -16,7 +16,9 @@ device_type: cl.device.enums.device_type,
 kernels: [KernelsSet.total_number_of_kernels]KernelsSet,
 headers: KernelsSet,
 
-local_mem_type: cl.device.cl_device_local_mem_type,
+local_mem_type: cl.device.enums.local_mem_type,
+local_mem_size: u64,
+
 compute_units: u32,
 vector_widths: [10]u32,
 max_work_group_size: u64,
@@ -45,8 +47,16 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
     try cl.device.get_info(
         device,
         device_info_enum.local_mem_type,
-        @sizeOf(cl.device.cl_device_local_mem_type),
+        @sizeOf(cl.device.enums.local_mem_type),
         &self.local_mem_type,
+        null,
+    );
+
+    try cl.device.get_info(
+        device,
+        device_info_enum.local_mem_size,
+        @sizeOf(u64),
+        &self.local_mem_size,
         null,
     );
 

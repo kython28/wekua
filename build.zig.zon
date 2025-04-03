@@ -6,8 +6,8 @@
 
     .dependencies = .{
         .@"zig-opencl" = .{
-            .url = "https://github.com/kython28/zig-opencl/archive/refs/tags/v0.5.1.tar.gz",
-            .hash = "zigopencl-0.4.6-z-Vhw32EAgDaSmssOFZXJTzM7pfSfh3NFTV1yGQBUUV0",
+            .url = "https://github.com/kython28/zig-opencl/archive/refs/tags/v0.6.0.tar.gz",
+            .hash = "zigopencl-0.6.0-z-Vhwy2EAgAFBsBLJuhR-6yA2IoZhPsG7mU_TV5NlZMm",
         },
     },
 

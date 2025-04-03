@@ -366,12 +366,12 @@ fn test_gemm_kernel(
     }
 }
 
-test {
-    const ctx = try wekua.core.Context.init_from_device_type(
+fn test_gemm_per_device(device_type: cl.device.enums.device_type) !void {
+    const ctx = wekua.core.Context.create_from_best_device(
         std.testing.allocator,
         null,
-        cl.device.enums.device_type.all,
-    );
+        device_type,
+    ) catch return; // TODO: Use error.DeviceNotFound
     defer ctx.release();
 
     for (0..10) |_| {
@@ -412,4 +412,9 @@ test {
             ctx,
         );
     }
+}
+
+test {
+    try test_gemm_per_device(cl.device.enums.device_type.cpu);
+    try test_gemm_per_device(cl.device.enums.device_type.gpu);
 }
