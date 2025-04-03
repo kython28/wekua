@@ -48,23 +48,23 @@ fn getKernel(
     );
 
     const algorithm: Algorithm = blk: {
-        if (is_complex) {
+        if (is_complex or command_queue.device_type == .gpu) {
             break :blk .generic; // TODO: Implement complex gemm algorithm
         }
 
-        if ((k_size % 16) == 0 and @intFromEnum(default_algorithm) == @intFromEnum(Algorithm.@"32x32")) {
+        if ((k_size % 32) == 0 and @intFromEnum(default_algorithm) == @intFromEnum(Algorithm.@"32x32")) {
             break :blk .@"32x32";
         }
 
-        if ((k_size % 8) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"16x16")) {
+        if ((k_size % 16) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"16x16")) {
             break :blk .@"16x16";
         }
 
-        if ((k_size % 4) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"8x8")) {
+        if ((k_size % 8) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"8x8")) {
             break :blk .@"8x8";
         }
 
-        if ((k_size % 2) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"4x4")) {
+        if ((k_size % 4) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"4x4")) {
             break :blk .@"4x4";
         }
 
@@ -95,7 +95,7 @@ fn getKernel(
             @intFromBool(has_beta),
             @intFromEnum(op_a),
             @intFromEnum(op_b),
-            @intFromEnum(algorithm),
+            @intFromEnum(algorithm) + 1,
             @as(u8, switch (algorithm) {
                 .generic => 2,
                 .@"4x4" => 4,
@@ -217,7 +217,7 @@ pub fn perform(
 
     const a_prev_events = a.events_manager.getPrevEvents(.read);
     const b_prev_events = b.events_manager.getPrevEvents(.read);
-    const c_prev_events = c.events_manager.getPrevEvents(.partial_write);
+    const c_prev_events = c.events_manager.getPrevEvents(.write);
 
     const events_set = try w_tensor.EventManager.EventsSet.init(
         allocator,
@@ -231,14 +231,12 @@ pub fn perform(
     var a_row_pitch: u64 = undefined;
     var b_row_pitch: u64 = undefined;
     var cols: u64 = undefined;
-    var k_size: u64 = undefined;
 
     if (vectors_enabled) {
         a_row_pitch = a.memory_layout.row_pitch_for_vectors;
         b_row_pitch = b.memory_layout.row_pitch_for_vectors;
 
         cols = a_row_pitch;
-        k_size = a.memory_layout.row_pitch;
     } else {
         a_row_pitch = a.memory_layout.row_pitch;
         b_row_pitch = b.memory_layout.row_pitch;
@@ -246,7 +244,6 @@ pub fn perform(
         cols = a.dimensions.shape[1 - @intFromEnum(op_a)];
         cols += cols % 2;
         cols *= (1 + @as(u64, @intFromBool(is_complex)));
-        k_size = cols;
     }
 
     const wekua_id = command_queue.wekua_id;
@@ -265,8 +262,8 @@ pub fn perform(
         op_a,
         op_b,
 
-        c.work_configuration.gemm_algorithm,
-        k_size,
+        c.work_configuration.gemm_algorithm_per_device[wekua_id],
+        cols,
 
         &algorithm,
     );
@@ -337,7 +334,7 @@ pub fn perform(
     _ = try events_set.appendNewEvent(
         T,
         true,
-        &.{ .read, .read, .partial_write },
+        &.{ .read, .read, .write },
         &.{ a, b, c },
         prev_events,
         new_event,

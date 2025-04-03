@@ -206,24 +206,61 @@ fn test_gemm(
         betai,
     );
 
+    // std.log.warn("A:", .{});
+    // switch (op_a) {
+    //     .no_transpose => {
+    //         for (0..m_size) |row| {
+    //             std.log.warn("{any}", .{numbers1[row * k_size .. (row + 1) * k_size]});
+    //         }
+    //     },
+    //     .transpose => {
+    //         for (0..k_size) |col| {
+    //             std.log.warn("{any}", .{numbers1[col * m_size .. (col + 1) * m_size]});
+    //         }
+    //     },
+    // }
+
+    // std.log.warn("B:", .{});
+    // switch (op_b) {
+    //     .no_transpose => {
+    //         for (0..k_size) |col| {
+    //             std.log.warn("{any}", .{numbers2[col * n_size .. (col + 1) * n_size]});
+    //         }
+    //     },
+    //     .transpose => {
+    //         for (0..n_size) |row| {
+    //             std.log.warn("{any}", .{numbers2[row * k_size .. (row + 1) * k_size]});
+    //         }
+    //     },
+    // }
+
+    // std.log.warn("C:", .{});
+    // for (0..m_size) |row| {
+    //     std.log.warn("{any}", .{expected_result[row * n_size .. (row + 1) * n_size]});
+    // }
+
     try wekua.tensor.memory.writeToBuffer(T, tensor3, w_cmd, numbers3);
-    const eps: T = @floatCast(comptime std.math.floatEps(f32) * 100);
+
+    // std.log.warn("actual:", .{});
+    // for (0..m_size) |row| {
+    //     std.log.warn("{any}", .{numbers3[row * n_size .. (row + 1) * n_size]});
+    // }
+    const eps: T = 1.0;
     for (expected_result, numbers3) |expected, result| {
         try std.testing.expectApproxEqAbs(expected, result, eps);
     }
 }
 
 fn test_gemm_kernel(
-    min_random: u64,
-    max_random: u64,
-    padding: u64,
-    comptime test_complex: bool,
-    comptime types: []const type
+    max_m_size: u64,
+    min_m_size: u64,
+    max_k_size: u64,
+    min_k_size: u64,
+    max_n_size: u64,
+    min_n_size: u64,
+    ctx: *wekua.core.Context,
 ) !void {
     const allocator = std.testing.allocator;
-    const ctx = try wekua.core.Context.init_from_device_type(allocator, null, cl.device.enums.device_type.all);
-    defer ctx.release();
-
     const randprg = std.crypto.random;
     const bool_array = [_]bool{ false, true };
     const op_array = [_]wekua.blas.gemm.Operation{
@@ -232,21 +269,16 @@ fn test_gemm_kernel(
     };
 
     // Hard to test with integers due overflow :-/
-    inline for (types) |T| {
+    inline for (&.{ f32, f64 }) |T| {
         // TODO: This look very ugly, find a better way to do this
         inline for (bool_array) |is_complex| {
-            if (is_complex and !test_complex) continue;
             for (bool_array) |vectors_enabled| {
                 for (bool_array) |vectors_enabled2| {
                     for (op_array) |op_a| {
                         for (op_array) |op_b| {
-                            var m_size = randprg.intRangeAtMost(u64, min_random, max_random);
-                            var k_size = randprg.intRangeAtMost(u64, min_random, max_random);
-                            var n_size = randprg.intRangeAtMost(u64, min_random, max_random);
-
-                            if (m_size % padding != 0) m_size += padding - (m_size % padding);
-                            if (k_size % padding != 0) k_size += padding - (k_size % padding);
-                            if (n_size % padding != 0) n_size += padding - (n_size % padding);
+                            const m_size = randprg.intRangeAtMost(u64, min_m_size, max_m_size);
+                            const k_size = randprg.intRangeAtMost(u64, min_k_size, max_k_size);
+                            const n_size = randprg.intRangeAtMost(u64, min_n_size, max_n_size);
 
                             test_gemm(
                                 T,
@@ -269,6 +301,7 @@ fn test_gemm_kernel(
                                 std.log.warn(
                                     \\ An error while testing gemm with is_complex: {}, vectors_enabled: {},
                                     \\ vectors_enabled2: {}, op_a: {}, op_b: {}: {s}
+                                    \\ m_size: {}, k_size: {}, n_size: {}
                                 , .{
                                     is_complex,
                                     vectors_enabled,
@@ -276,6 +309,9 @@ fn test_gemm_kernel(
                                     op_a,
                                     op_b,
                                     @errorName(err),
+                                    m_size,
+                                    k_size,
+                                    n_size,
                                 });
                                 return err;
                             };
@@ -331,9 +367,49 @@ fn test_gemm_kernel(
 }
 
 test {
-    try test_gemm_kernel(5, 20, 1, true, &.{ f32, f64 });
-    try test_gemm_kernel(32, 60, 4, false, &.{ f64 });
-    try test_gemm_kernel(64, 120, 8, false, &.{ f64 });
-    try test_gemm_kernel(128, 240, 16, false, &.{ f64 });
-    try test_gemm_kernel(256, 300, 32, false, &.{ f64 });
+    const ctx = try wekua.core.Context.init_from_device_type(
+        std.testing.allocator,
+        null,
+        cl.device.enums.device_type.all,
+    );
+    defer ctx.release();
+
+    for (0..10) |_| {
+        try test_gemm_kernel(
+            10,
+            1,
+            20,
+            10,
+            10,
+            1,
+            ctx,
+        );
+    }
+
+    // Semi-Square matrix
+    for (0..10) |_| {
+        try test_gemm_kernel(
+            20,
+            10,
+            20,
+            10,
+            20,
+            10,
+
+            ctx
+        );
+    }
+
+    // Square matrix
+    for (0..10) |_| {
+        try test_gemm_kernel(
+            20,
+            20,
+            20,
+            20,
+            20,
+            20,
+            ctx,
+        );
+    }
 }

@@ -14,7 +14,9 @@ const niterations = switch (builtin.mode) {
 };
 
 const PreferredType = f32;
+// const PreferredType = f64;
 const WekuaCPreferredType = utils.wekua_c.WEKUA_DTYPE_FLOAT;
+// const WekuaCPreferredType = utils.wekua_c.WEKUA_DTYPE_DOUBLE;
 
 fn run_openblas_test(
     allocator: std.mem.Allocator,
@@ -22,9 +24,7 @@ fn run_openblas_test(
     alphas: []PreferredType,
     betas: []PreferredType,
     buf1: []PreferredType,
-    ops_a: []wekua.blas.gemm.Operation,
     buf2: []PreferredType,
-    ops_b: []wekua.blas.gemm.Operation,
     buf3: []PreferredType,
 ) !f64 {
     const gemm_func = if (PreferredType == f32) utils.openblas.cblas_sgemm else utils.openblas.cblas_dgemm;
@@ -40,19 +40,7 @@ fn run_openblas_test(
 
     var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
-    for (alphas, betas, ops_a, ops_b) |alpha, beta, op_a, op_b| {
-        _ = op_a;
-        _ = op_b;
-        // const operation_a = switch (op_a) {
-        //     .transpose => utils.openblas.CblasTrans,
-        //     .no_transpose => utils.openblas.CblasNoTrans,
-        // };
-
-        // const operation_b = switch (op_b) {
-        //     .transpose => utils.openblas.CblasTrans,
-        //     .no_transpose => utils.openblas.CblasNoTrans,
-        // };
-
+    for (alphas, betas) |alpha, beta| {
         gemm_func(
             utils.openblas.CblasRowMajor,
             utils.openblas.CblasNoTrans,
@@ -82,9 +70,7 @@ fn run_old_wekua_test(
     alphas: []PreferredType,
     betas: []PreferredType,
     buf1: []PreferredType,
-    ops_a: []wekua.blas.gemm.Operation,
     buf2: []PreferredType,
-    ops_b: []wekua.blas.gemm.Operation,
     buf3: []PreferredType,
 ) !f64 {
     const ctx: utils.wekua_c.wekuaContext = utils.wekua_c.createSomeWekuaContext(
@@ -119,10 +105,7 @@ fn run_old_wekua_test(
 
     var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
-    for (alphas, betas, ops_a, ops_b) |alpha, beta, op_a, op_b| {
-        _  = op_a;
-        _  = op_b;
-
+    for (alphas, betas) |alpha, beta| {
         ret = utils.wekua_c.wekuaBlasGemm(
             @constCast(&alpha),
             null,
@@ -150,9 +133,7 @@ fn run_wekua_test(
     alphas: []PreferredType,
     betas: []PreferredType,
     buf1: []PreferredType,
-    ops_a: []wekua.blas.gemm.Operation,
     buf2: []PreferredType,
-    ops_b: []wekua.blas.gemm.Operation,
     buf3: []PreferredType,
 ) !f64 {
     const ctx = try wekua.core.Context.create_from_best_device(allocator, null, cl.device.enums.device_type.cpu);
@@ -172,58 +153,19 @@ fn run_wekua_test(
     defer c.release();
 
     // At the first time, we need to compile the kernels
-    // try wekua.blas.gemm.perform(
-    //     PreferredType,
-    //     cmd,
-    //     alphas[0],
-    //     null,
-    //     a,
-    //     .no_transpose,
-    //     b,
-    //     .no_transpose,
-    //     betas[0],
-    //     null,
-    //     c,
-    // );
     try wekua.blas.gemm.perform(
         PreferredType,
         cmd,
-        alphas[0],
+        1.0,
         null,
         a,
         .no_transpose,
         b,
         .transpose,
-        betas[0],
+        0.0,
         null,
         c,
     );
-    // try wekua.blas.gemm.perform(
-    //     PreferredType,
-    //     cmd,
-    //     alphas[0],
-    //     null,
-    //     a,
-    //     .transpose,
-    //     b,
-    //     .no_transpose,
-    //     betas[0],
-    //     null,
-    //     c,
-    // );
-    // try wekua.blas.gemm.perform(
-    //     PreferredType,
-    //     cmd,
-    //     alphas[0],
-    //     null,
-    //     a,
-    //     .transpose,
-    //     b,
-    //     .transpose,
-    //     betas[0],
-    //     null,
-    //     c,
-    // );
 
     try wekua.tensor.memory.readFromBuffer(PreferredType, a, cmd, buf1);
     try wekua.tensor.memory.readFromBuffer(PreferredType, b, cmd, buf2);
@@ -235,9 +177,7 @@ fn run_wekua_test(
 
     var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
-    for (alphas, betas, ops_a, ops_b) |alpha, beta, op_a, op_b| {
-        _ = op_a;
-        _ = op_b;
+    for (alphas, betas) |alpha, beta| {
         try wekua.blas.gemm.perform(
             PreferredType,
             cmd,
@@ -253,8 +193,7 @@ fn run_wekua_test(
         );
     }
 
-    try cl.command_queue.finish(cmd.cmd);
-    // try c.wait();
+    try c.wait();
 
     const end_ts = std.time.microTimestamp();
     total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, niterations))) / 1000.0;
@@ -302,17 +241,9 @@ pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
             const betas = try allocator.alloc(PreferredType, niterations);
             defer allocator.free(betas);
 
-            const ops_a = try allocator.alloc(wekua.blas.gemm.Operation, niterations);
-            defer allocator.free(ops_a);
-
-            const ops_b = try allocator.alloc(wekua.blas.gemm.Operation, niterations);
-            defer allocator.free(ops_b);
-
-            for (alphas, betas, ops_a, ops_b) |*alpha, *beta, *op_a, *op_b| {
+            for (alphas, betas) |*alpha, *beta| {
                 alpha.* = randprg.float(PreferredType);
                 beta.* = randprg.float(PreferredType);
-                op_a.* = randprg.enumValue(wekua.blas.gemm.Operation);
-                op_b.* = randprg.enumValue(wekua.blas.gemm.Operation);
             }
 
             t.* = try test_func(
@@ -321,9 +252,7 @@ pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
                 alphas,
                 betas,
                 a,
-                ops_a,
                 b,
-                ops_b,
                 c,
             );
 

@@ -64,7 +64,9 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
     };
 
     inline for (&self.vector_widths, vector_types) |*vw, vt| {
-        try cl.device.get_info(device, vt, @sizeOf(u32), vw, null);
+        var vector_width: u32 = undefined;
+        try cl.device.get_info(device, vt, @sizeOf(u32), &vector_width, null);
+        vw.* = @min(vector_width, 16);
     }
 
     try cl.device.get_info(device, device_info_enum.max_compute_units, @sizeOf(u32), &self.compute_units, null);

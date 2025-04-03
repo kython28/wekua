@@ -154,8 +154,6 @@ pub fn compileKernel(
     }
     defer allocator.free(args);
 
-    std.log.warn("Extra args: {s}", .{args});
-
     const header_prg = try compileHeader(
         T,
         command_queue,
