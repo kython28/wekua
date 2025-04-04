@@ -20,6 +20,26 @@ pub const KernelsID = enum(u16) {
     AXPY,
     Identity,
     GEMM,
+
+    // --- Math kernels ---
+    // Basic
+    Dot,
+
+    // Trigonometric
+    Sin,
+    Cos,
+    Tan,
+    Sinh,
+    Cosh,
+    Tanh,
+
+    // --- Activation kernels ---
+    Sigmoid,
+    SigmoidDev,
+    TanhDev,
+
+    // --- Layer kernels ---
+    LinearBias,
 };
 
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;

@@ -273,7 +273,7 @@ pub fn Tensor(comptime T: type) type {
             _ = try self.events_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
 
-        pub fn empty(context: *Context, shape: []const u64, config: CreateConfig) !*this {
+        pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
             if (shape.len == 0) {
                 return Errors.InvalidValue;
             }
@@ -285,7 +285,7 @@ pub fn Tensor(comptime T: type) type {
             errdefer allocator.destroy(tensor);
 
             tensor.context = context;
-            try tensor.events_manager.init(allocator, &context.events_batch_queue);
+            try tensor.events_manager.init(allocator, @constCast(&context.events_batch_queue));
             errdefer tensor.events_manager.deinit();
 
             tensor.arena = std.heap.ArenaAllocator.init(allocator);
@@ -426,7 +426,7 @@ pub fn Tensor(comptime T: type) type {
             allocator.destroy(self);
         }
 
-        pub fn alloc(context: *Context, shape: []const u64, config: CreateConfig) !*this {
+        pub fn alloc(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
             const tensor = try empty(context, shape, config);
             errdefer tensor.release();
 

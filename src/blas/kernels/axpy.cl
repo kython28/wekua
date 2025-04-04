@@ -1,8 +1,8 @@
 #include "wekua.h"
 
 __kernel void axpy(
-	__global const wk *restrict A,
-    __global wk *restrict B,
+	__global const wk *const restrict A,
+    __global wk *const restrict B,
 
     const ulong row_pitch,
     const ulong slice_pitch
