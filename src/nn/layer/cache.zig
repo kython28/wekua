@@ -1,6 +1,8 @@
 const std = @import("std");
 const layer = @import("main.zig");
 
+const wekua = @import("../../wekua.zig");
+
 pub fn Cache(comptime T: type) type {
     const CacheLayer = layer.Layer(T);
 
@@ -12,6 +14,8 @@ pub fn Cache(comptime T: type) type {
     return struct {
         allocator: std.mem.Allocator,
         slots: []CacheSlot,
+
+        error_tensor: wekua.Tensor(T),
 
         const Self = @This();
 

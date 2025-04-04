@@ -2,7 +2,7 @@
 
 __kernel void dot_kernel(
     __global wk *const restrict x,
-    __global wk *const restrict y,
+    __constant const wk *const restrict y,
 
     const ulong row_pitch,
     const ulong slice_pitch
