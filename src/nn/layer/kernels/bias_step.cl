@@ -1,8 +1,8 @@
 #include "wekua.h"
 
 __kernel void bias_step(
-    __constant const wk *restrict const bias,
-    __global wk *restrict const derivative,
+    __constant const wk *restrict const derivative,
+    __global wk *restrict const bias_gradients,
 
     const ulong row_pitch,
     const ulong slice_pitch,
@@ -33,30 +33,34 @@ __kernel void bias_step(
 #endif
 
     for (ulong k = 0; k < col; k += 4) {
-        C11 += bias[index + k];
-        C11i += bias[index + k + 1];
+        ulong base = index + k;
+        C11 += derivative[base];
+        C11i += derivative[base + 1];
 
-        C12 += bias[index + k + 2];
-        C12i += bias[index + k + 3];
+        C12 += derivative[base + 2];
+        C12i += derivative[base + 3];
 
-        C11 += bias[index + col + k];
-        C11i += bias[index + col + k + 1];
+        base += row_pitch;
+        C11 += derivative[base];
+        C11i += derivative[base + 1];
 
-        C12 += bias[index + col + k + 2];
-        C12i += bias[index + col + k + 3];
+        C12 += derivative[base + 2];
+        C12i += derivative[base + 3];
     }
 
-    derivative[index] = C11;
-    derivative[index + 1] = C11;
-    derivative[index + 1] = C12;
-    derivative[index + 2] = C12;
+    const ulong index2 = (j << 1);
+    bias_gradients[j] = C11;
+    bias_gradients[j + 1] = C11i;
+    bias_gradients[j + 2] = C12;
+    bias_gradients[j + 3] = C12i;
 #else
     for (ulong k = 0; k < col; k += 2) {
-        C11 += bias[index + k] + bias[index + k + 1];
-        C12 += bias[index + col + k] + bias[index + col + k + 1];
+        const ulong base = index + k;
+        C11 += derivative[base] + derivative[base + 1];
+        C12 += derivative[base + row_pitch] + derivative[base + row_pitch + 1];
     }
 
-    derivative[index] = C11;
-    derivative[index + 1] = C12;
+    bias_gradients[j] = C11;
+    bias_gradients[j + 1] = C12;
 #endif
 } 

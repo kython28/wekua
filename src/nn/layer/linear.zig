@@ -12,6 +12,7 @@ const CommandQueue = core.CommandQueue;
 const Tensor = wekua.Tensor;
 
 const bias_cl_kernel: []const u8 = @embedFile("kernels/bias.cl");
+const bias_step_cl_kernel: []const u8 = @embedFile("kernels/bias_step.cl");
 
 inline fn get_random_limits(comptime T: type, input: usize, output: usize, start: *T, end: *T) void {
     const limit = switch (@typeInfo(T)) {
@@ -43,6 +44,10 @@ pub fn Linear(
         sensitivities: []*LayerTensor,
         acti_derivatives: []*LayerTensor,
         gradients: []*LayerTensor,
+
+        bias_gradients: []*LayerTensor,
+        bias_gradients_gis: [][2]u64,
+        bias_gradients_lis: [][2]u64,
     };
 
     return struct {
@@ -366,6 +371,68 @@ pub fn Linear(
             return gradients[gradients.len - 1];
         }
 
+        fn getBiasSensitivity(
+            command_queue: *const core.CommandQueue,
+            sensitivity: *LayerTensor,
+            bias_gradient: *LayerTensor,
+            giw: *const [2]u64,
+            liw: *const [2]u64,
+        ) !void {
+            const kernel = try KernelsSet.getClKernel(
+                T,
+                command_queue,
+                sensitivity,
+                .LinearBiasStep,
+                "bias_step",
+                bias_step_cl_kernel,
+                null,
+            );
+
+            const sensitivity_prev_events = sensitivity.events_manager.getPrevEvents(.read);
+            const bias_gradient_prev_events = bias_gradient.events_manager.getPrevEvents(.write);
+
+            const events_set = try wekua.tensor.EventManager.EventsSet.init(
+                command_queue.allocator,
+                &.{ sensitivity_prev_events, bias_gradient_prev_events },
+                null,
+            );
+            errdefer events_set.release();
+
+            const prev_events = events_set.getPrevEvents();
+
+            const set_arg = cl.kernel.set_arg;
+            const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
+
+            try set_arg(kernel, 0, cl_mem_size, @ptrCast(&bias_gradient.buffer));
+            try set_arg(kernel, 1, cl_mem_size, @ptrCast(&sensitivity.buffer));
+
+            try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&sensitivity.memory_layout.row_pitch));
+            try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&sensitivity.memory_layout.slice_pitch));
+
+            try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&bias_gradient.memory_layout.row_pitch_for_vectors));
+
+            var new_event: cl.event.cl_event = undefined;
+            try cl.kernel.enqueue_nd_range(
+                command_queue.cmd,
+                kernel,
+                null,
+                giw,
+                liw,
+                prev_events,
+                &new_event,
+            );
+            errdefer |err| wekua.tensor.helpers.releaseEvent(new_event, err);
+
+            try events_set.appendNewEvent(
+                T,
+                true,
+                &.{.read, .write},
+                &.{sensitivity, bias_gradient},
+                prev_events,
+                new_event
+            );
+        }
+
         pub fn backward(
             ptr: *const anyopaque,
             command_queue: *const CommandQueue,
@@ -377,11 +444,16 @@ pub fn Linear(
 
             const weights = self.weights;
             const activation_layer = self.activation;
+            const bias_enabled = self.bias_enabled;
 
             const acti_derivatives = cache_data.acti_derivatives;
             const sensitivities = cache_data.sensitivities;
+            const bias_gradients = cache_data.bias_gradients;
             const gradients = cache_data.gradients;
             const outputs = cache_data.outputs;
+
+            const bias_gradients_gis = cache_data.bias_gradients_gis;
+            const bias_gradients_lis = cache_data.bias_gradients_lis;
 
             var sensitivity = sensitivities[sensitivities.len - 1];
 
@@ -408,6 +480,16 @@ pub fn Linear(
                     null,
                     gradients[index],
                 );
+
+                if (bias_enabled) {
+                    try getBiasSensitivity(
+                        command_queue,
+                        sensitivity,
+                        bias_gradients[index],
+                        bias_gradients_gis[index],
+                        bias_gradients_lis[index],
+                    );
+                }
 
                 const next_sensitivity: *LayerTensor = blk: {
                     if (index >= 1) {

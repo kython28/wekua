@@ -40,6 +40,7 @@ pub const KernelsID = enum(u16) {
 
     // --- Layer kernels ---
     LinearBias,
+    LinearBiasStep,
 };
 
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;
