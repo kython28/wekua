@@ -242,9 +242,9 @@ pub fn Tensor(comptime T: type) type {
 
         events_manager: EventManager,
 
-        const this = @This();
+        const Self = @This();
 
-        fn createPitchBuffer(self: *this, context: *const Context, pitches: []const u64) !void {
+        fn createPitchBuffer(self: *Self, context: *const Context, pitches: []const u64) !void {
             const pitches_buffer = try cl.buffer.create(
                 context.ctx,
                 @intFromEnum(cl.buffer.enums.mem_flags.read_write),
@@ -273,7 +273,7 @@ pub fn Tensor(comptime T: type) type {
             _ = try self.events_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
 
-        pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
+        pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*Self {
             if (shape.len == 0) {
                 return Errors.InvalidValue;
             }
@@ -281,7 +281,7 @@ pub fn Tensor(comptime T: type) type {
             const allocator = context.allocator;
             const command_queues = context.command_queues;
 
-            const tensor = try allocator.create(this);
+            const tensor = try allocator.create(Self);
             errdefer allocator.destroy(tensor);
 
             tensor.context = context;
@@ -414,7 +414,7 @@ pub fn Tensor(comptime T: type) type {
             return tensor;
         }
 
-        pub fn release(self: *this) void {
+        pub fn release(self: *Self) void {
             const allocator = self.context.allocator;
 
             self.events_manager.deinit();
@@ -426,7 +426,7 @@ pub fn Tensor(comptime T: type) type {
             allocator.destroy(self);
         }
 
-        pub fn alloc(context: *const Context, shape: []const u64, config: CreateConfig) !*this {
+        pub fn alloc(context: *const Context, shape: []const u64, config: CreateConfig) !*Self {
             const tensor = try empty(context, shape, config);
             errdefer tensor.release();
 
@@ -453,7 +453,7 @@ pub fn Tensor(comptime T: type) type {
             return tensor;
         }
 
-        pub fn wait(self: *this) !void {
+        pub fn wait(self: *Self) !void {
             const prev_events = self.events_manager.getPrevEvents(.write) orelse return;
             try cl.event.wait_for_many(prev_events);
         }

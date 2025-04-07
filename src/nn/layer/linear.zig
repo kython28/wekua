@@ -40,8 +40,9 @@ pub fn Linear(
 
     const LinearCache = struct {
         outputs: []*LayerTensor,
+        sensitivities: []*LayerTensor,
+        acti_derivatives: []*LayerTensor,
         gradients: []*LayerTensor,
-        acti_gradients: []*LayerTensor,
     };
 
     return struct {
@@ -65,6 +66,7 @@ pub fn Linear(
             deep: usize,
             enable_bias: bool,
             activation: ?w_activation.Activation(T),
+            use_complex_numbers: bool,
         ) !Layer {
             const allocator = context.allocator;
 
@@ -88,7 +90,9 @@ pub fn Linear(
                 allocator.free(weights);
             }
 
-            const first_weight_layer = try LayerTensor.alloc(context, &.{ output, input }, .{});
+            const first_weight_layer = try LayerTensor.alloc(context, &.{ output, input }, .{
+                .is_complex = use_complex_numbers,
+            });
             weights[0] = first_weight_layer;
             weights_created += 1;
 
@@ -104,7 +108,9 @@ pub fn Linear(
 
             get_random_limits(T, output, output, &bottom, &top);
             for (weights[1..]) |*w| {
-                const weight = try LayerTensor.alloc(context, &.{ output, output }, .{});
+                const weight = try LayerTensor.alloc(context, &.{ output, output }, .{
+                    .is_complex = use_complex_numbers,
+                });
                 errdefer weight.release();
 
                 try wekua.tensor.random.uniform(T, default_command_queue, weight, null, bottom, top);
@@ -128,7 +134,9 @@ pub fn Linear(
                 }
 
                 for (bias_layers) |*b| {
-                    b.* = try LayerTensor.alloc(context, &.{output}, .{});
+                    b.* = try LayerTensor.alloc(context, &.{output}, .{
+                        .is_complex = use_complex_numbers,
+                    });
                     bias_created += 1;
                 }
             }
@@ -168,47 +176,64 @@ pub fn Linear(
         fn prepareCache(
             ptr: *const anyopaque,
             number_of_elements: u64,
+            use_complex_numbers: bool,
         ) !*anyopaque {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const outputs = try self.allocator.alloc(*LayerTensor, self.weights.len);
             errdefer self.allocator.free(outputs);
 
+            const sensitivities = try self.allocator.alloc(*LayerTensor, self.weights.len);
+            errdefer self.allocator.free(sensitivities);
+
+            const acti_derivatives = try self.allocator.alloc(*LayerTensor, self.weights.len);
+            errdefer self.allocator.free(acti_derivatives);
+
             const gradients = try self.allocator.alloc(*LayerTensor, self.weights.len);
             errdefer self.allocator.free(gradients);
-
-            const acti_gradients = try self.allocator.alloc(*LayerTensor, self.weights.len);
-            errdefer self.allocator.free(acti_gradients);
 
             var slots_created: usize = 0;
             errdefer {
                 for (
                     outputs[0..slots_created],
+                    sensitivities[0..slots_created],
+                    acti_derivatives[0..slots_created],
                     gradients[0..slots_created],
-                    acti_gradients[0..slots_created],
-                ) |o, g, ag| {
+                ) |o, s, ad, g| {
                     o.release();
+                    s.release();
+                    ad.release();
                     g.release();
-                    ag.release();
                 }
             }
 
             const context = self.context;
             const default_command_queue = context.command_queues[0];
 
-            for (self.weights, outputs, gradients, acti_gradients) |w, *o, *g, *ag| {
-                const output = w.shape[0];
+            for (self.weights, outputs, sensitivities, acti_derivatives, gradients) |w, *o, *s, *ad, *g| {
+                const output = w.dimensions.shape[0];
 
-                o.* = try LayerTensor.alloc(context, &.{ number_of_elements, output }, .{});
+                o.* = try LayerTensor.alloc(context, &.{ number_of_elements, output }, .{
+                    .is_complex = use_complex_numbers,
+                });
                 errdefer o.*.release();
 
-                g.* = try LayerTensor.alloc(context, &.{ number_of_elements, output }, .{});
+                s.* = try LayerTensor.alloc(context, &.{ number_of_elements, output }, .{
+                    .is_complex = use_complex_numbers,
+                });
+                errdefer s.*.release();
+
+                ad.* = try LayerTensor.alloc(context, &.{ number_of_elements, output }, .{
+                    .is_complex = use_complex_numbers,
+                });
+                errdefer ad.*.release();
+
+                try wekua.tensor.fill(T, default_command_queue, s.*, 1, null);
+
+                g.* = try LayerTensor.alloc(context, w.dimensions.shape, .{
+                    .is_complex = use_complex_numbers,
+                });
                 errdefer g.*.release();
-
-                ag.* = try LayerTensor.alloc(context, &.{ number_of_elements, output }, .{});
-                errdefer ag.*.release();
-
-                try wekua.tensor.fill(T, default_command_queue, g.*, 1, null);
 
                 slots_created += 1;
             }
@@ -216,8 +241,9 @@ pub fn Linear(
             const cache = try self.allocator.create(LinearCache);
             cache.* = .{
                 .outputs = outputs,
+                .sensitivities = sensitivities,
+                .acti_derivatives = acti_derivatives,
                 .gradients = gradients,
-                .acti_gradients = acti_gradients,
             };
 
             return cache;
@@ -233,12 +259,16 @@ pub fn Linear(
                 o.release();
             }
 
-            for (cache_data.gradients) |g| {
-                g.release();
+            for (cache_data.sensitivities) |s| {
+                s.release();
             }
 
-            for (cache_data.acti_gradients) |ag| {
-                ag.release();
+            for (cache_data.acti_derivatives) |ad| {
+                ad.release();
+            }
+
+            for (cache_data.gradients) |g| {
+                g.release();
             }
 
             allocator.destroy(cache_data);
@@ -285,7 +315,7 @@ pub fn Linear(
             _ = try output.events_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
 
-        fn forward(
+        pub fn forward(
             ptr: *const anyopaque,
             command_queue: *const CommandQueue,
             input: *LayerTensor,
@@ -329,18 +359,18 @@ pub fn Linear(
             return in;
         }
 
-        fn getGradient(_: *const anyopaque, cache: *anyopaque) *LayerTensor {
+        pub fn getSensitivity(_: *const anyopaque, cache: *anyopaque) *LayerTensor {
             const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
 
-            const gradients = cache_data.gradients;
+            const gradients = cache_data.sensitivities;
             return gradients[gradients.len - 1];
         }
 
-        fn backward(
+        pub fn backward(
             ptr: *const anyopaque,
             command_queue: *const CommandQueue,
             cache: *LinearCache,
-            input_gradient: ?*LayerTensor,
+            input_sensitivity: ?*LayerTensor,
         ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
             const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
@@ -348,27 +378,43 @@ pub fn Linear(
             const weights = self.weights;
             const activation_layer = self.activation;
 
-            const acti_gradients = cache_data.acti_gradients;
+            const acti_derivatives = cache_data.acti_derivatives;
+            const sensitivities = cache_data.sensitivities;
             const gradients = cache_data.gradients;
+            const outputs = cache_data.outputs;
 
-            var gradient = gradients[gradients.len - 1];
+            var sensitivity = sensitivities[sensitivities.len - 1];
 
-            var layer_num: usize = weights.len;
-            while (layer_num > 0) : (layer_num -= 1) {
-                const acti_gradient = acti_gradients[layer_num - 1];
-                const output = weights[layer_num - 1];
+            var index: usize = weights.len - 1;
+            while (true) {
+                const acti_derivative = acti_derivatives[index];
+                const output = weights[index];
                 if (activation_layer) |*acti| {
-                    acti.getDerivative(command_queue, output, acti_gradient);
+                    acti.getDerivative(command_queue, output, acti_derivative);
                 }
 
-                try wekua.math.basic.dot(T, command_queue, gradient, acti_gradient);
+                try wekua.math.basic.dot(T, command_queue, sensitivity, acti_derivative);
 
-                const next_gradient: *LayerTensor = blk: {
-                    if (layer_num > 1) {
-                        break :blk gradients[layer_num - 2];
+                try wekua.blas.gemm.perform(
+                    T,
+                    command_queue,
+                    null,
+                    null,
+                    sensitivity,
+                    .transpose,
+                    outputs[index],
+                    .no_transpose,
+                    null,
+                    null,
+                    gradients[index],
+                );
+
+                const next_sensitivity: *LayerTensor = blk: {
+                    if (index >= 1) {
+                        break :blk sensitivities[index - 1];
                     }
 
-                    break :blk input_gradient orelse return;
+                    break :blk input_sensitivity orelse return;
                 };
 
                 try wekua.blas.gemm.perform(
@@ -376,17 +422,19 @@ pub fn Linear(
                     command_queue,
                     null,
                     null,
-                    gradient,
+                    sensitivity,
                     .no_transpose,
-                    weights[layer_num - 1],
+                    weights[index],
                     .no_transpose,
                     null,
                     null,
-                    next_gradient,
+                    next_sensitivity,
                 );
 
-                layer_num -= 1;
-                gradient = next_gradient;
+                if (index == 0) break;
+
+                index -= 1;
+                sensitivity = next_sensitivity;
             }
         }
     };

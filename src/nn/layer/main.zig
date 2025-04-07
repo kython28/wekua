@@ -1,11 +1,14 @@
 pub usingnamespace @import("linear.zig");
 
 const wekua = @import("../../wekua.zig");
+const w_cache = @import("cache.zig");
 
 pub fn Layer(comptime T: type) type {
     const LayerTensor = wekua.Tensor(T);
 
     return struct {
+        pub const Cache = w_cache.Cache(T);
+
         pub const VTable = struct {
             deinit: *const fn (ptr: *const anyopaque) void,
 
@@ -26,7 +29,7 @@ pub fn Layer(comptime T: type) type {
                 cache: ?*anyopaque,
             ) anyerror!*LayerTensor,
 
-            getGradient: *const fn (ptr: *const anyopaque, cache: *anyopaque) *LayerTensor,
+            getSensitivity: *const fn (ptr: *const anyopaque, cache: *anyopaque) *LayerTensor,
 
             backward: *const fn (
                 ptr: *const anyopaque,
@@ -68,11 +71,11 @@ pub fn Layer(comptime T: type) type {
             return self.vtable.forward(@ptrCast(self.ptr), command_queue, input, cache);
         }
 
-        pub inline fn getGradient(
+        pub inline fn getSensitivity(
             self: *Self,
             cache: *anyopaque,
         ) *LayerTensor {
-            return self.vtable.getGradient(@ptrCast(self.ptr), cache);
+            return self.vtable.getSensitivity(@ptrCast(self.ptr), cache);
         }
 
         pub inline fn backward(

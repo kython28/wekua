@@ -15,15 +15,16 @@ pub fn Cache(comptime T: type) type {
         allocator: std.mem.Allocator,
         slots: []CacheSlot,
 
-        error_tensor: wekua.Tensor(T),
+        error_tensor: *wekua.Tensor(T),
 
         const Self = @This();
 
         pub fn init(
-            allocator: std.mem.Allocator,
+            context: *const wekua.core.Context,
             number_of_elements: u64,
             layers: []const *const CacheLayer,
         ) !Self {
+            const allocator = context.allocator;
             const slots = try allocator.alloc(CacheSlot, layers.len);
             var slots_created: usize = 0;
             errdefer {
@@ -41,9 +42,16 @@ pub fn Cache(comptime T: type) type {
                 slots_created += 1;
             }
 
+            const last_slot = slots[slots_created - 1];
+            const last_gradient = last_slot.layer.getGradient(last_slot.cache);
+
+            const error_tensor = try wekua.Tensor(T).alloc(context, last_gradient.dimensions.shape, .{});
+            errdefer error_tensor.release();
+
             return Self{
                 .allocator = allocator,
                 .slots = slots,
+                .error_tensor = error_tensor,
             };
         }
 

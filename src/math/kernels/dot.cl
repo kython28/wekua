@@ -25,6 +25,6 @@ __kernel void dot_kernel(
 #else
     const ulong index = i * slice_pitch + j * row_pitch + k;
 
-    y[index] *= y[index];
+    x[index] *= y[index];
 #endif
 }

@@ -62,9 +62,3 @@ pub inline fn eqlTensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tens
 
     if (tensor_a.flags.vectors_enabled != tensor_b.flags.vectors_enabled) return w_tensor.Errors.UnqualTensorsAttribute;
 }
-
-// pub inline fn eql_tensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
-//     try eqlTensorsDimensions(T, tensor_a, tensor_b);
-//     try eqlNumberSpace(T, tensor_a, tensor_b);
-//     if (tensor_a.vectors_enabled != tensor_b.vectors_enabled) return w_tensor.Errors.UnqualTensorsAttribute;
-// }
