@@ -1,6 +1,8 @@
 const wekua = @import("../../wekua.zig");
 const cl = @import("opencl");
 
+const activation = @import("main.zig");
+
 const core = wekua.core;
 const CommandQueue = core.CommandQueue;
 const KernelsSet = core.KernelsSet;
@@ -12,12 +14,26 @@ const sigmoid_cl_kernel: []const u8 = @embedFile("kernels/sigmoid.cl");
 pub fn Sigmoid(comptime T: type) type {
     const ActivationTensor = Tensor(T);
 
+    const Activation = activation.Activation(T);
+
     switch (@typeInfo(T)) {
         .float => {},
         else => @compileError("Sigmoid activation only supports f32 and f64 types"),
     }
 
     return struct {
+        pub fn init() Activation {
+            return Activation{
+                .vtable = .{
+                    .run = &run,
+                    .getDerivative = &getDerivative,
+                },
+                .ptr = undefined,
+            };
+        }
+
+        pub fn deinit(_: *const anyopaque) void {}
+
         pub fn run(_: *const anyopaque, command_queue: *const CommandQueue, net_output: *ActivationTensor) !void {
             const kernel = try KernelsSet.getClKernel(
                 T,

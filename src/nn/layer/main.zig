@@ -12,6 +12,9 @@ pub fn Layer(comptime T: type) type {
         pub const VTable = struct {
             deinit: *const fn (ptr: *const anyopaque) void,
 
+            getWeights: *const fn (ptr: *const anyopaque) []const *LayerTensor,
+            getBias: *const fn (ptr: *const anyopaque) ?[]const *LayerTensor,
+
             prepareCache: *const fn (
                 ptr: *const anyopaque,
                 number_of_elements: u64,
@@ -37,6 +40,9 @@ pub fn Layer(comptime T: type) type {
                 cache: *anyopaque,
                 input_gradient: ?*LayerTensor
             ) anyerror!void,
+
+            getGradients: *const fn (ptr: *const anyopaque, cache: *anyopaque) []const *LayerTensor,
+            getBiasGradients: *const fn (ptr: *const anyopaque, cache: *anyopaque) ?[]const *LayerTensor,
         };
 
         ptr: *anyopaque,
@@ -46,6 +52,14 @@ pub fn Layer(comptime T: type) type {
 
         pub inline fn deinit(self: *Self) void {
             self.vtable.deinit(@ptrCast(self.ptr));
+        }
+
+        pub inline fn getWeights(self: *const Self) []const *LayerTensor {
+            return self.vtable.getWeights(@ptrCast(self.ptr));
+        }
+
+        pub inline fn getBias(self: *const Self) ?[]const *LayerTensor {
+            return self.vtable.getBias(@ptrCast(self.ptr));
         }
 
         pub inline fn prepareCache(
@@ -72,7 +86,7 @@ pub fn Layer(comptime T: type) type {
         }
 
         pub inline fn getSensitivity(
-            self: *Self,
+            self: *const Self,
             cache: *anyopaque,
         ) *LayerTensor {
             return self.vtable.getSensitivity(@ptrCast(self.ptr), cache);
@@ -85,6 +99,20 @@ pub fn Layer(comptime T: type) type {
             input_gradient: ?*LayerTensor,
         ) !void {
             return self.vtable.backward(@ptrCast(self.ptr), command_queue, cache, input_gradient);
+        }
+
+        pub inline fn getGradients(
+            self: *const Self,
+            cache: *anyopaque,
+        ) []const *LayerTensor {
+            return self.vtable.getGradients(@ptrCast(self.ptr), cache);
+        }
+
+        pub inline fn getBiasGradients(
+            self: *const Self,
+            cache: *anyopaque,
+        ) ?[]const *LayerTensor {
+            return self.vtable.getBiasGradients(@ptrCast(self.ptr), cache);
         }
     };
 }

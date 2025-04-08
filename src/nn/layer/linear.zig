@@ -43,14 +43,16 @@ pub fn Linear(
         outputs: []*LayerTensor,
         sensitivities: []*LayerTensor,
         acti_derivatives: []*LayerTensor,
-        gradients: []*LayerTensor,
 
+        gradients: []*LayerTensor,
         bias_gradients: []*LayerTensor,
         bias_gradients_gis: [][2]u64,
         bias_gradients_lis: [][2]u64,
     };
 
     return struct {
+        pub const Cache = Layer.Cache;
+
         allocator: std.mem.Allocator,
 
         weights: []*LayerTensor,
@@ -176,6 +178,19 @@ pub fn Linear(
             }
 
             allocator.destroy(self);
+        }
+
+        fn getWeights(ptr: *const anyopaque) []const *LayerTensor {
+            const self: *const Self = @ptrCast(@alignCast(ptr));
+
+            return self.weights;
+        }
+
+        fn getBias(ptr: *const anyopaque) ?[]const *LayerTensor {
+            const self: *const Self = @ptrCast(@alignCast(ptr));
+            if (!self.bias_enabled) return null;
+
+            return self.bias;
         }
 
         fn prepareCache(
@@ -320,7 +335,7 @@ pub fn Linear(
             _ = try output.events_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
 
-        pub fn forward(
+        fn forward(
             ptr: *const anyopaque,
             command_queue: *const CommandQueue,
             input: *LayerTensor,
@@ -364,7 +379,7 @@ pub fn Linear(
             return in;
         }
 
-        pub fn getSensitivity(_: *const anyopaque, cache: *anyopaque) *LayerTensor {
+        fn getSensitivity(_: *const anyopaque, cache: *anyopaque) *LayerTensor {
             const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
 
             const gradients = cache_data.sensitivities;
@@ -433,7 +448,7 @@ pub fn Linear(
             );
         }
 
-        pub fn backward(
+        fn backward(
             ptr: *const anyopaque,
             command_queue: *const CommandQueue,
             cache: *LinearCache,
@@ -518,6 +533,21 @@ pub fn Linear(
                 index -= 1;
                 sensitivity = next_sensitivity;
             }
+        }
+
+        fn getGradients(_: *const anyopaque, cache: *anyopaque) []const *LayerTensor {
+            const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
+
+            return cache_data.gradients;
+        }
+
+        fn getBiasGradients(ptr: *const anyopaque, cache: *anyopaque) ?[]const *LayerTensor {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+
+            if (!self.bias_enabled) return null;
+
+            const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
+            return cache_data.bias_gradients;
         }
     };
 }
