@@ -374,6 +374,7 @@ pub const EventsBatch = struct {
                 events_num += 1;
             }
         }
+        self.events_num = events_num;
 
         for (self.events[0..events_num]) |*event| {
             event.waitForEvents() catch |err| {

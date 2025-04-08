@@ -39,7 +39,11 @@ pub fn GD(comptime T: type) type {
             };
         }
 
-        fn step(ptr: *anyopaque, command_queue: *const wekua.core.CommandQueue, cache: *OptimizerCache) !void {
+        fn step(
+            ptr: *anyopaque,
+            command_queue: *const wekua.core.CommandQueue,
+            cache: *const OptimizerCache,
+        ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const lr = self.lr;
@@ -48,7 +52,7 @@ pub fn GD(comptime T: type) type {
             for (cache.slots) |*slot| {
                 const layer = slot.layer;
                 const gradients = layer.getGradients(slot.cache);
-                const weights = layer.getWeights(slot.cache);
+                const weights = layer.getWeights();
 
                 for (weights, gradients) |w, g| {
                     try wekua.blas.axpy(
@@ -62,7 +66,7 @@ pub fn GD(comptime T: type) type {
                 }
 
                 if (layer.getBiasGradients(slot.cache)) |bias_gradients| {
-                    const bias = layer.getBias(slot.cache);
+                    const bias = layer.getBias();
                     for (bias.?, bias_gradients) |b, bg| {
                         try wekua.blas.axpy(
                             T,

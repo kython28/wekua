@@ -43,9 +43,9 @@ pub fn Cache(comptime T: type) type {
             }
 
             const last_slot = slots[slots_created - 1];
-            const last_gradient = last_slot.layer.getGradient(last_slot.cache);
+            const last_sensitivity = last_slot.layer.getSensitivity(last_slot.cache);
 
-            const error_tensor = try wekua.Tensor(T).alloc(context, last_gradient.dimensions.shape, .{});
+            const error_tensor = try wekua.Tensor(T).alloc(context, last_sensitivity.dimensions.shape, .{});
             errdefer error_tensor.release();
 
             return Self{
@@ -55,12 +55,13 @@ pub fn Cache(comptime T: type) type {
             };
         }
 
-        pub fn deinit(self: *Self) void {
+        pub fn deinit(self: *const Self) void {
             const allocator = self.allocator;
             for (self.slots) |c| {
                 c.layer.releaseCache(c.cache);
             }
             allocator.free(self.slots);
+            self.error_tensor.release();
         }
     };
 }

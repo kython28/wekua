@@ -46,8 +46,7 @@ pub fn Linear(
 
         gradients: []*LayerTensor,
         bias_gradients: []*LayerTensor,
-        bias_gradients_gis: [][2]u64,
-        bias_gradients_lis: [][2]u64,
+        bias_gradients_lis: []u64,
     };
 
     return struct {
@@ -81,6 +80,9 @@ pub fn Linear(
             errdefer allocator.destroy(layer);
 
             layer.activation = activation;
+            layer.allocator = allocator;
+            layer.context = context;
+            layer.bias_enabled = enable_bias;
 
             var bottom: T = undefined;
             var top: T = undefined;
@@ -103,10 +105,10 @@ pub fn Linear(
             weights[0] = first_weight_layer;
             weights_created += 1;
 
-            const default_command_queue = context.command_queues[0];
+            const default_command_queue = &context.command_queues[0];
             try wekua.tensor.random.uniform(
                 T,
-                default_command_queue.command_queue,
+                default_command_queue,
                 first_weight_layer,
                 null,
                 bottom,
@@ -132,12 +134,10 @@ pub fn Linear(
 
                 var bias_created: usize = 0;
                 errdefer {
-                    if (bias_layers) |bl| {
-                        for (bl[0..bias_created]) |b| {
-                            b.release();
-                        }
-                        allocator.free(bl);
+                    for (bias_layers[0..bias_created]) |b| {
+                        b.release();
                     }
+                    allocator.free(bias_layers);
                 }
 
                 for (bias_layers) |*b| {
@@ -151,13 +151,17 @@ pub fn Linear(
             return Layer{
                 .vtable = .{
                     .deinit = &deinit,
+                    .getWeights = &getWeights,
+                    .getBias = &getBias,
                     .prepareCache = &prepareCache,
                     .releaseCache = &releaseCache,
                     .forward = &forward,
+                    .getSensitivity = &getSensitivity,
                     .backward = &backward,
+                    .getGradients = &getGradients,
+                    .getBiasGradients = &getBiasGradients,
                 },
                 .ptr = layer,
-                .context = context,
             };
         }
 
@@ -196,7 +200,6 @@ pub fn Linear(
         fn prepareCache(
             ptr: *const anyopaque,
             number_of_elements: u64,
-            use_complex_numbers: bool,
         ) !*anyopaque {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
@@ -212,6 +215,12 @@ pub fn Linear(
             const gradients = try self.allocator.alloc(*LayerTensor, self.weights.len);
             errdefer self.allocator.free(gradients);
 
+            const bias_gradients = try self.allocator.alloc(*LayerTensor, self.weights.len);
+            errdefer self.allocator.free(bias_gradients);
+
+            const bias_gradients_lis = try self.allocator.alloc(u64, self.weights.len);
+            errdefer self.allocator.free(bias_gradients_lis);
+
             var slots_created: usize = 0;
             errdefer {
                 for (
@@ -219,19 +228,30 @@ pub fn Linear(
                     sensitivities[0..slots_created],
                     acti_derivatives[0..slots_created],
                     gradients[0..slots_created],
-                ) |o, s, ad, g| {
+                    bias_gradients[0..slots_created],
+                ) |o, s, ad, g, bg| {
                     o.release();
                     s.release();
                     ad.release();
                     g.release();
+                    bg.release();
                 }
             }
 
             const context = self.context;
-            const default_command_queue = context.command_queues[0];
+            const default_command_queue = &context.command_queues[0];
 
-            for (self.weights, outputs, sensitivities, acti_derivatives, gradients) |w, *o, *s, *ad, *g| {
+            for (
+                self.weights,
+                outputs,
+                sensitivities,
+                acti_derivatives,
+                gradients,
+                bias_gradients,
+                bias_gradients_lis,
+            ) |w, *o, *s, *ad, *g, *gb, *gb_li| {
                 const output = w.dimensions.shape[0];
+                const use_complex_numbers = w.flags.is_complex;
 
                 o.* = try LayerTensor.alloc(context, &.{ number_of_elements, output }, .{
                     .is_complex = use_complex_numbers,
@@ -248,12 +268,23 @@ pub fn Linear(
                 });
                 errdefer ad.*.release();
 
-                try wekua.tensor.fill(T, default_command_queue, s.*, 1, null);
+                try wekua.tensor.fill.constant(T, default_command_queue, s.*, 1, null);
 
                 g.* = try LayerTensor.alloc(context, w.dimensions.shape, .{
                     .is_complex = use_complex_numbers,
                 });
                 errdefer g.*.release();
+
+                gb.* = try LayerTensor.alloc(context, &.{output}, .{
+                    .is_complex = use_complex_numbers,
+                });
+                errdefer gb.*.release();
+
+                wekua.utils.calculateWorkItems(
+                    &.{gb.*.memory_layout.row_pitch_for_vectors},
+                    @as([*]u64, @ptrCast(gb_li))[0..1],
+                    default_command_queue.max_work_group_size,
+                );
 
                 slots_created += 1;
             }
@@ -264,6 +295,8 @@ pub fn Linear(
                 .sensitivities = sensitivities,
                 .acti_derivatives = acti_derivatives,
                 .gradients = gradients,
+                .bias_gradients = bias_gradients,
+                .bias_gradients_lis = bias_gradients_lis,
             };
 
             return cache;
@@ -273,7 +306,7 @@ pub fn Linear(
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const allocator = self.allocator;
-            const cache_data: *LinearCache = @ptrCast(cache);
+            const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
 
             for (cache_data.outputs) |o| {
                 o.release();
@@ -290,6 +323,17 @@ pub fn Linear(
             for (cache_data.gradients) |g| {
                 g.release();
             }
+
+            for (cache_data.bias_gradients) |bg| {
+                bg.release();
+            }
+
+            allocator.free(cache_data.outputs);
+            allocator.free(cache_data.sensitivities);
+            allocator.free(cache_data.acti_derivatives);
+            allocator.free(cache_data.gradients);
+            allocator.free(cache_data.bias_gradients);
+            allocator.free(cache_data.bias_gradients_lis);
 
             allocator.destroy(cache_data);
         }
@@ -339,11 +383,12 @@ pub fn Linear(
             ptr: *const anyopaque,
             command_queue: *const CommandQueue,
             input: *LayerTensor,
-            cache: *LinearCache,
+            cache: *anyopaque,
         ) !*LayerTensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
-            const outputs_cached = cache.outputs;
+            const linear_cache: *LinearCache = @ptrCast(@alignCast(cache));
+            const outputs_cached = linear_cache.outputs;
 
             var in = input;
 
@@ -366,11 +411,11 @@ pub fn Linear(
                 );
 
                 if (bias_enabled) {
-                    try self.addBias(command_queue, oc, b);
+                    try addBias(command_queue, oc, b);
                 }
 
                 if (activation_layer) |*acti| {
-                    acti.run(command_queue, oc);
+                    try acti.run(command_queue, oc);
                 }
 
                 in = oc;
@@ -390,8 +435,7 @@ pub fn Linear(
             command_queue: *const core.CommandQueue,
             sensitivity: *LayerTensor,
             bias_gradient: *LayerTensor,
-            giw: *const [2]u64,
-            liw: *const [2]u64,
+            lwi: []const u64,
         ) !void {
             const kernel = try KernelsSet.getClKernel(
                 T,
@@ -418,21 +462,19 @@ pub fn Linear(
             const set_arg = cl.kernel.set_arg;
             const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
 
-            try set_arg(kernel, 0, cl_mem_size, @ptrCast(&bias_gradient.buffer));
-            try set_arg(kernel, 1, cl_mem_size, @ptrCast(&sensitivity.buffer));
+            try set_arg(kernel, 0, cl_mem_size, @ptrCast(&sensitivity.buffer));
+            try set_arg(kernel, 1, cl_mem_size, @ptrCast(&bias_gradient.buffer));
 
-            try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&sensitivity.memory_layout.row_pitch));
-            try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&sensitivity.memory_layout.slice_pitch));
-
-            try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&bias_gradient.memory_layout.row_pitch_for_vectors));
+            try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&sensitivity.memory_layout.row_pitch_for_vectors));
+            try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&sensitivity.dimensions.shape[0]));
 
             var new_event: cl.event.cl_event = undefined;
             try cl.kernel.enqueue_nd_range(
                 command_queue.cmd,
                 kernel,
                 null,
-                giw,
-                liw,
+                &.{bias_gradient.memory_layout.row_pitch_for_vectors},
+                lwi,
                 prev_events,
                 &new_event,
             );
@@ -441,17 +483,18 @@ pub fn Linear(
             try events_set.appendNewEvent(
                 T,
                 true,
-                &.{.read, .write},
-                &.{sensitivity, bias_gradient},
+                &.{ .read, .write },
+                &.{ sensitivity, bias_gradient },
                 prev_events,
-                new_event
+                new_event,
             );
         }
 
         fn backward(
             ptr: *const anyopaque,
             command_queue: *const CommandQueue,
-            cache: *LinearCache,
+            cache: *anyopaque,
+            input: *LayerTensor,
             input_sensitivity: ?*LayerTensor,
         ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
@@ -467,20 +510,27 @@ pub fn Linear(
             const gradients = cache_data.gradients;
             const outputs = cache_data.outputs;
 
-            const bias_gradients_gis = cache_data.bias_gradients_gis;
             const bias_gradients_lis = cache_data.bias_gradients_lis;
 
             var sensitivity = sensitivities[sensitivities.len - 1];
 
             var index: usize = weights.len - 1;
+            var output = outputs[index];
             while (true) {
                 const acti_derivative = acti_derivatives[index];
-                const output = weights[index];
                 if (activation_layer) |*acti| {
-                    acti.getDerivative(command_queue, output, acti_derivative);
+                    try acti.getDerivative(command_queue, output, acti_derivative);
                 }
 
                 try wekua.math.basic.dot(T, command_queue, sensitivity, acti_derivative);
+
+                const prev_output: *LayerTensor = blk: {
+                    if (index >= 1) {
+                        break :blk outputs[index - 1];
+                    }
+                    break :blk input;
+                };
+                output = prev_output;
 
                 try wekua.blas.gemm.perform(
                     T,
@@ -489,7 +539,7 @@ pub fn Linear(
                     null,
                     sensitivity,
                     .transpose,
-                    outputs[index],
+                    prev_output,
                     .no_transpose,
                     null,
                     null,
@@ -501,8 +551,7 @@ pub fn Linear(
                         command_queue,
                         sensitivity,
                         bias_gradients[index],
-                        bias_gradients_gis[index],
-                        bias_gradients_lis[index],
+                        bias_gradients_lis[index..(index + 1)],
                     );
                 }
 
@@ -542,7 +591,7 @@ pub fn Linear(
         }
 
         fn getBiasGradients(ptr: *const anyopaque, cache: *anyopaque) ?[]const *LayerTensor {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+            const self: *const Self = @ptrCast(@alignCast(ptr));
 
             if (!self.bias_enabled) return null;
 

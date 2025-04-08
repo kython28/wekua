@@ -40,11 +40,11 @@ pub fn Activation(comptime T: type) type {
         pub inline fn getDerivative(
             self: *const Self,
             command_queue: *const wekua.core.CommandQueue,
-            input: *ActivationTensor,
+            output: *ActivationTensor,
             derivative: *ActivationTensor,
         ) !void {
-            try wekua.tensor.helpers.eqlTensors(T, input, derivative);
-            try self.vtable.getDerivative(@ptrCast(self.ptr), command_queue, input, derivative);
+            try wekua.tensor.helpers.eqlTensors(T, output, derivative);
+            try self.vtable.getDerivative(@ptrCast(self.ptr), command_queue, output, derivative);
         }
     };
 }

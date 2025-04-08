@@ -1,8 +1,8 @@
 #include "wekua.h"
 
 __kernel void mse_kernel(
-    __global wk *const restrict output,
-    __global wk *const restrict expected,
+    __constant const wk *const restrict output,
+    __constant const wk *const restrict expected,
     __global wk *const restrict error_tensor,
 
 #if CALC_DEV
@@ -48,15 +48,18 @@ __kernel void mse_kernel(
     wk error = expected[index] - output[index];
     error_tensor[index] = error*error;
 
-    if (CALC_DEV){
+#if CALC_DEV
+
 #if WK_DTYPE == 9
-        dev_output[index] = -2.0 * error;
+    dev_output[index] = -2.0 * error;
 #elif WK_DTYPE == 8
-        dev_output[index] = -2.0f * error;
+    dev_output[index] = -2.0f * error;
 #else
-        dev_output[index] = -2 * error;
+    dev_output[index] = -2 * error;
 #endif
-    }
+
+#endif
+
 #endif
 
 }

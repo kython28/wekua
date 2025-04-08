@@ -29,7 +29,7 @@ pub fn Layer(comptime T: type) type {
                 ptr: *const anyopaque,
                 command_queue: *const wekua.core.CommandQueue,
                 input: *LayerTensor,
-                cache: ?*anyopaque,
+                cache: *anyopaque,
             ) anyerror!*LayerTensor,
 
             getSensitivity: *const fn (ptr: *const anyopaque, cache: *anyopaque) *LayerTensor,
@@ -38,6 +38,7 @@ pub fn Layer(comptime T: type) type {
                 ptr: *const anyopaque,
                 command_queue: *const wekua.core.CommandQueue,
                 cache: *anyopaque,
+                input: *LayerTensor,
                 input_gradient: ?*LayerTensor
             ) anyerror!void,
 
@@ -50,7 +51,7 @@ pub fn Layer(comptime T: type) type {
 
         const Self = @This();
 
-        pub inline fn deinit(self: *Self) void {
+        pub inline fn deinit(self: *const Self) void {
             self.vtable.deinit(@ptrCast(self.ptr));
         }
 
@@ -77,7 +78,7 @@ pub fn Layer(comptime T: type) type {
         }
 
         pub inline fn forward(
-            self: *Self,
+            self: *const Self,
             command_queue: *const wekua.core.CommandQueue,
             input: *LayerTensor,
             cache: *anyopaque,
@@ -93,12 +94,13 @@ pub fn Layer(comptime T: type) type {
         }
 
         pub inline fn backward(
-            self: *Self,
+            self: *const Self,
             command_queue: *const wekua.core.CommandQueue,
             cache: *anyopaque,
+            input: *LayerTensor,
             input_gradient: ?*LayerTensor,
         ) !void {
-            return self.vtable.backward(@ptrCast(self.ptr), command_queue, cache, input_gradient);
+            return self.vtable.backward(@ptrCast(self.ptr), command_queue, cache, input, input_gradient);
         }
 
         pub inline fn getGradients(

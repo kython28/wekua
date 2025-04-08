@@ -14,26 +14,31 @@ pub fn Optimizer(comptime T: type) type {
             step: *const fn (
                 ptr: *anyopaque,
                 command_queue: *const wekua.core.CommandQueue,
-                cache: *OptimizerCache,
+                cache: *const OptimizerCache,
             ) anyerror!void,
             zero: *const fn (ptr: *anyopaque) anyerror!void,
             deinit: *const fn (ptr: *anyopaque) void,
         };
 
+        vtable: VTable,
         ptr: *anyopaque,
 
         const Self = @This();
 
-        pub inline fn step(self: *Self, cache: *const OptimizerCache) void {
-            self.vtable.step(@ptrCast(self.ptr), cache);
+        pub inline fn step(
+            self: *const Self,
+            command_queue: *const wekua.core.CommandQueue,
+            cache: *const OptimizerCache,
+        ) !void {
+            try self.vtable.step(@ptrCast(self.ptr), command_queue, cache);
         }
 
-        pub inline fn zero(self: *Self) !void {
+        pub inline fn zero(self: *const Self) !void {
             try self.vtable.zero(@ptrCast(self.ptr));
         }
 
-        pub inline fn deinit(self: *Self) !void {
-            try self.vtable.deinit(@ptrCast(self.ptr));
+        pub inline fn deinit(self: *const Self) void {
+            self.vtable.deinit(@ptrCast(self.ptr));
         }
     };
 }

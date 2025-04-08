@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const cl = @import("opencl");
 
@@ -147,6 +148,9 @@ inline fn validateTensors(
     const c_shape = c.dimensions.shape;
 
     if (c_shape.len != 2 or a_shape.len != 2 or b_shape.len != 2) {
+        if (builtin.is_test) {
+            std.log.err("An error while performing gemm: invalid shapes", .{});
+        }
         return w_tensor.Errors.InvalidValue;
     }
 
@@ -171,6 +175,20 @@ inline fn validateTensors(
     };
 
     if (!match) {
+        if (builtin.is_test) {
+            std.log.err(
+                \\ An error while performing gemm: dimensions mismatch
+                \\ a: {any}, b: {any}, c: {any}
+                \\ op_a: {any}, op_b: {any}
+            , .{
+                a_shape,
+                b_shape,
+                c_shape,
+                op_a,
+                op_b,
+            }
+            );
+        }
         return w_tensor.Errors.InvalidValue;
     }
 }

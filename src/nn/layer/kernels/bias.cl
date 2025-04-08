@@ -2,10 +2,10 @@
 
 __kernel void bias(
     __global wk *const restrict output,
-    __constant wk *const restrict bias,
+    __constant const wk *const restrict bias,
 
     const ulong row_pitch,
-    const ulong slice_pitch,
+    const ulong slice_pitch
 ) {
     const ulong i = get_global_id(0);
     const ulong j = get_global_id(1);

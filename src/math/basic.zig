@@ -18,10 +18,10 @@ fn genericBasicMathFunction(
     kernel_id: KernelsSet.KernelsID,
     kernel_source: []const u8,
     command_queue: *const CommandQueue,
-    x: *const wekua.Tensor(T),
-    y: *const wekua.Tensor(T),
+    x: *wekua.Tensor(T),
+    y: *wekua.Tensor(T),
 ) !void {
-    try helpers.eqlTensors(x, y);
+    try helpers.eqlTensors(T, x, y);
     const kernel = try KernelsSet.getClKernel(
         T,
         command_queue,
@@ -64,14 +64,14 @@ fn genericBasicMathFunction(
     );
     errdefer |err| wekua.tensor.helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(T, true, &.{ .write, .read }, &.{ x, y }, prev_events, new_event);
+    try events_set.appendNewEvent(T, true, &.{ .write, .read }, &.{ x, y }, prev_events, new_event);
 }
 
 pub inline fn dot(
     comptime T: type,
     command_queue: *const CommandQueue,
-    x: *const wekua.Tensor(T),
-    y: *const wekua.Tensor(T),
+    x: *wekua.Tensor(T),
+    y: *wekua.Tensor(T),
 ) !void {
     try genericBasicMathFunction(
         T,
@@ -147,8 +147,8 @@ fn executeSum(
 pub fn sum(
     comptime T: type,
     command_queue: *const CommandQueue,
-    x: *const wekua.Tensor(T),
-    result: *T,
+    x: *wekua.Tensor(T),
+    result: ?*T,
     imag_result: ?*T,
 ) !void {
     if (result == null and imag_result == null) {
@@ -160,7 +160,7 @@ pub fn sum(
     }
 
     var row_length: u64 = 1;
-    for (x.shape[0..(x.shape.len - 1)]) |s| {
+    for (x.dimensions.shape[0..(x.dimensions.shape.len - 1)]) |s| {
         row_length *= s;
     }
 
@@ -168,7 +168,7 @@ pub fn sum(
 
     var temporal_tensor_allocated: bool = false;
     var temporal_tensor: *wekua.Tensor(T) = undefined;
-    var prev_events: ?[]cl.event.cl_event = null;
+    var prev_events: ?[]const cl.event.cl_event = null;
 
     if (row_length > 1) {
         temporal_tensor = try wekua.Tensor(T).alloc(x.context, &.{ 1, row_length }, .{
@@ -196,7 +196,7 @@ pub fn sum(
         command_queue.cmd,
         temporal_tensor.buffer,
         false,
-        cl.buffer.enums.map_flags.read,
+        @intFromEnum(cl.buffer.enums.map_flags.read),
         0,
         @sizeOf(T) * row_length,
         prev_events,
@@ -250,8 +250,8 @@ pub fn sum(
 pub fn mean(
     comptime T: type,
     command_queue: *const CommandQueue,
-    x: *const wekua.Tensor(T),
-    result: *T,
+    x: *wekua.Tensor(T),
+    result: ?*T,
     imag_result: ?*T,
 ) !void {
     try sum(T, command_queue, x, result, imag_result);

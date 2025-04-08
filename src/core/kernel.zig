@@ -24,6 +24,7 @@ pub const KernelsID = enum(u16) {
     // --- Math kernels ---
     // Basic
     Dot,
+    Sum,
 
     // Trigonometric
     Sin,
@@ -41,6 +42,9 @@ pub const KernelsID = enum(u16) {
     // --- Layer kernels ---
     LinearBias,
     LinearBiasStep,
+
+    // --- Loss kernels ---
+    MSE,
 };
 
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;
@@ -306,8 +310,8 @@ pub fn getClKernel(
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.cl_kernel {
-    const is_complex = tensor.is_complex;
-    const vectors_enabled = tensor.vectors_enabled;
+    const is_complex = tensor.flags.is_complex;
+    const vectors_enabled = tensor.flags.vectors_enabled;
 
     const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.SupportedTypes.len) +
         @intFromBool(is_complex) * core.SupportedTypes.len + @as(usize, core.getTypeId(T)));
