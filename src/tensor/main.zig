@@ -16,6 +16,7 @@ pub const random = @import("random/main.zig");
 pub usingnamespace @import("transpose.zig");
 pub const convertions = @import("convertions/main.zig");
 pub usingnamespace @import("identity.zig");
+pub usingnamespace @import("print.zig");
 
 const blas = @import("../blas/main.zig");
 
