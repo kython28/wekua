@@ -61,7 +61,7 @@ pub fn Linear(
         weights: []*LayerTensor,
 
         bias_enabled: bool,
-        bias: []*LayerTensor,
+        bias: []?*LayerTensor,
 
         activation: ?w_activation.Activation(T),
 
@@ -133,13 +133,13 @@ pub fn Linear(
             }
 
             if (extra_params.enable_bias) {
-                const bias_layers = try allocator.alloc(*LayerTensor, extra_params.deep);
+                const bias_layers = try allocator.alloc(?*LayerTensor, extra_params.deep);
                 layer.bias = bias_layers;
 
                 var bias_created: usize = 0;
                 errdefer {
                     for (bias_layers[0..bias_created]) |b| {
-                        b.release();
+                        b.?.release();
                     }
                     allocator.free(bias_layers);
                 }
@@ -181,7 +181,7 @@ pub fn Linear(
 
             if (self.bias_enabled) {
                 for (self.bias) |b| {
-                    b.release();
+                    b.?.release();
                 }
                 allocator.free(self.bias);
             }
@@ -201,7 +201,7 @@ pub fn Linear(
             return self.weights;
         }
 
-        fn getBias(ptr: *const anyopaque) ?[]const *LayerTensor {
+        fn getBias(ptr: *const anyopaque) ?[]const ?*LayerTensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
             if (!self.bias_enabled) return null;
 
@@ -424,7 +424,7 @@ pub fn Linear(
                 );
 
                 if (bias_enabled) {
-                    try addBias(command_queue, oc, bias[index]);
+                    try addBias(command_queue, oc, bias[index].?);
                 }
 
                 if (activation_layer) |*acti| {

@@ -89,7 +89,6 @@ fn executeSum(
     command_queue: *const CommandQueue,
     x: *wekua.Tensor(T),
     result: *wekua.Tensor(T),
-    row_length: u64,
 ) !void {
     const kernel = try KernelsSet.getClKernel(
         T,
@@ -113,6 +112,11 @@ fn executeSum(
 
     const prev_events = events_set.getPrevEvents();
 
+    const global_work_items: []const u64 = x.work_configuration.global_work_items[0..2];
+    var local_work_items: [2]u64 = undefined;
+
+    wekua.utils.calculateWorkItems(global_work_items, &local_work_items, command_queue.max_work_group_size);
+
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
 
@@ -120,21 +124,14 @@ fn executeSum(
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&result.buffer));
     try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&x.memory_layout.row_pitch_for_vectors));
     try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&x.memory_layout.slice_pitch_for_vectors));
-    try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&row_length));
-
-    var global_work_items: [2]u64 = undefined;
-    @memcpy(&global_work_items, x.work_configuration.global_work_items[0..2]);
-
-    var local_work_items: [2]u64 = undefined;
-
-    wekua.utils.calculateWorkItems(&global_work_items, &local_work_items, command_queue.max_work_group_size);
+    try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&global_work_items[1]));
 
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
         command_queue.cmd,
         kernel,
         null,
-        &global_work_items,
+        global_work_items,
         &local_work_items,
         x_prev_events,
         &new_event,
@@ -182,7 +179,6 @@ pub fn sum(
             command_queue,
             x,
             temporal_tensor,
-            row_length,
         );
 
         prev_events = temporal_tensor.events_manager.getPrevEvents(.read);
@@ -198,7 +194,7 @@ pub fn sum(
         false,
         @intFromEnum(cl.buffer.enums.map_flags.read),
         0,
-        @sizeOf(T) * row_length,
+        @sizeOf(T) * row_length * (1 + @as(u64, @intFromBool(is_complex))),
         prev_events,
         &new_event
     );
@@ -225,7 +221,7 @@ pub fn sum(
     var _imag_result: T = undefined;
 
     if (is_complex) {
-        const elements_count = row_length / 2;
+        const elements_count = row_length * 2;
         var index: usize = 0;
         while (index < elements_count) : (index += 2) {
             _result += buf_map[index];
@@ -256,7 +252,7 @@ pub fn mean(
 ) !void {
     try sum(T, command_queue, x, result, imag_result);
 
-    const number_of_elements = x.dimensions.number_of_elements_without_padding / @as(u64, @intFromBool(x.flags.is_complex));
+    const number_of_elements = x.dimensions.number_of_elements_without_padding / (1 + @as(u64, @intFromBool(x.flags.is_complex)));
     switch (@typeInfo(T)) {
         .int => {
             if (result) |res| {
