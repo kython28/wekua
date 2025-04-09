@@ -1,19 +1,20 @@
 pub usingnamespace @import("linear.zig");
+pub usingnamespace @import("sequential.zig");
 
 const wekua = @import("../../wekua.zig");
-const w_cache = @import("cache.zig");
+pub usingnamespace @import("cache.zig");
+
 
 pub fn Layer(comptime T: type) type {
     const LayerTensor = wekua.Tensor(T);
 
     return struct {
-        pub const Cache = w_cache.Cache(T);
-
         pub const VTable = struct {
             deinit: *const fn (ptr: *const anyopaque) void,
 
+            getCachedOutput: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *LayerTensor,
             getWeights: *const fn (ptr: *const anyopaque) []const *LayerTensor,
-            getBias: *const fn (ptr: *const anyopaque) ?[]const *LayerTensor,
+            getBias: *const fn (ptr: *const anyopaque) ?[]const ?*LayerTensor,
 
             prepareCache: *const fn (
                 ptr: *const anyopaque,
@@ -22,7 +23,7 @@ pub fn Layer(comptime T: type) type {
 
             releaseCache: *const fn (
                 ptr: *const anyopaque,
-                cache: *anyopaque,
+                cache: *const anyopaque,
             ) void,
 
             forward: *const fn (
@@ -32,7 +33,7 @@ pub fn Layer(comptime T: type) type {
                 cache: *anyopaque,
             ) anyerror!*LayerTensor,
 
-            getSensitivity: *const fn (ptr: *const anyopaque, cache: *anyopaque) *LayerTensor,
+            getSensitivity: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *LayerTensor,
 
             backward: *const fn (
                 ptr: *const anyopaque,
@@ -42,8 +43,8 @@ pub fn Layer(comptime T: type) type {
                 input_gradient: ?*LayerTensor
             ) anyerror!void,
 
-            getGradients: *const fn (ptr: *const anyopaque, cache: *anyopaque) []const *LayerTensor,
-            getBiasGradients: *const fn (ptr: *const anyopaque, cache: *anyopaque) ?[]const *LayerTensor,
+            getGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) []const *LayerTensor,
+            getBiasGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) ?[]const ?*LayerTensor,
         };
 
         ptr: *anyopaque,
@@ -55,11 +56,15 @@ pub fn Layer(comptime T: type) type {
             self.vtable.deinit(@ptrCast(self.ptr));
         }
 
+        pub inline fn getCachedOutput(self: *const Self, cache: *anyopaque) *LayerTensor {
+            return self.vtable.getCachedOutput(@ptrCast(self.ptr), cache);
+        }
+
         pub inline fn getWeights(self: *const Self) []const *LayerTensor {
             return self.vtable.getWeights(@ptrCast(self.ptr));
         }
 
-        pub inline fn getBias(self: *const Self) ?[]const *LayerTensor {
+        pub inline fn getBias(self: *const Self) ?[]const ?*LayerTensor {
             return self.vtable.getBias(@ptrCast(self.ptr));
         }
 
@@ -113,7 +118,7 @@ pub fn Layer(comptime T: type) type {
         pub inline fn getBiasGradients(
             self: *const Self,
             cache: *anyopaque,
-        ) ?[]const *LayerTensor {
+        ) ?[]const ?*LayerTensor {
             return self.vtable.getBiasGradients(@ptrCast(self.ptr), cache);
         }
     };

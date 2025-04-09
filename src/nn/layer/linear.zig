@@ -14,6 +14,12 @@ const Tensor = wekua.Tensor;
 const bias_cl_kernel: []const u8 = @embedFile("kernels/bias.cl");
 const bias_step_cl_kernel: []const u8 = @embedFile("kernels/bias_step.cl");
 
+pub const LinearExtraParams = struct {
+    deep: usize = 1,
+    enable_bias: bool = true,
+    use_complex_numbers: bool = false,
+};
+
 inline fn get_random_limits(comptime T: type, input: usize, output: usize, start: *T, end: *T) void {
     const limit = switch (@typeInfo(T)) {
         .int => std.math.sqrt(6 / (input + output)),
@@ -50,8 +56,6 @@ pub fn Linear(
     };
 
     return struct {
-        pub const Cache = Layer.Cache;
-
         allocator: std.mem.Allocator,
 
         weights: []*LayerTensor,
@@ -69,11 +73,11 @@ pub fn Linear(
             context: *const wekua.core.Context,
             input: usize,
             output: usize,
-            deep: usize,
-            enable_bias: bool,
             activation: ?w_activation.Activation(T),
-            use_complex_numbers: bool,
+            extra_params: LinearExtraParams,
         ) !Layer {
+            if (input == 0 or output == 0 or extra_params.deep == 0) return wekua.tensor.Errors.InvalidValue;
+
             const allocator = context.allocator;
 
             const layer = try allocator.create(Self);
@@ -82,13 +86,13 @@ pub fn Linear(
             layer.activation = activation;
             layer.allocator = allocator;
             layer.context = context;
-            layer.bias_enabled = enable_bias;
+            layer.bias_enabled = extra_params.enable_bias;
 
             var bottom: T = undefined;
             var top: T = undefined;
             get_random_limits(T, input, output, &bottom, &top);
 
-            const weights = try allocator.alloc(*LayerTensor, deep);
+            const weights = try allocator.alloc(*LayerTensor, extra_params.deep);
             layer.weights = weights;
 
             var weights_created: usize = 0;
@@ -100,7 +104,7 @@ pub fn Linear(
             }
 
             const first_weight_layer = try LayerTensor.alloc(context, &.{ output, input }, .{
-                .is_complex = use_complex_numbers,
+                .is_complex = extra_params.use_complex_numbers,
             });
             weights[0] = first_weight_layer;
             weights_created += 1;
@@ -118,7 +122,7 @@ pub fn Linear(
             get_random_limits(T, output, output, &bottom, &top);
             for (weights[1..]) |*w| {
                 const weight = try LayerTensor.alloc(context, &.{ output, output }, .{
-                    .is_complex = use_complex_numbers,
+                    .is_complex = extra_params.use_complex_numbers,
                 });
                 errdefer weight.release();
 
@@ -128,8 +132,8 @@ pub fn Linear(
                 weights_created += 1;
             }
 
-            if (enable_bias) {
-                const bias_layers = try allocator.alloc(*LayerTensor, deep);
+            if (extra_params.enable_bias) {
+                const bias_layers = try allocator.alloc(*LayerTensor, extra_params.deep);
                 layer.bias = bias_layers;
 
                 var bias_created: usize = 0;
@@ -142,7 +146,7 @@ pub fn Linear(
 
                 for (bias_layers) |*b| {
                     b.* = try LayerTensor.alloc(context, &.{output}, .{
-                        .is_complex = use_complex_numbers,
+                        .is_complex = extra_params.use_complex_numbers,
                     });
                     bias_created += 1;
                 }
@@ -151,6 +155,7 @@ pub fn Linear(
             return Layer{
                 .vtable = .{
                     .deinit = &deinit,
+                    .getCachedOutput = &getCachedOutput,
                     .getWeights = &getWeights,
                     .getBias = &getBias,
                     .prepareCache = &prepareCache,
@@ -182,6 +187,12 @@ pub fn Linear(
             }
 
             allocator.destroy(self);
+        }
+
+        fn getCachedOutput(_: *const anyopaque, cache: *const anyopaque) *LayerTensor {
+            const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
+            const outputs = cache_data.outputs;
+            return outputs[outputs.len - 1];
         }
 
         fn getWeights(ptr: *const anyopaque) []const *LayerTensor {
@@ -302,11 +313,11 @@ pub fn Linear(
             return cache;
         }
 
-        fn releaseCache(ptr: *const anyopaque, cache: *anyopaque) void {
+        fn releaseCache(ptr: *const anyopaque, cache: *const anyopaque) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const allocator = self.allocator;
-            const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
+            const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
 
             for (cache_data.outputs) |o| {
                 o.release();
@@ -392,10 +403,12 @@ pub fn Linear(
 
             var in = input;
 
+            const bias = self.bias;
             const bias_enabled = self.bias_enabled;
+
             const activation_layer = self.activation;
 
-            for (self.weights, self.bias, outputs_cached) |w, b, oc| {
+            for (self.weights, outputs_cached, 0..) |w, oc, index| {
                 try wekua.blas.gemm.perform(
                     T,
                     command_queue,
@@ -411,7 +424,7 @@ pub fn Linear(
                 );
 
                 if (bias_enabled) {
-                    try addBias(command_queue, oc, b);
+                    try addBias(command_queue, oc, bias[index]);
                 }
 
                 if (activation_layer) |*acti| {
@@ -424,8 +437,8 @@ pub fn Linear(
             return in;
         }
 
-        fn getSensitivity(_: *const anyopaque, cache: *anyopaque) *LayerTensor {
-            const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
+        fn getSensitivity(_: *const anyopaque, cache: *const anyopaque) *LayerTensor {
+            const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
 
             const gradients = cache_data.sensitivities;
             return gradients[gradients.len - 1];
@@ -584,18 +597,17 @@ pub fn Linear(
             }
         }
 
-        fn getGradients(_: *const anyopaque, cache: *anyopaque) []const *LayerTensor {
-            const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
-
+        fn getGradients(_: *const anyopaque, cache: *const anyopaque) []const *LayerTensor {
+            const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
             return cache_data.gradients;
         }
 
-        fn getBiasGradients(ptr: *const anyopaque, cache: *anyopaque) ?[]const *LayerTensor {
+        fn getBiasGradients(ptr: *const anyopaque, cache: *const anyopaque) ?[]const *LayerTensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             if (!self.bias_enabled) return null;
 
-            const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
+            const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
             return cache_data.bias_gradients;
         }
     };

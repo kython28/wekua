@@ -55,6 +55,10 @@ pub fn Cache(comptime T: type) type {
             };
         }
 
+        pub inline fn getLayerCache(self: *const Self, index: usize) *anyopaque {
+            return self.slots[index].cache;
+        }
+
         pub fn deinit(self: *const Self) void {
             const allocator = self.allocator;
             for (self.slots) |c| {

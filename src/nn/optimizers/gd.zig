@@ -7,8 +7,7 @@ const w_layer = @import("../layer/main.zig");
 
 // Gradient Descent
 pub fn GD(comptime T: type) type {
-    const OptimizerLayer = w_layer.Layer(T);
-    const OptimizerCache = OptimizerLayer.Cache;
+    const OptimizerCache = w_layer.Cache(T);
 
     const Optimizer = optimizer.Optimizer(T);
 
@@ -23,10 +22,21 @@ pub fn GD(comptime T: type) type {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
+            var lr_value: ?T = null;
+            var lri_value: ?T = null;
+
+            if (lr) |lr_value_| {
+                lr_value = -lr_value_;
+            }
+
+            if (lri) |lri_value_| {
+                lri_value = -lri_value_;
+            }
+
             self.* = .{
                 .allocator = allocator,
-                .lr = lr,
-                .lri = lri,
+                .lr = lr_value,
+                .lri = lri_value,
             };
 
             return Optimizer{
@@ -67,14 +77,16 @@ pub fn GD(comptime T: type) type {
 
                 if (layer.getBiasGradients(slot.cache)) |bias_gradients| {
                     const bias = layer.getBias();
-                    for (bias.?, bias_gradients) |b, bg| {
+                    for (bias.?, bias_gradients) |b, maybe_bg| {
+                        const bg = maybe_bg orelse continue;
+
                         try wekua.blas.axpy(
                             T,
                             command_queue,
                             bg,
                             lr,
                             lri,
-                            b,
+                            b.?,
                         );
                     }
                 }

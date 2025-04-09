@@ -4,8 +4,7 @@ const layer = @import("../layer/main.zig");
 const w_gd = @import("gd.zig");
 
 pub fn Optimizer(comptime T: type) type {
-    const OptimizerLayer = layer.Layer(T);
-    const OptimizerCache = OptimizerLayer.Cache;
+    const OptimizerCache = layer.Cache(T);
 
     return struct {
         pub const GD = w_gd.GD(T);
