@@ -195,7 +195,7 @@ fn printVector(
                             try writer.print("{s: >14},", .{"..."});
                         }
 
-                        for (buf[@max(2, cols - dec)..]) |v| {
+                        for (buf[@max(2, cols - dec)..cols]) |v| {
                             if ((@abs(10000.0) - @abs(v)) > 1e-8) {
                                 try writer.print("{d: >14.8},", .{v});
                             } else {
@@ -348,11 +348,11 @@ pub fn printZ(
     const is_complex = tensor.flags.is_complex;
     try printDim(T, writer, 0, memory_map, shape, pitches, tensor.flags.is_complex);
 
-    try writer.writeAll(" shape=(");
-    for (shape) |s| {
-        try writer.print("{d},", .{s});
+    try writer.print(" shape=({d}", .{shape[0]});
+    for (shape[1..]) |s| {
+        try writer.print(", {d}", .{s});
     }
-    try writer.writeAll(")");
+    try writer.writeByte(')');
 
     if (is_complex) {
         try writer.print(", dtype=complex_{s})\n", .{@typeName(T)});
