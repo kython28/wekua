@@ -4,6 +4,7 @@ pub const random = @import("random.zig");
 pub const transpose = @import("transpose.zig");
 pub const convertions = @import("convertions.zig");
 pub const identity = @import("identity.zig");
+pub const print = @import("print.zig");
 
 test {
     const std = @import("std");
