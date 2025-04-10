@@ -2,6 +2,12 @@ const wekua = @import("wekua");
 const cl = wekua.opencl;
 const std = @import("std");
 
+const activation = @import("activation.zig");
+
+test {
+    std.testing.refAllDecls(activation);
+}
+
 fn solve_and(
     comptime T: type,
     context: *wekua.core.Context,
