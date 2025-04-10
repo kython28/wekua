@@ -3,6 +3,7 @@ const cl = wekua.opencl;
 const std = @import("std");
 
 const activation = @import("activation.zig");
+const optimizers = &.{"GD", "GDM", "Adagrad"};
 
 test {
     std.testing.refAllDecls(activation);
@@ -10,6 +11,7 @@ test {
 
 fn solve_and(
     comptime T: type,
+    comptime optimizer_name: []const u8,
     context: *wekua.core.Context,
 ) !void {
     const command_queue = &context.command_queues[0];
@@ -53,7 +55,17 @@ fn solve_and(
     const cache = try wekua.nn.layer.Cache(T).init(context, 4, &.{&layer1});
     defer cache.deinit();
 
-    const optimizer = try Optimizer.GD.init(context.allocator, 1, null);
+    const optimizer_module = @field(Optimizer, optimizer_name);
+    const optimizer = blk: {
+        if (comptime std.mem.eql(u8, optimizer_name, "GD")) {
+            break :blk try optimizer_module.init(context.allocator, .{
+                .lr = 1,
+            });
+        }
+        break :blk try optimizer_module.init(context, &cache, .{
+            .lr = 1,
+        });
+    };
     defer optimizer.deinit();
 
     var prediction_buffer: [4]T = undefined;
@@ -67,7 +79,7 @@ fn solve_and(
         try optimizer.step(command_queue, &cache);
     }
 
-    const output = try layer1.forward(command_queue, inputs, cache.slots[0].cache);
+    const output = try layer1.forward(command_queue, inputs, layer_cache);
 
     try wekua.tensor.memory.writeToBuffer(T, output, command_queue, &prediction_buffer);
     for (prediction_buffer, expected_outputs_buf) |p, e| {
@@ -83,13 +95,16 @@ test "Solving `AND` problem" {
     );
     defer ctx.release();
 
-    try solve_and(f32, ctx);
-    try solve_and(f64, ctx);
+    inline for (optimizers) |optimizer_name| {
+        try solve_and(f32, optimizer_name, ctx);
+        try solve_and(f64, optimizer_name, ctx);
+    }
 }
 
 
 fn solve_or(
     comptime T: type,
+    comptime optimizer_name: []const u8,
     context: *wekua.core.Context,
 ) !void {
     const command_queue = &context.command_queues[0];
@@ -133,7 +148,17 @@ fn solve_or(
     const cache = try wekua.nn.layer.Cache(T).init(context, 4, &.{&layer1});
     defer cache.deinit();
 
-    const optimizer = try Optimizer.GD.init(context.allocator, 1, null);
+    const optimizer_module = @field(Optimizer, optimizer_name);
+    const optimizer = blk: {
+        if (comptime std.mem.eql(u8, optimizer_name, "GD")) {
+            break :blk try optimizer_module.init(context.allocator, .{
+                .lr = 1,
+            });
+        }
+        break :blk try optimizer_module.init(context, &cache, .{
+            .lr = 1,
+        });
+    };
     defer optimizer.deinit();
 
     var prediction_buffer: [4]T = undefined;
@@ -163,12 +188,15 @@ test "Solving `OR` problem" {
     );
     defer ctx.release();
 
-    try solve_or(f32, ctx);
-    try solve_or(f64, ctx);
+    inline for (optimizers) |optimizer_name| {
+        try solve_or(f32, optimizer_name, ctx);
+        try solve_or(f64, optimizer_name, ctx);
+    }
 }
 
 fn solve_xor(
     comptime T: type,
+    comptime optimizer_name: []const u8,
     context: *wekua.core.Context,
 ) !void {
     const command_queue = &context.command_queues[0];
@@ -225,13 +253,32 @@ fn solve_xor(
     const cache = try wekua.nn.layer.Cache(T).init(context, 4, &.{&layers});
     defer cache.deinit();
 
-    const optimizer = try Optimizer.GD.init(context.allocator, 1, null);
+    const optimizer_module = @field(Optimizer, optimizer_name);
+    
+    const lr = comptime blk: {
+        if (std.mem.eql(u8, optimizer_name, "Adagrad")) {
+            break :blk 2;
+        }
+
+        break :blk 1;
+    };
+
+    const optimizer = blk: {
+        if (comptime std.mem.eql(u8, optimizer_name, "GD")) {
+            break :blk try optimizer_module.init(context.allocator, .{
+                .lr = lr,
+            });
+        }
+        break :blk try optimizer_module.init(context, &cache, .{
+            .lr = lr,
+        });
+    };
     defer optimizer.deinit();
 
     var prediction_buffer: [4]T = undefined;
 
     const layer_cache = cache.getLayerCache(0);
-    for (0..300) |_| {
+    for (0..400) |_| {
         const output = try layers.forward(command_queue, inputs, layer_cache);
         try wekua.nn.loss.mse(T, true, command_queue, output, expected_outputs, &cache, null, null);
 
@@ -239,7 +286,7 @@ fn solve_xor(
         try optimizer.step(command_queue, &cache);
     }
 
-    const output = try layers.forward(command_queue, inputs, cache.slots[0].cache);
+    const output = try layers.forward(command_queue, inputs, layer_cache);
 
     try wekua.tensor.memory.writeToBuffer(T, output, command_queue, &prediction_buffer);
     for (prediction_buffer, expected_outputs_buf) |p, e| {
@@ -255,6 +302,8 @@ test "Solving `XOR` problem" {
     );
     defer ctx.release();
 
-    try solve_xor(f32, ctx);
-    try solve_xor(f64, ctx);
+    inline for (optimizers) |optimizer_name| {
+        try solve_xor(f32, optimizer_name, ctx);
+        try solve_xor(f64, optimizer_name, ctx);
+    }
 }

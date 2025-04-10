@@ -6,15 +6,15 @@ pub usingnamespace @import("cache.zig");
 
 
 pub fn Layer(comptime T: type) type {
-    const LayerTensor = wekua.Tensor(T);
+    const Tensor = wekua.Tensor(T);
 
     return struct {
         pub const VTable = struct {
             deinit: *const fn (ptr: *const anyopaque) void,
 
-            getCachedOutput: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *LayerTensor,
-            getWeights: *const fn (ptr: *const anyopaque) []const *LayerTensor,
-            getBias: *const fn (ptr: *const anyopaque) ?[]const ?*LayerTensor,
+            getCachedOutput: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *Tensor,
+            getWeights: *const fn (ptr: *const anyopaque) []const *Tensor,
+            getBias: *const fn (ptr: *const anyopaque) ?[]const ?*Tensor,
 
             prepareCache: *const fn (
                 ptr: *const anyopaque,
@@ -29,22 +29,22 @@ pub fn Layer(comptime T: type) type {
             forward: *const fn (
                 ptr: *const anyopaque,
                 command_queue: *const wekua.core.CommandQueue,
-                input: *LayerTensor,
+                input: *Tensor,
                 cache: *anyopaque,
-            ) anyerror!*LayerTensor,
+            ) anyerror!*Tensor,
 
-            getSensitivity: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *LayerTensor,
+            getSensitivity: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *Tensor,
 
             backward: *const fn (
                 ptr: *const anyopaque,
                 command_queue: *const wekua.core.CommandQueue,
                 cache: *anyopaque,
-                input: *LayerTensor,
-                input_gradient: ?*LayerTensor
+                input: *Tensor,
+                input_gradient: ?*Tensor
             ) anyerror!void,
 
-            getGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) []const *LayerTensor,
-            getBiasGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) ?[]const ?*LayerTensor,
+            getGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) []const *Tensor,
+            getBiasGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) ?[]const ?*Tensor,
         };
 
         ptr: *anyopaque,
@@ -56,15 +56,15 @@ pub fn Layer(comptime T: type) type {
             self.vtable.deinit(@ptrCast(self.ptr));
         }
 
-        pub inline fn getCachedOutput(self: *const Self, cache: *anyopaque) *LayerTensor {
+        pub inline fn getCachedOutput(self: *const Self, cache: *anyopaque) *Tensor {
             return self.vtable.getCachedOutput(@ptrCast(self.ptr), cache);
         }
 
-        pub inline fn getWeights(self: *const Self) []const *LayerTensor {
+        pub inline fn getWeights(self: *const Self) []const *Tensor {
             return self.vtable.getWeights(@ptrCast(self.ptr));
         }
 
-        pub inline fn getBias(self: *const Self) ?[]const ?*LayerTensor {
+        pub inline fn getBias(self: *const Self) ?[]const ?*Tensor {
             return self.vtable.getBias(@ptrCast(self.ptr));
         }
 
@@ -85,16 +85,16 @@ pub fn Layer(comptime T: type) type {
         pub inline fn forward(
             self: *const Self,
             command_queue: *const wekua.core.CommandQueue,
-            input: *LayerTensor,
+            input: *Tensor,
             cache: *anyopaque,
-        ) !*LayerTensor {
+        ) !*Tensor {
             return self.vtable.forward(@ptrCast(self.ptr), command_queue, input, cache);
         }
 
         pub inline fn getSensitivity(
             self: *const Self,
             cache: *anyopaque,
-        ) *LayerTensor {
+        ) *Tensor {
             return self.vtable.getSensitivity(@ptrCast(self.ptr), cache);
         }
 
@@ -102,8 +102,8 @@ pub fn Layer(comptime T: type) type {
             self: *const Self,
             command_queue: *const wekua.core.CommandQueue,
             cache: *anyopaque,
-            input: *LayerTensor,
-            input_gradient: ?*LayerTensor,
+            input: *Tensor,
+            input_gradient: ?*Tensor,
         ) !void {
             return self.vtable.backward(@ptrCast(self.ptr), command_queue, cache, input, input_gradient);
         }
@@ -111,14 +111,14 @@ pub fn Layer(comptime T: type) type {
         pub inline fn getGradients(
             self: *const Self,
             cache: *anyopaque,
-        ) []const *LayerTensor {
+        ) []const *Tensor {
             return self.vtable.getGradients(@ptrCast(self.ptr), cache);
         }
 
         pub inline fn getBiasGradients(
             self: *const Self,
             cache: *anyopaque,
-        ) ?[]const ?*LayerTensor {
+        ) ?[]const ?*Tensor {
             return self.vtable.getBiasGradients(@ptrCast(self.ptr), cache);
         }
     };

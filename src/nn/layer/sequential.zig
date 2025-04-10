@@ -4,13 +4,13 @@ const std = @import("std");
 const w_layer = @import("main.zig");
 
 pub fn Sequential(comptime T: type) type {
-    const LayerTensor = wekua.Tensor(T);
+    const Tensor = wekua.Tensor(T);
     const Layer = w_layer.Layer(T);
 
     const SequentialCache = struct {
         caches: []*anyopaque,
-        gradients: []*LayerTensor,
-        bias_gradients: []?*LayerTensor,
+        gradients: []*Tensor,
+        bias_gradients: []?*Tensor,
     };
 
     return struct {
@@ -18,8 +18,8 @@ pub fn Sequential(comptime T: type) type {
 
         allocator: std.mem.Allocator,
         layers: std.ArrayList(Layer),
-        weights: std.ArrayList(*LayerTensor),
-        bias: std.ArrayList(?*LayerTensor),
+        weights: std.ArrayList(*Tensor),
+        bias: std.ArrayList(?*Tensor),
 
         const Self = @This();
 
@@ -30,8 +30,8 @@ pub fn Sequential(comptime T: type) type {
             seq_layer.* = .{
                 .allocator = allocator,
                 .layers = std.ArrayList(Layer).init(allocator),
-                .weights = std.ArrayList(*LayerTensor).init(allocator),
-                .bias = std.ArrayList(?*LayerTensor).init(allocator),
+                .weights = std.ArrayList(*Tensor).init(allocator),
+                .bias = std.ArrayList(?*Tensor).init(allocator),
             };
 
             return seq_layer;
@@ -101,7 +101,7 @@ pub fn Sequential(comptime T: type) type {
             }
         }
 
-        fn getCachedOutput(ptr: *const anyopaque, cache: *const anyopaque) *LayerTensor {
+        fn getCachedOutput(ptr: *const anyopaque, cache: *const anyopaque) *Tensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const cache_data: *const SequentialCache = @ptrCast(@alignCast(cache));
@@ -111,13 +111,13 @@ pub fn Sequential(comptime T: type) type {
             return self.layers.items[last_index].getCachedOutput(last_layer_cache);
         }
 
-        fn getWeights(ptr: *const anyopaque) []const *LayerTensor {
+        fn getWeights(ptr: *const anyopaque) []const *Tensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             return self.weights.items;
         }
 
-        fn getBias(ptr: *const anyopaque) ?[]const ?*LayerTensor {
+        fn getBias(ptr: *const anyopaque) ?[]const ?*Tensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
             
             return self.bias.items;
@@ -133,10 +133,10 @@ pub fn Sequential(comptime T: type) type {
             const caches = try allocator.alloc(*anyopaque, self.layers.items.len);
             errdefer allocator.free(caches);
 
-            const gradients = try allocator.alloc(*LayerTensor, self.layers.items.len);
+            const gradients = try allocator.alloc(*Tensor, self.layers.items.len);
             errdefer allocator.free(gradients);
 
-            const bias_gradients = try allocator.alloc(?*LayerTensor, self.layers.items.len);
+            const bias_gradients = try allocator.alloc(?*Tensor, self.layers.items.len);
             errdefer allocator.free(bias_gradients);
 
             var caches_created: usize = 0;
@@ -203,9 +203,9 @@ pub fn Sequential(comptime T: type) type {
         fn forward(
             ptr: *const anyopaque,
             command_queue: *const wekua.core.CommandQueue,
-            input: *LayerTensor,
+            input: *Tensor,
             cache: *anyopaque,
-        ) !*LayerTensor {
+        ) !*Tensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const cache_data: *const SequentialCache = @ptrCast(@alignCast(cache));
@@ -219,7 +219,7 @@ pub fn Sequential(comptime T: type) type {
             return output;
         }
 
-        fn getSensitivity(ptr: *const anyopaque, cache: *const anyopaque) *LayerTensor {
+        fn getSensitivity(ptr: *const anyopaque, cache: *const anyopaque) *Tensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const cache_data: *const SequentialCache = @ptrCast(@alignCast(cache));
@@ -235,8 +235,8 @@ pub fn Sequential(comptime T: type) type {
             ptr: *const anyopaque,
             command_queue: *const wekua.core.CommandQueue,
             cache: *anyopaque,
-            input: *LayerTensor,
-            input_gradient: ?*LayerTensor,
+            input: *Tensor,
+            input_gradient: ?*Tensor,
         ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
@@ -265,12 +265,12 @@ pub fn Sequential(comptime T: type) type {
             }
         }
 
-        fn getGradients(_: *const anyopaque, cache: *const anyopaque) []const *LayerTensor {
+        fn getGradients(_: *const anyopaque, cache: *const anyopaque) []const *Tensor {
             const cache_data: *const SequentialCache = @ptrCast(@alignCast(cache));
             return cache_data.gradients;
         }
 
-        fn getBiasGradients(_: *const anyopaque, cache: *const anyopaque) ?[]const ?*LayerTensor {
+        fn getBiasGradients(_: *const anyopaque, cache: *const anyopaque) ?[]const ?*Tensor {
             const cache_data: *const SequentialCache = @ptrCast(@alignCast(cache));
             return cache_data.bias_gradients;
         }

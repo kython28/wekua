@@ -45,6 +45,11 @@ pub const KernelsID = enum(u16) {
 
     // --- Loss kernels ---
     MSE,
+
+    // --- Optimizer kernels ---
+    GDM,
+    Adagrad,
+    RMSProp,
 };
 
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;

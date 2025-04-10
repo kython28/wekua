@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const cl = @import("opencl");
 
@@ -373,5 +374,9 @@ pub fn print(
 
     const writer = array.writer();
     try printZ(T, writer, command_queue, tensor);
-    try std.io.getStdOut().writeAll(array.items);
+    if (builtin.is_test) {
+        std.log.warn("{s}", .{array.items});
+    }else{
+        try std.io.getStdOut().writeAll(array.items);
+    }
 }

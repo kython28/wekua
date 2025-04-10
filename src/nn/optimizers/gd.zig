@@ -7,36 +7,35 @@ const w_layer = @import("../layer/main.zig");
 
 // Gradient Descent
 pub fn GD(comptime T: type) type {
-    const OptimizerCache = w_layer.Cache(T);
+    switch (T) {
+        f32, f64 => {},
+        else => @compileError("Gradient Descent optimizer only supports f32 and f64 types"),
+    }
 
+    const Cache = w_layer.Cache(T);
     const Optimizer = optimizer.Optimizer(T);
 
     return struct {
+        pub const Config = struct {
+            lr: T,
+            lri: T = 0,
+        };
+
         allocator: std.mem.Allocator,
-        lr: ?T,
-        lri: ?T,
+        config: Config,
 
         const Self = @This();
 
-        pub fn init(allocator: std.mem.Allocator, lr: ?T, lri: ?T) !Optimizer {
+        pub fn init(allocator: std.mem.Allocator, config: Config) !Optimizer {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
-            var lr_value: ?T = null;
-            var lri_value: ?T = null;
-
-            if (lr) |lr_value_| {
-                lr_value = -lr_value_;
-            }
-
-            if (lri) |lri_value_| {
-                lri_value = -lri_value_;
-            }
-
             self.* = .{
                 .allocator = allocator,
-                .lr = lr_value,
-                .lri = lri_value,
+                .config = .{
+                    .lr = -config.lr,
+                    .lri = -config.lri,
+                },
             };
 
             return Optimizer{
@@ -52,12 +51,12 @@ pub fn GD(comptime T: type) type {
         fn step(
             ptr: *anyopaque,
             command_queue: *const wekua.core.CommandQueue,
-            cache: *const OptimizerCache,
+            cache: *const Cache,
         ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
-            const lr = self.lr;
-            const lri = self.lri;
+            const lr = self.config.lr;
+            const lri = self.config.lri;
 
             for (cache.slots) |*slot| {
                 const layer = slot.layer;
@@ -93,7 +92,7 @@ pub fn GD(comptime T: type) type {
             }
         }
 
-        fn zero(_: *anyopaque) !void {}
+        fn zero(_: *anyopaque, _: *const wekua.core.CommandQueue) !void {}
 
         fn deinit(ptr: *const anyopaque) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
