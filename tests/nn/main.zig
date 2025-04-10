@@ -175,7 +175,6 @@ fn solve_xor(
     if (!command_queue.typeIsSupported(T)) return;
 
     const expected_outputs_buf: []const T = &.{ 0, 1, 1, 0 };
-
     const inputs_buf: []const T = &.{
         1, 1,
         0, 1,

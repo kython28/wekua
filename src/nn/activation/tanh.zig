@@ -9,7 +9,7 @@ const Tensor = wekua.Tensor;
 
 const tanh_cl_kernel: []const u8 = @embedFile("kernels/tanh.cl");
 
-pub fn Sigmoid(comptime T: type) type {
+pub fn Tanh(comptime T: type) type {
     const ActivationTensor = Tensor(T);
 
     switch (@typeInfo(T)) {

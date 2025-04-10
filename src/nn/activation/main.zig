@@ -1,4 +1,5 @@
 pub usingnamespace @import("sigmoid.zig");
+pub usingnamespace @import("tanh.zig");
 
 const wekua = @import("../../wekua.zig");
 const Tensor = wekua.Tensor;
