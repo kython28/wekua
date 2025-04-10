@@ -65,8 +65,7 @@ This setup will allow you to use the `wekua` module in your project.
 
 # How to use?
 
-Now let's see a simple example of how to use Wekua to build a neural network. Let's try to solve the XOR problem, which is a classic problem in neural networks.
-
+Check out a complete XOR neural network example in [`examples/xor_neural_network.zig`](examples/xor_neural_network.zig).
 
 # ⚠️ Note
 
