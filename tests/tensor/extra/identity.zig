@@ -28,7 +28,7 @@ fn test_identity(
 
     try wekua.tensor.identity(T, w_cmd, tensor);
 
-    const numbers = try allocator.alloc(T, tensor.number_of_elements_without_padding);
+    const numbers = try allocator.alloc(T, tensor.dimensions.number_of_elements_without_padding);
     defer allocator.free(numbers);
 
     try wekua.tensor.memory.writeToBuffer(T, tensor, w_cmd, numbers);
@@ -39,7 +39,7 @@ fn test_identity(
             v.* = i;
         }
 
-        const index = wekua.utils.ravelMultiIndex(&indices, tensor.shape, null, is_complex);
+        const index = wekua.utils.ravelMultiIndex(&indices, tensor.dimensions.shape, null, is_complex);
         switch (@typeInfo(T)) {
             .int => {
                 try std.testing.expectEqual(numbers[index], 1);

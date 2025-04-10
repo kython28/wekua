@@ -17,8 +17,8 @@ pub fn identity(
     command_queue: *const CommandQueue,
     tensor: *Tensor(T),
 ) !void {
-    const size = tensor.shape[0];
-    for (tensor.shape[1..]) |s| {
+    const size = tensor.dimensions.shape[0];
+    for (tensor.dimensions.shape[1..]) |s| {
         if (s != size) {
             return w_tensor.Errors.InvalidValue;
         }
@@ -41,7 +41,7 @@ pub fn identity(
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
 
     var work_items: u64 = undefined;
-    utils.calculate_work_items(
+    utils.calculateWorkItems(
         &.{ size },
         @as([*]u64, @ptrCast(&work_items))[0..1],
         command_queue.max_work_group_size,
@@ -49,7 +49,7 @@ pub fn identity(
 
     try set_arg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
     try set_arg(kernel, 1, cl_mem_size, @ptrCast(&tensor.pitches_buffer));
-    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&tensor.shape.len));
+    try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&tensor.dimensions.shape.len));
 
     var new_event: cl.event.cl_event = undefined;
     try cl.kernel.enqueue_nd_range(
