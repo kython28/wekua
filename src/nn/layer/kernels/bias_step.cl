@@ -1,8 +1,8 @@
 #include "wekua.h"
 
 __kernel void bias_step(
-    __constant const wk *restrict const derivative,
-    __global wk *restrict const bias_gradients,
+    __constant const wk *const restrict derivative,
+    __global wk *const restrict bias_gradients,
 
     const ulong dev_row_pitch,
     const ulong dev_rows

@@ -264,9 +264,7 @@ const EventsBatchLenght = switch (builtin.mode) {
 
 pub const EventsBatch = struct {
     allocator: std.mem.Allocator,
-
-    prev_events: [MaxEventsPerSet * 2]cl.event.cl_event,
-    prev_events_len: MaxEventsPerSetInt,
+    prev_events: ?[]cl.event.cl_event,
 
     events: [EventsBatchLenght]Event,
     events_num: u8,
@@ -275,7 +273,8 @@ pub const EventsBatch = struct {
         self.allocator = allocator;
 
         if (prev_events) |pv| {
-            if (pv.len > MaxEventsPerSet * 2) return error.EventsArrayTooLong;
+            const _prev_events = try allocator.dupe(cl.event.cl_event, pv);
+            errdefer allocator.free(_prev_events);
 
             var index: usize = 0;
             errdefer {
@@ -288,10 +287,9 @@ pub const EventsBatch = struct {
                 try cl.event.retain(pv[index]);
             }
 
-            @memcpy(self.prev_events[0..pv.len], pv);
-            self.prev_events_len = @intCast(pv.len);
+            self.prev_events = _prev_events;
         } else {
-            self.prev_events_len = 0;
+            self.prev_events = null;
         }
 
         for (&self.events, 0..) |*e, index| {
@@ -310,16 +308,16 @@ pub const EventsBatch = struct {
     }
 
     pub inline fn getPrevEvents(self: *const EventsBatch) ?[]const cl.event.cl_event {
-        const prev_events_len = self.prev_events_len;
-        if (prev_events_len > 0) {
-            return self.prev_events[0..@intCast(prev_events_len)];
-        }
-        return null;
+        return self.prev_events;
     }
 
     pub inline fn clear(self: *EventsBatch) void {
-        for (self.prev_events[0..@intCast(self.prev_events_len)]) |e| {
-            cl.event.release(e);
+        if (self.prev_events) |prev_events| {
+            for (prev_events) |e| {
+                cl.event.release(e);
+            }
+            self.allocator.free(prev_events);
+            self.prev_events = null;
         }
 
         for (self.events[0..self.events_num]) |*event| {
@@ -328,8 +326,12 @@ pub const EventsBatch = struct {
     }
 
     pub fn restart(self: *EventsBatch, new_prev_events: ?[]const cl.event.cl_event) !void {
-        for (self.prev_events[0..@intCast(self.prev_events_len)]) |e| {
-            cl.event.release(e);
+        if (self.prev_events) |prev_events| {
+            for (prev_events) |e| {
+                cl.event.release(e);
+            }
+            self.allocator.free(prev_events);
+            self.prev_events = null;
         }
 
         if (new_prev_events) |pv| {

@@ -21,7 +21,7 @@ fn getKernel(
 ) !cl.kernel.cl_kernel {
     const kernels_set = try KernelsSet.getKernelSet(command_queue, .RandomUniform, core.SupportedTypes.len * 2 * 2);
     const index: usize = @as(usize, core.getTypeId(T)) * 2 * 2 + @intFromBool(is_complex) * @as(usize, 2) + @intFromBool(range_defined);
-    if (kernels_set.kernels[index]) |v| return v;
+    if (kernels_set.kernels.?[index]) |v| return v;
 
     var kernel: cl.kernel.cl_kernel = undefined;
     var program: cl.program.cl_program = undefined;
@@ -44,8 +44,8 @@ fn getKernel(
         uniform_random_cl_kernel,
     );
 
-    kernels_set.kernels[index] = kernel;
-    kernels_set.programs[index] = program;
+    kernels_set.kernels.?[index] = kernel;
+    kernels_set.programs.?[index] = program;
 
     return kernel;
 }

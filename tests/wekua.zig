@@ -5,7 +5,7 @@ pub const tensor = @import("tensor/main.zig");
 
 pub const blas = @import("blas/main.zig");
 pub const math = @import("math/main.zig");
-pub const nn = @import("nn/main.zig");
+// pub const nn = @import("nn/main.zig");
 
 test {
     const std = @import("std");

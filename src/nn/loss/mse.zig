@@ -25,7 +25,7 @@ fn getKernel(
     kernel_index += @intFromBool(calculate_derivative) * core.SupportedTypes.len;
     kernel_index += @as(usize, core.getTypeId(T));
 
-    if (kernels_set.kernels[kernel_index]) |v| return v;
+    if (kernels_set.kernels.?[kernel_index]) |v| return v;
 
     var kernel: cl.kernel.cl_kernel = undefined;
     var program: cl.program.cl_program = undefined;
@@ -52,8 +52,8 @@ fn getKernel(
         mse_cl_kernel,
     );
 
-    kernels_set.kernels[kernel_index] = kernel;
-    kernels_set.programs[kernel_index] = program;
+    kernels_set.kernels.?[kernel_index] = kernel;
+    kernels_set.programs.?[kernel_index] = program;
 
     return kernel;
 }

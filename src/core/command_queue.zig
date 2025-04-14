@@ -116,10 +116,11 @@ pub fn init(
 
     self.headers = .{};
 
-    self.headers.programs = try allocator.alloc(?cl.program.cl_program, KernelsSet.total_number_of_headers);
-    errdefer allocator.free(self.headers.programs);
+    const programs = try allocator.alloc(?cl.program.cl_program, KernelsSet.total_number_of_headers);
+    errdefer allocator.free(programs);
+    self.headers.programs = programs;
 
-    @memset(self.headers.programs, null);
+    @memset(programs, null);
 
     self.headers.initialized = true;
 
@@ -158,25 +159,29 @@ pub fn deinit(self: *CommandQueue) void {
 
     const kernels = self.kernels;
     for (&kernels) |*set| {
-        for (set.kernels) |cl_kernel| {
-            if (cl_kernel) |clk| {
-                cl.kernel.release(clk);
+        if (set.kernels) |cl_kernels| {
+            for (cl_kernels) |cl_kernel| {
+                if (cl_kernel) |clk| {
+                    cl.kernel.release(clk);
+                }
             }
+            allocator.free(cl_kernels);
         }
-        allocator.free(set.kernels);
 
-        for (set.programs) |cl_program| {
-            if (cl_program) |clp| {
-                cl.program.release(clp);
+        if (set.programs) |cl_programs| {
+            for (cl_programs) |cl_program| {
+                if (cl_program) |clp| {
+                    cl.program.release(clp);
+                }
             }
+            allocator.free(cl_programs);
         }
-        allocator.free(set.programs);
     }
 
-    for (self.headers.programs) |program| {
+    for (self.headers.programs.?) |program| {
         if (program) |v| cl.program.release(v);
     }
-    allocator.free(self.headers.programs);
+    allocator.free(self.headers.programs.?);
 
     allocator.free(self.device_name);
 

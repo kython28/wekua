@@ -322,20 +322,20 @@ pub fn Linear(
                 o.release();
             }
 
-            for (cache_data.sensitivities) |s| {
-                s.release();
-            }
-
-            for (cache_data.acti_derivatives) |ad| {
-                ad.release();
-            }
-
             for (cache_data.gradients) |g| {
                 g.release();
             }
 
             for (cache_data.bias_gradients) |bg| {
                 bg.release();
+            }
+
+            for (cache_data.acti_derivatives) |ad| {
+                ad.release();
+            }
+
+            for (cache_data.sensitivities) |s| {
+                s.release();
             }
 
             allocator.free(cache_data.outputs);
@@ -500,6 +500,10 @@ pub fn Linear(
                 prev_events,
                 new_event,
             );
+
+            // try wekua.tensor.print(T, command_queue, bias_gradient);
+
+            // @breakpoint();
         }
 
         fn backward(
@@ -559,6 +563,8 @@ pub fn Linear(
                 );
 
                 if (bias_enabled) {
+                    // _ = bias_gradients[index];
+                    // _ = bias_gradients_lis[index..(index + 1)];
                     try getBiasSensitivity(
                         command_queue,
                         sensitivity,

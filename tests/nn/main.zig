@@ -3,7 +3,7 @@ const cl = wekua.opencl;
 const std = @import("std");
 
 const activation = @import("activation.zig");
-const optimizers = &.{"GD", "GDM", "Adagrad"};
+const optimizers = &.{"GD", "GDM"};
 
 test {
     std.testing.refAllDecls(activation);
@@ -233,7 +233,7 @@ fn solve_xor(
         try Linear.init(
             context,
             2,
-            10,
+            20,
             activation_layer,
             .{}
         ),
@@ -241,7 +241,7 @@ fn solve_xor(
     try seq_layers.append(
         try Linear.init(
             context,
-            10,
+            20,
             1,
             activation_layer,
             .{}
@@ -255,13 +255,7 @@ fn solve_xor(
 
     const optimizer_module = @field(Optimizer, optimizer_name);
     
-    const lr = comptime blk: {
-        if (std.mem.eql(u8, optimizer_name, "Adagrad")) {
-            break :blk 2;
-        }
-
-        break :blk 1;
-    };
+    const lr = 1;
 
     const optimizer = blk: {
         if (comptime std.mem.eql(u8, optimizer_name, "GD")) {
@@ -278,15 +272,19 @@ fn solve_xor(
     var prediction_buffer: [4]T = undefined;
 
     const layer_cache = cache.getLayerCache(0);
-    for (0..400) |_| {
+    for (0..300) |_| {
         const output = try layers.forward(command_queue, inputs, layer_cache);
         try wekua.nn.loss.mse(T, true, command_queue, output, expected_outputs, &cache, null, null);
+
+        try wekua.tensor.print(T, command_queue, output);
 
         try layers.backward(command_queue, layer_cache, inputs, null);
         try optimizer.step(command_queue, &cache);
     }
 
     const output = try layers.forward(command_queue, inputs, layer_cache);
+
+    try wekua.tensor.print(T, command_queue, output);
 
     try wekua.tensor.memory.writeToBuffer(T, output, command_queue, &prediction_buffer);
     for (prediction_buffer, expected_outputs_buf) |p, e| {

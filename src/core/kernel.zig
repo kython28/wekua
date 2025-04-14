@@ -55,8 +55,8 @@ pub const KernelsID = enum(u16) {
 pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;
 pub const total_number_of_headers = core.SupportedTypes.len * 2 * 2;
 
-kernels: []?cl.kernel.cl_kernel = &.{},
-programs: []?cl.program.cl_program = &.{},
+kernels: ?[]?cl.kernel.cl_kernel = null,
+programs: ?[]?cl.program.cl_program = null,
 initialized: bool = false,
 
 pub const CompileOptions = struct {
@@ -77,7 +77,7 @@ fn compileHeader(
 
     const headers = &command_queue.headers;
     const programs = headers.programs;
-    if (programs[index]) |prg| {
+    if (programs.?[index]) |prg| {
         return prg;
     }
 
@@ -87,7 +87,7 @@ fn compileHeader(
         command_queue.allocator,
     );
 
-    programs[index] = new_header_prg;
+    programs.?[index] = new_header_prg;
     return new_header_prg;
 }
 
@@ -245,7 +245,7 @@ pub fn compileKernel(
 pub fn getKernelSet(
     command_queue: *const CommandQueue,
     kernel_id: KernelsID,
-    comptime number_of_cl_kernels: usize,
+    number_of_cl_kernels: usize,
 ) !*const KernelSet {
     const kernels_set = &command_queue.kernels[@intFromEnum(kernel_id)];
     if (kernels_set.initialized) {
@@ -280,7 +280,7 @@ pub fn createAndGetKernel(
     options: CompileOptions,
     comptime can_use_complex: bool,
     comptime can_use_vectors: bool,
-    comptime number_of_cl_kernels: usize,
+    number_of_cl_kernels: usize,
     kernel_index: usize,
 ) !cl.kernel.cl_kernel {
     if (!can_use_complex and options.is_complex) {
@@ -291,7 +291,7 @@ pub fn createAndGetKernel(
     }
 
     const kernels_set = try getKernelSet(command_queue, kernel_id, number_of_cl_kernels);
-    if (kernels_set.kernels[kernel_index]) |kernel| {
+    if (kernels_set.kernels.?[kernel_index]) |kernel| {
         return kernel;
     }
 
@@ -300,8 +300,8 @@ pub fn createAndGetKernel(
 
     try compileKernel(T, command_queue, options, &kernel, &program, kernel_source);
 
-    kernels_set.kernels[kernel_index] = kernel;
-    kernels_set.programs[kernel_index] = program;
+    kernels_set.kernels.?[kernel_index] = kernel;
+    kernels_set.programs.?[kernel_index] = program;
 
     return kernel;
 }

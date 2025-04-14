@@ -19,7 +19,7 @@ fn getKernel(
 ) !cl.kernel.cl_kernel {
     const kernels_set = try KernelsSet.getKernelSet(command_queue, .ToComplex, core.SupportedTypes.len * 2);
     const index: usize = 2 * @as(usize, core.getTypeId(T)) + @intFromBool(dom);
-    if (kernels_set.kernels[index]) |v| return v;
+    if (kernels_set.kernels.?[index]) |v| return v;
 
     var kernel: cl.kernel.cl_kernel = undefined;
     var program: cl.program.cl_program = undefined;
@@ -42,8 +42,8 @@ fn getKernel(
         to_complex_cl_kernel,
     );
 
-    kernels_set.kernels[index] = kernel;
-    kernels_set.programs[index] = program;
+    kernels_set.kernels.?[index] = kernel;
+    kernels_set.programs.?[index] = program;
 
     return kernel;
 }
