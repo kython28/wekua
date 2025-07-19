@@ -353,12 +353,11 @@ pub fn perform(
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(
+    try events_set.appendNewEvent(
         T,
         true,
         &.{ .read, .read, .write },
         &.{ a, b, c },
-        prev_events,
         new_event,
     );
 }

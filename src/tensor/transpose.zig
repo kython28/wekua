@@ -113,12 +113,11 @@ pub fn transpose(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(
+    try events_set.appendNewEvent(
         T,
         true,
         &.{ .read, .write },
         &.{ tensor, result_tensor },
-        prev_events,
         new_event,
     );
 }

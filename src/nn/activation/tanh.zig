@@ -79,7 +79,6 @@ pub fn Tanh(comptime T: type) type {
                 true,
                 &.{ .read, .write },
                 &.{ input, derivative },
-                prev_events,
                 new_event,
             );
         }

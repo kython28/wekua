@@ -167,7 +167,6 @@ pub fn Adagrad(comptime T: type) type {
                 true,
                 &.{ .write, .read, .write },
                 &.{ x, gradient, gradient_history },
-                prev_events,
                 new_event,
             );
         }

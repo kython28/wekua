@@ -124,7 +124,6 @@ pub fn Sigmoid(comptime T: type) type {
                 true,
                 &.{ .read, .write },
                 &.{ output, derivative },
-                prev_events,
                 new_event,
             );
         }

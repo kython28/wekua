@@ -145,7 +145,6 @@ pub fn mse(
             true,
             operations[0..arg_index],
             tensors[0..arg_index],
-            prev_events,
             new_event,
         );
     }

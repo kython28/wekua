@@ -162,7 +162,7 @@ fn axpyWithVectors(
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ x, y }, new_event);
 }
 
 fn axpyWithoutVectors(
@@ -247,7 +247,7 @@ fn axpyWithoutVectors(
     );
     errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ x, y }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ x, y }, new_event);
 }
 
 pub inline fn axpy(

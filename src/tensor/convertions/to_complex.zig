@@ -98,5 +98,5 @@ pub fn toComplex(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ src, dst }, new_event);
 }

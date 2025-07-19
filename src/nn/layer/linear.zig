@@ -459,6 +459,9 @@ pub fn Linear(
                 null,
             );
 
+            // try wekua.tensor.print(T, command_queue, sensitivity);
+            // try wekua.tensor.print(T, command_queue, bias_gradient);
+
             const sensitivity_prev_events = sensitivity.events_manager.getPrevEvents(.read);
             const bias_gradient_prev_events = bias_gradient.events_manager.getPrevEvents(.write);
 
@@ -485,7 +488,7 @@ pub fn Linear(
                 command_queue.cmd,
                 kernel,
                 null,
-                &.{bias_gradient.memory_layout.row_pitch_for_vectors},
+                @as([*]const u64, @ptrCast(&bias_gradient.memory_layout.row_pitch_for_vectors))[0..1],
                 lwi,
                 prev_events,
                 &new_event,
@@ -497,13 +500,8 @@ pub fn Linear(
                 true,
                 &.{ .read, .write },
                 &.{ sensitivity, bias_gradient },
-                prev_events,
                 new_event,
             );
-
-            // try wekua.tensor.print(T, command_queue, bias_gradient);
-
-            // @breakpoint();
         }
 
         fn backward(
@@ -563,8 +561,6 @@ pub fn Linear(
                 );
 
                 if (bias_enabled) {
-                    // _ = bias_gradients[index];
-                    // _ = bias_gradients_lis[index..(index + 1)];
                     try getBiasSensitivity(
                         command_queue,
                         sensitivity,

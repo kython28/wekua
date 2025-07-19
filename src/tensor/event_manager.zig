@@ -39,7 +39,7 @@ pub const EventsSet = struct {
     allocator: std.mem.Allocator,
     buf_len: usize,
 
-    prev_events: []cl.event.cl_event,
+    prev_events: ?[]cl.event.cl_event,
     user_callback: ?UserCallback,
 
     pub fn init(
@@ -61,10 +61,23 @@ pub const EventsSet = struct {
         errdefer allocator.free(buf);
 
         const set: *EventsSet = @alignCast(@ptrCast(buf.ptr));
-        const prev_events = @as(
-            [*]cl.event.cl_event,
-            @alignCast(@ptrCast(buf.ptr + @sizeOf(EventsSet))),
-        )[0..total_events];
+        const prev_events: ?[]cl.event.cl_event = blk: {
+            if (total_events == 0) break :blk null;
+
+            const array = @as(
+                [*]cl.event.cl_event,
+                @alignCast(@ptrCast(buf.ptr + @sizeOf(EventsSet))),
+            )[0..total_events];
+
+            var offset: usize = 0;
+            for (events_array) |v| {
+                const events = v orelse continue;
+                @memcpy(array[offset..(offset + events.len)], events);
+                offset += events.len;
+            }
+
+            break :blk array;
+        };
 
         set.* = .{
             .allocator = allocator,
@@ -73,21 +86,11 @@ pub const EventsSet = struct {
             .user_callback = user_callback,
         };
 
-        var offset: usize = 0;
-        for (events_array) |v| {
-            const events = v orelse continue;
-            @memcpy(prev_events[offset..(offset + events.len)], events);
-            offset += events.len;
-        }
-
         return set;
     }
 
     pub inline fn getPrevEvents(self: *const EventsSet) ?[]const cl.event.cl_event {
-        const prev_events = self.prev_events;
-        if (prev_events.len == 0) return null;
-
-        return prev_events;
+        return self.prev_events;
     }
 
     pub fn appendNewEvent(
@@ -96,7 +99,6 @@ pub const EventsSet = struct {
         add_destructor_callback: bool,
         new_ops: []const Operation,
         tensors: []const *Tensor(T),
-        prev_cl_events: ?[]const cl.event.cl_event,
         new_cl_event: cl.event.cl_event,
     ) !void {
         if (new_ops.len == 0) {
@@ -108,7 +110,7 @@ pub const EventsSet = struct {
         }
 
         var ref_counter: usize = @intFromBool(!add_destructor_callback);
-        var events_added: usize = 0;
+        var events_added: usize = ref_counter;
         errdefer {
             for (events_added..ref_counter) |_| {
                 cl.event.release(new_cl_event);
@@ -120,11 +122,13 @@ pub const EventsSet = struct {
             ref_counter += 1;
         }
 
+        const prev_events = self.prev_events;
+
         var event: *Event = undefined;
         for (new_ops, tensors) |new_op, tensor| {
             event = try tensor.events_manager.appendNewEvent(
                 new_op,
-                prev_cl_events,
+                prev_events,
                 new_cl_event,
                 null,
             );
@@ -176,7 +180,7 @@ const Event = struct {
 
         if (current_operation == .none) {
             self.operation = operation;
-        } else if (operation != current_operation or checkFull(current_operation, events_count)) {
+        } else if (operation != current_operation or isFull(current_operation, events_count)) {
             return AppendResult.full;
         }
         errdefer {
@@ -192,7 +196,7 @@ const Event = struct {
         self.events[events_count] = event;
         self.events_count = events_count + 1;
 
-        if (checkFull(operation, events_count + 1)) return AppendResult.success_and_full;
+        if (isFull(operation, events_count + 1)) return AppendResult.success_and_full;
 
         return AppendResult.success;
     }
@@ -209,7 +213,7 @@ const Event = struct {
         }
     }
 
-    pub inline fn checkFull(operation: Operation, events_count: usize) bool {
+    pub inline fn isFull(operation: Operation, events_count: usize) bool {
         return switch (operation) {
             .read, .partial_write => (events_count == MaxEventsPerSet),
             .write => (events_count == 1),
@@ -218,7 +222,7 @@ const Event = struct {
     }
 
     pub inline fn full(self: *const Event) bool {
-        return checkFull(self.operation, self.events_count);
+        return isFull(self.operation, self.events_count);
     }
 
     pub inline fn toSlice(self: *const Event) []const cl.event.cl_event {
@@ -283,12 +287,23 @@ pub const EventsBatch = struct {
                 }
             }
 
-            while (index < pv.len) : (index += 1) {
-                try cl.event.retain(pv[index]);
+            for (pv) |e| {
+                try cl.event.retain(e);
+                index += 1;
             }
 
             self.prev_events = _prev_events;
         } else {
+            self.prev_events = null;
+        }
+
+        errdefer {
+            if (self.prev_events) |pv| {
+                for (pv) |e| {
+                    cl.event.release(e);
+                }
+                allocator.free(pv);
+            }
             self.prev_events = null;
         }
 

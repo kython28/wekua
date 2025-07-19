@@ -64,7 +64,7 @@ fn copy_tensor_with_different_row_pitch(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ src, dst }, new_event);
 }
 
 fn copy_tensor_with_same_row_pitch(
@@ -99,7 +99,7 @@ fn copy_tensor_with_same_row_pitch(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ src, dst }, prev_events, new_event);
+    _ = try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ src, dst }, new_event);
 }
 
 pub fn copy(comptime T: type, command_queue: *const CommandQueue, src: *Tensor(T), dst: *Tensor(T)) !void {

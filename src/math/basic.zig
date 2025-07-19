@@ -64,7 +64,7 @@ fn genericBasicMathFunction(
     );
     errdefer |err| wekua.tensor.helpers.releaseEvent(new_event, err);
 
-    try events_set.appendNewEvent(T, true, &.{ .write, .read }, &.{ x, y }, prev_events, new_event);
+    try events_set.appendNewEvent(T, true, &.{ .write, .read }, &.{ x, y }, new_event);
 }
 
 pub inline fn dot(
@@ -133,12 +133,12 @@ fn executeSum(
         null,
         global_work_items,
         &local_work_items,
-        x_prev_events,
+        prev_events,
         &new_event,
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ x, result }, prev_events, new_event);
+    try events_set.appendNewEvent(T, true, &.{ .read, .write }, &.{ x, result }, new_event);
 }
 
 pub fn sum(

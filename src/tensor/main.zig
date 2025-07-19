@@ -408,7 +408,6 @@ pub fn Tensor(comptime T: type) type {
             const size = number_of_elements * @sizeOf(T);
             tensor.memory_layout.size = size;
 
-            std.log.info("Allocating: {} bytes", .{size});
             tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
             errdefer cl.buffer.release(tensor.buffer);
 

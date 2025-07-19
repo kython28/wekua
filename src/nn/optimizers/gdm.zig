@@ -171,7 +171,6 @@ pub fn GDM(comptime T: type) type {
                 true,
                 &.{ .write, .read, .write },
                 &.{ x, gradient, velocity },
-                prev_events,
                 new_event,
             );
         }
