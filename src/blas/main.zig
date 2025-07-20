@@ -1,2 +1,2 @@
-pub usingnamespace @import("axpy.zig");
-pub const gemm = @import("gemm.zig");
+pub const axpy = @import("axpy.zig").axpy;
+pub const gemm = @import("gemm.zig").gemm;

@@ -22,7 +22,7 @@ fn getKernel(
     if (kernels_set.kernels.?[index]) |v| return v;
 
     var kernel: cl.kernel.cl_kernel = undefined;
-    var program: cl.program.cl_program = undefined;
+    var program: cl.program.Program = undefined;
 
     const allocator = command_queue.allocator;
     const extra_args: []u8 = try std.fmt.allocPrint(allocator, "-DOFFSET={d}", .{@intFromBool(dom)});

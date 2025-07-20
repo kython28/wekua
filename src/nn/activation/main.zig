@@ -1,5 +1,5 @@
-pub usingnamespace @import("sigmoid.zig");
-pub usingnamespace @import("tanh.zig");
+pub const Sigmoid = @import("sigmoid.zig").Sigmoid;
+pub const Tanh = @import("tanh.zig").Tanh;
 
 const wekua = @import("../../wekua.zig");
 const Tensor = wekua.Tensor;

@@ -1,8 +1,8 @@
-pub usingnamespace @import("linear.zig");
-pub usingnamespace @import("sequential.zig");
+pub const linear = @import("linear.zig");
+pub const sequential = @import("sequential.zig");
 
 const wekua = @import("../../wekua.zig");
-pub usingnamespace @import("cache.zig");
+pub const Cache = @import("cache.zig").Cache;
 
 
 pub fn Layer(comptime T: type) type {

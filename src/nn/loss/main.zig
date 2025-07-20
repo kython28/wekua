@@ -1,2 +1,2 @@
-pub usingnamespace @import("mse.zig");
+pub const mse = @import("mse.zig").mse;
 

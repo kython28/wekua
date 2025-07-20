@@ -6,17 +6,17 @@ const KernelsSet = @import("kernel.zig");
 
 allocator: std.mem.Allocator,
 ctx: *const Context,
-cmd: cl.command_queue.cl_command_queue,
-device: cl.device.cl_device_id,
+cmd: cl.command_queue.CommandQueue,
+device: cl.device.DeviceId,
 
 device_name: []u8,
 device_vendor_id: u32,
-device_type: cl.device.enums.device_type,
+device_type: cl.device.Type,
 
-kernels: [KernelsSet.total_number_of_kernels]KernelsSet,
+kernels: [KernelsSet.TOTAL_NUMBER_OF_KERNELS]KernelsSet,
 headers: KernelsSet,
 
-local_mem_type: cl.device.enums.local_mem_type,
+local_mem_type: cl.device.LocalMemType,
 local_mem_size: u64,
 
 compute_units: u32,
@@ -25,34 +25,50 @@ max_work_group_size: u64,
 cache_line_size: u32,
 wekua_id: usize,
 
-fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl.device.cl_device_id) !void {
-    const device_info_enum = cl.device.enums.device_info;
+fn get_device_info(
+    self: *CommandQueue,
+    allocator: std.mem.Allocator,
+    device: cl.device.DeviceId,
+) !void {
+    const device_info_enum = cl.device.Info;
 
     var device_name_size: usize = undefined;
-    try cl.device.get_info(device, device_info_enum.name, 0, null, &device_name_size);
+    try cl.device.getInfo(device, device_info_enum.name, 0, null, &device_name_size);
 
     const device_name = try allocator.alloc(u8, device_name_size);
     errdefer allocator.free(device_name);
 
-    try cl.device.get_info(device, device_info_enum.name, device_name_size, device_name.ptr, null);
+    try cl.device.getInfo(
+        device,
+        device_info_enum.name,
+        device_name_size,
+        device_name.ptr,
+        null,
+    );
 
     self.device_name = device_name;
 
-    try cl.device.get_info(device, device_info_enum.vendor_id, @sizeOf(u32), &self.device_vendor_id, null);
+    try cl.device.getInfo(
+        device,
+        device_info_enum.vendor_id,
+        @sizeOf(u32),
+        &self.device_vendor_id,
+        null,
+    );
 
     var device_type: u64 = undefined;
-    try cl.device.get_info(device, device_info_enum.type, @sizeOf(u64), &device_type, null);
+    try cl.device.getInfo(device, device_info_enum.type, @sizeOf(u64), &device_type, null);
     self.device_type = @enumFromInt(device_type);
 
-    try cl.device.get_info(
+    try cl.device.getInfo(
         device,
         device_info_enum.local_mem_type,
-        @sizeOf(cl.device.enums.local_mem_type),
+        @sizeOf(cl.device.LocalMemType),
         &self.local_mem_type,
         null,
     );
 
-    try cl.device.get_info(
+    try cl.device.getInfo(
         device,
         device_info_enum.local_mem_size,
         @sizeOf(u64),
@@ -75,13 +91,19 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
 
     inline for (&self.vector_widths, vector_types) |*vw, vt| {
         var vector_width: u32 = undefined;
-        try cl.device.get_info(device, vt, @sizeOf(u32), &vector_width, null);
+        try cl.device.getInfo(device, vt, @sizeOf(u32), &vector_width, null);
         vw.* = @min(vector_width, 16);
     }
 
-    try cl.device.get_info(device, device_info_enum.max_compute_units, @sizeOf(u32), &self.compute_units, null);
+    try cl.device.getInfo(
+        device,
+        device_info_enum.max_compute_units,
+        @sizeOf(u32),
+        &self.compute_units,
+        null,
+    );
 
-    try cl.device.get_info(
+    try cl.device.getInfo(
         device,
         device_info_enum.max_work_group_size,
         @sizeOf(u64),
@@ -89,7 +111,7 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
         null,
     );
 
-    try cl.device.get_info(
+    try cl.device.getInfo(
         device,
         device_info_enum.global_mem_cacheline_size,
         @sizeOf(u32),
@@ -101,9 +123,9 @@ fn get_device_info(self: *CommandQueue, allocator: std.mem.Allocator, device: cl
 pub fn init(
     self: *CommandQueue,
     ctx: *const Context,
-    device: cl.device.cl_device_id,
+    device: cl.device.DeviceId,
 ) !void {
-    const cmd: cl.command_queue.cl_command_queue = try cl.command_queue.create(ctx.ctx, device, 0);
+    const cmd: cl.command_queue.CommandQueue = try cl.command_queue.create(ctx.ctx, device, 0);
     errdefer cl.command_queue.release(cmd);
 
     const allocator = ctx.allocator;
@@ -116,7 +138,10 @@ pub fn init(
 
     self.headers = .{};
 
-    const programs = try allocator.alloc(?cl.program.cl_program, KernelsSet.total_number_of_headers);
+    const programs = try allocator.alloc(
+        ?cl.program.Program,
+        KernelsSet.TOTAL_NUMBER_OF_HEADERS,
+    );
     errdefer allocator.free(programs);
     self.headers.programs = programs;
 
@@ -131,10 +156,10 @@ pub fn init(
     try self.get_device_info(allocator, device);
 }
 
-pub fn init_multiples(
+pub fn initMultiples(
     allocator: std.mem.Allocator,
     ctx: *const Context,
-    devices: []cl.device.cl_device_id,
+    devices: []cl.device.DeviceId,
 ) ![]CommandQueue {
     var cmd_created: u32 = 0;
     const command_queues: []CommandQueue = try allocator.alloc(CommandQueue, devices.len);
@@ -191,7 +216,7 @@ pub fn deinit(self: *CommandQueue) void {
     cl.command_queue.release(self.cmd);
 }
 
-pub fn deinit_multiples(allocator: std.mem.Allocator, command_queues: []CommandQueue) void {
+pub fn deinitMultiples(allocator: std.mem.Allocator, command_queues: []CommandQueue) void {
     for (command_queues) |*cmd| {
         cmd.deinit();
     }

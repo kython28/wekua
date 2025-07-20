@@ -6,43 +6,58 @@ pub fn build(b: *std.Build) void {
 
     const opencl_package = b.dependency("zig-opencl", .{
         .target = target,
-        .optimize = optimize
+        .optimize = optimize,
     });
     const opencl_module = opencl_package.module("opencl");
+
+    const core_module = b.addModule("core", .{
+        .root_source_file = b.path("src/core/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .single_threaded = false,
+    });
+    core_module.addImport("opencl", opencl_module);
+
+    // const tensor_module = b.addModule("tensor", .{
+    //     .root_source_file = b.path("src/tensor/main.zig"),
+    //     .target = target,
+    //     .optimize = optimize,
+    //     .single_threaded = false,
+    // });
+    // tensor_module.addImport("opencl", opencl_module);
+    // tensor_module.addImport("core", core_module);
 
     const wekua_module = b.addModule("wekua", .{
         .root_source_file = b.path("src/wekua.zig"),
         .target = target,
         .optimize = optimize,
-        .single_threaded = false
+        .single_threaded = false,
     });
     wekua_module.addImport("opencl", opencl_module);
+    wekua_module.addImport("core", core_module);
+    // wekua_module.addImport("tensor", tensor_module);
 
-    const test_file = b.option(
-        []const u8, "test_file", "Specify test file (default: tests/wekua.zig)"
-    ) orelse "tests/wekua.zig";
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path(test_file),
-        .target = target,
-        .optimize = optimize,
+        .root_module = wekua_module,
     });
-    lib_unit_tests.root_module.addImport("wekua", wekua_module);
-    lib_unit_tests.root_module.addImport("opencl", opencl_module);
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
-    run_lib_unit_tests.has_side_effects = true;
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
 
-    const benchmark = b.addExecutable(.{
-        .name = "benchmark",
+    const benchmark_module = b.addModule("benchmark", .{
         .root_source_file = b.path("benchmark/main.zig"),
         .target = target,
-        .optimize = optimize
+        .optimize = optimize,
     });
-    benchmark.root_module.addImport("wekua", wekua_module);
-    benchmark.addIncludePath(.{ .cwd_relative = "/usr/include/"});
+    benchmark_module.addImport("wekua", wekua_module);
+
+    const benchmark = b.addExecutable(.{
+        .root_module = benchmark_module,
+        .name = "benchmark",
+    });
+    benchmark.addIncludePath(.{ .cwd_relative = "/usr/include/" });
     benchmark.linkSystemLibrary("wekua");
     benchmark.linkSystemLibrary("openblas");
 
@@ -54,7 +69,6 @@ pub fn build(b: *std.Build) void {
     const run_benchmark_step = b.step("benchmark", "Run benchmark");
     run_benchmark_step.dependOn(&install_benchmark.step);
     run_benchmark_step.dependOn(&run_benchmark.step);
-
 
     const run_check_step = b.step("check", "ZLS");
     run_check_step.dependOn(&lib_unit_tests.step);

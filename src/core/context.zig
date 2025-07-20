@@ -2,7 +2,7 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const CommandQueue = @import("command_queue.zig");
-const events_releaser = @import("events_releaser.zig");
+// const events_releaser = @import("events_releaser.zig");
 
 pub const SupportedTypes: [10]type = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
 
@@ -17,51 +17,51 @@ pub fn getTypeId(comptime T: type) comptime_int {
 }
 
 allocator: std.mem.Allocator,
-ctx: cl.context.cl_context,
+ctx: cl.context.Context,
 command_queues: []CommandQueue,
-events_batch_queue: events_releaser.EventsBatchQueue,
-events_releaser_thread: std.Thread,
+// events_batch_queue: events_releaser.EventsBatchQueue,
+// events_releaser_thread: std.Thread,
 
 pub fn init(
     allocator: std.mem.Allocator,
-    properties: ?[]const cl.context.cl_context_properties,
-    devices: []cl.device.cl_device_id,
+    properties: ?[]const cl.context.Properties,
+    devices: []cl.device.DeviceId,
 ) !*Context {
     const cl_ctx = try cl.context.create(properties, devices, null, null);
     errdefer cl.context.release(cl_ctx);
 
-    const context = try init_from_cl_context(allocator, cl_ctx);
+    const context = try initFromClContext(allocator, cl_ctx);
     return context;
 }
 
-pub fn init_from_device_type(
+pub fn initFromDeviceType(
     allocator: std.mem.Allocator,
-    properties: ?[]const cl.context.cl_context_properties,
-    device_type: cl.device.enums.device_type,
+    properties: ?[]const cl.context.Properties,
+    device_type: cl.device.Type,
 ) !*Context {
-    const cl_ctx = try cl.context.create_from_type(properties, device_type, null, null);
+    const cl_ctx = try cl.context.createFromType(properties, device_type, null, null);
     errdefer cl.context.release(cl_ctx);
 
-    const context = try init_from_cl_context(allocator, cl_ctx);
+    const context = try initFromClContext(allocator, cl_ctx);
     return context;
 }
 
-pub fn create_from_best_device(
+pub fn initFromBestDevice(
     allocator: std.mem.Allocator,
-    properties: ?[]const cl.context.cl_context_properties,
-    device_type: cl.device.enums.device_type,
+    properties: ?[]const cl.context.Properties,
+    device_type: cl.device.Type,
 ) !*Context {
-    const platforms = try cl.platform.get_all(allocator);
-    defer cl.platform.release_list(allocator, platforms);
+    const platforms = try cl.platform.getAll(allocator);
+    defer cl.platform.releaseList(allocator, platforms);
 
-    var best_device: ?cl.device.cl_device_id = null;
+    var best_device: ?cl.device.DeviceId = null;
     var best_score: u64 = 0;
     for (platforms) |plat| {
         var num_devices: u32 = undefined;
-        cl.device.get_ids(plat.id.?, device_type, null, &num_devices) catch continue;
+        cl.device.getIds(plat.id.?, device_type, null, &num_devices) catch continue;
         if (num_devices == 0) continue;
 
-        const devices = try allocator.alloc(cl.device.cl_device_id, num_devices);
+        const devices = try allocator.alloc(cl.device.DeviceId, num_devices);
         defer {
             for (devices) |dev| {
                 if (dev != best_device) {
@@ -71,22 +71,22 @@ pub fn create_from_best_device(
             allocator.free(devices);
         }
 
-        try cl.device.get_ids(plat.id.?, device_type, devices, null);
+        try cl.device.getIds(plat.id.?, device_type, devices, null);
         var device_choosen_in_this_iteration: bool = false;
         for (devices) |device| {
             var max_work_group_size: u64 = undefined;
-            try cl.device.get_info(
+            try cl.device.getInfo(
                 device,
-                cl.device.enums.device_info.max_work_group_size,
+                cl.device.Info.max_work_group_size,
                 @sizeOf(u64),
                 &max_work_group_size,
                 null,
             );
 
             var compute_units: u32 = undefined;
-            try cl.device.get_info(
+            try cl.device.getInfo(
                 device,
-                cl.device.enums.device_info.partition_max_sub_devices,
+                cl.device.Info.partition_max_sub_devices,
                 @sizeOf(u32),
                 &compute_units,
                 null,
@@ -109,47 +109,56 @@ pub fn create_from_best_device(
     const cl_ctx = try cl.context.create(properties, &.{best_device.?}, null, null);
     errdefer cl.context.release(cl_ctx);
 
-    const context = try init_from_cl_context(allocator, cl_ctx);
+    const context = try initFromClContext(allocator, cl_ctx);
     return context;
 }
 
-pub fn init_from_cl_context(allocator: std.mem.Allocator, cl_ctx: cl.context.cl_context) !*Context {
+pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Context) !*Context {
     var context = try allocator.create(Context);
     errdefer allocator.destroy(context);
 
     var number_of_devices: u32 = undefined;
-    try cl.context.get_info(cl_ctx, cl.context.enums.context_info.num_devices, @sizeOf(u32), &number_of_devices, null);
+    try cl.context.getInfo(
+        cl_ctx,
+        cl.context.Info.num_devices,
+        @sizeOf(u32),
+        &number_of_devices,
+        null,
+    );
 
-    const devices: []cl.device.cl_device_id = try allocator.alloc(cl.device.cl_device_id, @intCast(number_of_devices));
+    const devices: []cl.device.DeviceId = try allocator.alloc(
+        cl.device.DeviceId,
+        @intCast(number_of_devices),
+    );
     defer allocator.free(devices);
 
-    try cl.context.get_info(
+    try cl.context.getInfo(
         cl_ctx,
-        cl.context.enums.context_info.devices,
-        @sizeOf(cl.device.cl_device_id) * number_of_devices,
+        cl.context.Info.devices,
+        @sizeOf(cl.device.DeviceId) * number_of_devices,
         @ptrCast(devices.ptr),
         null,
     );
 
     context.allocator = allocator;
     context.ctx = cl_ctx;
-    context.command_queues = try CommandQueue.init_multiples(allocator, context, devices);
-    errdefer CommandQueue.deinit_multiples(allocator, context.command_queues);
+    context.command_queues = try CommandQueue.initMultiples(allocator, context, devices);
+    errdefer CommandQueue.deinitMultiples(allocator, context.command_queues);
 
-    context.events_batch_queue = events_releaser.EventsBatchQueue.init(allocator);
-    {
-        errdefer context.events_batch_queue.release();
+    // context.events_batch_queue = events_releaser.EventsBatchQueue.init(allocator);
+    // {
+    //     errdefer context.events_batch_queue.release();
 
-        context.events_releaser_thread = try std.Thread.spawn(
-            .{},
-            events_releaser.eventsBatchReleaserWorker,
-            .{&context.events_batch_queue},
-        );
-    }
-    errdefer {
-        context.events_batch_queue.release();
-        context.events_releaser_thread.join();
-    }
+    //     context.events_releaser_thread = try std.Thread.spawn(
+    //         .{},
+    //         events_releaser.eventsBatchReleaserWorker,
+    //         .{&context.events_batch_queue},
+    //     );
+    // }
+    // errdefer {
+    //     context.events_batch_queue.release();
+    //     context.events_releaser_thread.join();
+    // }
 
     return context;
 }
@@ -157,12 +166,12 @@ pub fn init_from_cl_context(allocator: std.mem.Allocator, cl_ctx: cl.context.cl_
 pub fn release(context: *Context) void {
     const allocator = context.allocator;
 
-    CommandQueue.deinit_multiples(allocator, context.command_queues);
+    CommandQueue.deinitMultiples(allocator, context.command_queues);
 
     cl.context.release(context.ctx);
 
-    context.events_batch_queue.release();
-    context.events_releaser_thread.join();
+    // context.events_batch_queue.release();
+    // context.events_releaser_thread.join();
 
     allocator.destroy(context);
 }

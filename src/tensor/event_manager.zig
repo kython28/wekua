@@ -39,12 +39,12 @@ pub const EventsSet = struct {
     allocator: std.mem.Allocator,
     buf_len: usize,
 
-    prev_events: ?[]cl.event.cl_event,
+    prev_events: ?[]cl.event.Event,
     user_callback: ?UserCallback,
 
     pub fn init(
         allocator: std.mem.Allocator,
-        events_array: []const ?[]const cl.event.cl_event,
+        events_array: []const ?[]const cl.event.Event,
         user_callback: ?UserCallback,
     ) !*EventsSet {
         if (events_array.len == 0) return error.EventsArrayEmpty;
@@ -56,16 +56,16 @@ pub const EventsSet = struct {
             }
         }
 
-        const buf_len = @sizeOf(EventsSet) + @sizeOf(cl.event.cl_event) * total_events;
+        const buf_len = @sizeOf(EventsSet) + @sizeOf(cl.event.Event) * total_events;
         const buf = try allocator.alloc(u8, buf_len);
         errdefer allocator.free(buf);
 
         const set: *EventsSet = @alignCast(@ptrCast(buf.ptr));
-        const prev_events: ?[]cl.event.cl_event = blk: {
+        const prev_events: ?[]cl.event.Event = blk: {
             if (total_events == 0) break :blk null;
 
             const array = @as(
-                [*]cl.event.cl_event,
+                [*]cl.event.Event,
                 @alignCast(@ptrCast(buf.ptr + @sizeOf(EventsSet))),
             )[0..total_events];
 
@@ -89,7 +89,7 @@ pub const EventsSet = struct {
         return set;
     }
 
-    pub inline fn getPrevEvents(self: *const EventsSet) ?[]const cl.event.cl_event {
+    pub inline fn getPrevEvents(self: *const EventsSet) ?[]const cl.event.Event {
         return self.prev_events;
     }
 
@@ -99,7 +99,7 @@ pub const EventsSet = struct {
         add_destructor_callback: bool,
         new_ops: []const Operation,
         tensors: []const *Tensor(T),
-        new_cl_event: cl.event.cl_event,
+        new_Event: cl.event.Event,
     ) !void {
         if (new_ops.len == 0) {
             return error.InvalidOperations;
@@ -113,12 +113,12 @@ pub const EventsSet = struct {
         var events_added: usize = ref_counter;
         errdefer {
             for (events_added..ref_counter) |_| {
-                cl.event.release(new_cl_event);
+                cl.event.release(new_Event);
             }
         }
 
         while (ref_counter < new_ops.len) {
-            try cl.event.retain(new_cl_event);
+            try cl.event.retain(new_Event);
             ref_counter += 1;
         }
 
@@ -129,7 +129,7 @@ pub const EventsSet = struct {
             event = try tensor.events_manager.appendNewEvent(
                 new_op,
                 prev_events,
-                new_cl_event,
+                new_Event,
                 null,
             );
 
@@ -138,7 +138,7 @@ pub const EventsSet = struct {
 
         if (add_destructor_callback) {
             try event.appendCallback(.{ .func = multipleCompletionEventCallback, .data = self });
-            cl.event.release(new_cl_event);
+            cl.event.release(new_Event);
         }
     }
 
@@ -152,7 +152,7 @@ const Event = struct {
     operation: Operation,
 
     callbacks: UserCallbackArray,
-    events: [MaxEventsPerSet]cl.event.cl_event,
+    events: [MaxEventsPerSet]cl.event.Event,
     events_count: MaxEventsPerSetInt,
 
     index: u8,
@@ -172,7 +172,7 @@ const Event = struct {
     pub fn append(
         self: *Event,
         operation: Operation,
-        event: cl.event.cl_event,
+        event: cl.event.Event,
         user_callback: ?UserCallback,
     ) !AppendResult {
         const current_operation = self.operation;
@@ -225,7 +225,7 @@ const Event = struct {
         return isFull(self.operation, self.events_count);
     }
 
-    pub inline fn toSlice(self: *const Event) []const cl.event.cl_event {
+    pub inline fn toSlice(self: *const Event) []const cl.event.Event {
         return self.events[0..self.events_count];
     }
 
@@ -240,7 +240,7 @@ const Event = struct {
     }
 
     pub inline fn waitForEvents(self: *const Event) !void {
-        try cl.event.wait_for_many(self.toSlice());
+        try cl.event.waitForMany(self.toSlice());
         self.executeCallbacks();
     }
 
@@ -268,16 +268,20 @@ const EventsBatchLenght = switch (builtin.mode) {
 
 pub const EventsBatch = struct {
     allocator: std.mem.Allocator,
-    prev_events: ?[]cl.event.cl_event,
+    prev_events: ?[]cl.event.Event,
 
     events: [EventsBatchLenght]Event,
     events_num: u8,
 
-    pub fn init(self: *EventsBatch, allocator: std.mem.Allocator, prev_events: ?[]const cl.event.cl_event) !void {
+    pub fn init(
+        self: *EventsBatch,
+        allocator: std.mem.Allocator,
+        prev_events: ?[]const cl.event.Event,
+    ) !void {
         self.allocator = allocator;
 
         if (prev_events) |pv| {
-            const _prev_events = try allocator.dupe(cl.event.cl_event, pv);
+            const _prev_events = try allocator.dupe(cl.event.Event, pv);
             errdefer allocator.free(_prev_events);
 
             var index: usize = 0;
@@ -322,7 +326,7 @@ pub const EventsBatch = struct {
         return (self.events_num == EventsBatchLenght);
     }
 
-    pub inline fn getPrevEvents(self: *const EventsBatch) ?[]const cl.event.cl_event {
+    pub inline fn getPrevEvents(self: *const EventsBatch) ?[]const cl.event.Event {
         return self.prev_events;
     }
 
@@ -340,7 +344,7 @@ pub const EventsBatch = struct {
         }
     }
 
-    pub fn restart(self: *EventsBatch, new_prev_events: ?[]const cl.event.cl_event) !void {
+    pub fn restart(self: *EventsBatch, new_prev_events: ?[]const cl.event.Event) !void {
         if (self.prev_events) |prev_events| {
             for (prev_events) |e| {
                 cl.event.release(e);
@@ -386,7 +390,7 @@ pub const EventsBatch = struct {
             }
 
             events_num += 1;
-        }else if (events_num < EventsBatchLenght) {
+        } else if (events_num < EventsBatchLenght) {
             if (self.events[events_num].operation != .none) {
                 events_num += 1;
             }
@@ -410,7 +414,11 @@ allocator: std.mem.Allocator,
 batch: *EventsBatch,
 events_releaser_queue: *events_releaser.EventsBatchQueue,
 
-pub fn init(self: *TensorEventManager, allocator: std.mem.Allocator, queue: *events_releaser.EventsBatchQueue) !void {
+pub fn init(
+    self: *TensorEventManager,
+    allocator: std.mem.Allocator,
+    queue: *events_releaser.EventsBatchQueue,
+) !void {
     self.allocator = allocator;
 
     const batch = try allocator.create(EventsBatch);
@@ -427,7 +435,7 @@ pub fn deinit(self: *TensorEventManager) void {
     self.batch.release();
 }
 
-pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.event.cl_event {
+pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.event.Event {
     if (new_op == .none) unreachable;
 
     const batch = self.batch;
@@ -466,8 +474,8 @@ pub fn getPrevEvents(self: *TensorEventManager, new_op: Operation) ?[]const cl.e
 
 pub fn concat(
     allocator: std.mem.Allocator,
-    events_array: []const ?[]const cl.event.cl_event,
-) !?[]cl.event.cl_event {
+    events_array: []const ?[]const cl.event.Event,
+) !?[]cl.event.Event {
     var total_events: usize = 0;
     for (events_array) |events| {
         if (events) |v| {
@@ -477,7 +485,7 @@ pub fn concat(
 
     if (total_events == 0) return null;
 
-    const new_array = try allocator.alloc(cl.event.cl_event, total_events);
+    const new_array = try allocator.alloc(cl.event.Event, total_events);
     errdefer allocator.free(new_array);
 
     var offset: usize = 0;
@@ -500,7 +508,7 @@ fn multipleCompletionEventCallback(user_data: ?*anyopaque) void {
     set.release();
 }
 
-fn getNewBatch(self: *TensorEventManager, prev_events: ?[]const cl.event.cl_event) !*EventsBatch {
+fn getNewBatch(self: *TensorEventManager, prev_events: ?[]const cl.event.Event) !*EventsBatch {
     const old_batch = self.batch;
 
     const allocator = self.allocator;
@@ -520,32 +528,32 @@ fn getNewBatch(self: *TensorEventManager, prev_events: ?[]const cl.event.cl_even
 pub fn appendNewEvent(
     self: *TensorEventManager,
     new_op: Operation,
-    prev_cl_events: ?[]const cl.event.cl_event,
-    new_cl_event: cl.event.cl_event,
+    prev_Events: ?[]const cl.event.Event,
+    new_Event: cl.event.Event,
     user_callback: ?UserCallback,
 ) !*Event {
     var batch = self.batch;
 
     var events_num = batch.events_num;
     if (events_num == EventsBatchLenght) {
-        batch = try self.getNewBatch(prev_cl_events);
+        batch = try self.getNewBatch(prev_Events);
         events_num = 0;
     }
 
     var event: *Event = &batch.events[events_num];
-    loop: switch (try event.append(new_op, new_cl_event, user_callback)) {
+    loop: switch (try event.append(new_op, new_Event, user_callback)) {
         .success => {},
         .full => {
             events_num += 1;
             if (events_num == EventsBatchLenght) {
                 batch.events_num = EventsBatchLenght;
 
-                batch = try self.getNewBatch(prev_cl_events);
+                batch = try self.getNewBatch(prev_Events);
                 events_num = 0;
             }
 
             event = &batch.events[events_num];
-            const new_result = try event.append(new_op, new_cl_event, user_callback);
+            const new_result = try event.append(new_op, new_Event, user_callback);
             continue :loop new_result;
         },
         .success_and_full => {

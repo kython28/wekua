@@ -1,1 +1,1 @@
-pub usingnamespace @import("uniform.zig");
+pub const uniform = @import("uniform.zig").uniform;

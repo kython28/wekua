@@ -3,12 +3,9 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("main.zig");
-const w_tensor = @import("../tensor/main.zig");
-
 const CommandQueue = core.CommandQueue;
-const Tensor = w_tensor.Tensor;
 
-const header_content: []const u8 = @embedFile("wekua_cl_lib.cl");
+pub const wekua_header: []const u8 = @embedFile("wekua_cl_lib.cl");
 
 pub const KernelsID = enum(u16) {
     Fill,
@@ -52,11 +49,11 @@ pub const KernelsID = enum(u16) {
     RMSProp,
 };
 
-pub const total_number_of_kernels = @typeInfo(KernelsID).@"enum".fields.len;
-pub const total_number_of_headers = core.SupportedTypes.len * 2 * 2;
+pub const TOTAL_NUMBER_OF_KERNELS = @typeInfo(KernelsID).@"enum".fields.len;
+pub const TOTAL_NUMBER_OF_HEADERS = core.SupportedTypes.len * 2 * 2;
 
-kernels: ?[]?cl.kernel.cl_kernel = null,
-programs: ?[]?cl.program.cl_program = null,
+kernels: ?[]?cl.kernel.Kernel = null,
+programs: ?[]?cl.program.Program = null,
 initialized: bool = false,
 
 pub const CompileOptions = struct {
@@ -71,7 +68,7 @@ fn compileHeader(
     command_queue: *const CommandQueue,
     vectors_enabled: bool,
     is_complex: bool,
-) !cl.program.cl_program {
+) !cl.program.Program {
     const type_index: u16 = core.getTypeId(T);
     const index: u16 = type_index * 4 + @as(u16, @intFromBool(vectors_enabled)) * 2 + @intFromBool(is_complex);
 
@@ -81,9 +78,9 @@ fn compileHeader(
         return prg;
     }
 
-    const new_header_prg = try cl.program.create_with_source(
+    const new_header_prg = try cl.program.createWithSource(
         command_queue.ctx.ctx,
-        @as([*]const []const u8, @ptrCast(&header_content))[0..1],
+        @as([*]const []const u8, @ptrCast(&wekua_header))[0..1],
         command_queue.allocator,
     );
 
@@ -91,7 +88,7 @@ fn compileHeader(
     return new_header_prg;
 }
 
-fn showBuildLog(program: cl.program.cl_program, command_queue: *const CommandQueue) !void {
+fn showBuildLog(program: cl.program.Program, command_queue: *const CommandQueue) !void {
     var msg_len: usize = undefined;
     try cl.program.get_build_info(
         program,
@@ -121,19 +118,20 @@ fn showBuildLog(program: cl.program.cl_program, command_queue: *const CommandQue
     }
 }
 
-pub fn compileKernel(
+pub fn compileCustomKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
     options: CompileOptions,
-    kernel: *cl.kernel.cl_kernel,
-    program: *cl.program.cl_program,
-    content: []const u8,
-) !void {
+    program: *cl.program.Program,
+    headers: []const cl.program.Program,
+    header_names: []const []const u8,
+    source_codes: []const []const u8,
+) !cl.kernel.Kernel {
     const cl_ctx = command_queue.ctx.ctx;
     const allocator = command_queue.allocator;
-    const new_program = try cl.program.create_with_source(
+    const new_program = try cl.program.createWithSource(
         cl_ctx,
-        @as([*]const []const u8, @ptrCast(&content))[0..1],
+        source_codes,
         allocator,
     );
     defer cl.program.release(new_program);
@@ -184,16 +182,8 @@ pub fn compileKernel(
     }
     defer allocator.free(args);
 
-    const header_prg = try compileHeader(
-        T,
-        command_queue,
-        options.vectors_enabled,
-        options.is_complex,
-    );
-    const header_name: []const u8 = "wekua.h";
-
-    const devices: []const cl.device.cl_device_id = @as(
-        [*]const cl.device.cl_device_id,
+    const devices: []const cl.device.DeviceId = @as(
+        [*]const cl.device.DeviceId,
         @ptrCast(&command_queue.device),
     )[0..1];
 
@@ -202,8 +192,8 @@ pub fn compileKernel(
         new_program,
         devices,
         args,
-        @as([*]const cl.program.cl_program, @ptrCast(&header_prg))[0..1],
-        @as([*]const []const u8, @ptrCast(&header_name))[0..1],
+        headers,
+        header_names,
         null,
         null,
     ) catch |err| {
@@ -223,14 +213,17 @@ pub fn compileKernel(
         cl_ctx,
         devices,
         null,
-        @as([*]const cl.program.cl_program, @ptrCast(&new_program))[0..1],
+        &.{new_program},
         null,
         null,
     ) catch |err| {
         switch (err) {
             error.link_program_failure => {
                 showBuildLog(new_program, command_queue) catch |err2| {
-                    std.log.err("Unexpected error while showing build log: {s}", .{@errorName(err2)});
+                    std.log.err(
+                        "Unexpected error while showing build log: {s}",
+                        .{@errorName(err2)},
+                    );
                     std.log.warn("No able to show build log", .{});
                 };
             },
@@ -239,7 +232,35 @@ pub fn compileKernel(
         return err;
     };
 
-    kernel.* = try cl.kernel.create(program.*, options.kernel_name);
+    const kernel = try cl.kernel.create(program.*, options.kernel_name);
+    return kernel;
+}
+
+pub fn compileKernel(
+    comptime T: type,
+    command_queue: *const CommandQueue,
+    options: CompileOptions,
+    kernel: *cl.kernel.Kernel,
+    program: *cl.program.Program,
+    source_code: []const u8,
+) !void {
+    const header_prg = try compileHeader(
+        T,
+        command_queue,
+        options.vectors_enabled,
+        options.is_complex,
+    );
+    const header_name: []const u8 = "wekua.h";
+
+    kernel.* = try compileCustomKernel(
+        T,
+        command_queue,
+        options,
+        program,
+        &.{header_prg},
+        &.{header_name},
+        &.{source_code},
+    );
 }
 
 pub fn getKernelSet(
@@ -259,7 +280,7 @@ pub fn getKernelSet(
 
     @memset(cl_kernels, null);
 
-    const cl_programs = try allocator.alloc(?cl.program.cl_program, number_of_cl_kernels);
+    const cl_programs = try allocator.alloc(?cl.program.Program, number_of_cl_kernels);
     errdefer allocator.free(cl_programs);
 
     @memset(cl_programs, null);
@@ -296,7 +317,7 @@ pub fn createAndGetKernel(
     }
 
     var kernel: cl.kernel.cl_kernel = undefined;
-    var program: cl.program.cl_program = undefined;
+    var program: cl.program.Program = undefined;
 
     try compileKernel(T, command_queue, options, &kernel, &program, kernel_source);
 
@@ -309,15 +330,13 @@ pub fn createAndGetKernel(
 pub fn getClKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
-    tensor: *const Tensor(T),
+    is_complex: bool,
+    vectors_enabled: bool,
     kernel_id: KernelsID,
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.cl_kernel {
-    const is_complex = tensor.flags.is_complex;
-    const vectors_enabled = tensor.flags.vectors_enabled;
-
     const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.SupportedTypes.len) +
         @intFromBool(is_complex) * core.SupportedTypes.len + @as(usize, core.getTypeId(T)));
 
@@ -342,14 +361,12 @@ pub fn getClKernel(
 pub fn getClNoVectorKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
-    tensor: *const Tensor(T),
+    is_complex: bool,
     kernel_id: KernelsID,
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.cl_kernel {
-    const is_complex = tensor.flags.is_complex;
-
     const type_index: usize = core.getTypeId(T);
     const kernel_index = @intFromBool(is_complex) * core.SupportedTypes.len + type_index;
 
@@ -371,24 +388,20 @@ pub fn getClNoVectorKernel(
     );
 }
 
-pub fn getClNoVectorNoComplexSingleKernelPerDtype(
+pub fn getClNoVectorNoComplexSingleKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
-    tensor: *const Tensor(T),
     kernel_id: KernelsID,
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.cl_kernel {
-    const dtype = tensor.dtype;
-
     return try createAndGetKernel(
         T,
         command_queue,
         kernel_id,
         kernel_source,
         .{
-            .dtype = dtype,
             .is_complex = false,
             .vectors_enabled = false,
             .kernel_name = kernel_name,
@@ -396,8 +409,8 @@ pub fn getClNoVectorNoComplexSingleKernelPerDtype(
         },
         false,
         false,
-        w_tensor.SupportedTypes.len,
-        w_tensor.getTypeId(T),
+        core.SupportedTypes.len,
+        core.getTypeId(T),
     );
 }
 

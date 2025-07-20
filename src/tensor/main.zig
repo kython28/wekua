@@ -13,10 +13,10 @@ pub const helpers = @import("helpers.zig");
 pub const fill = @import("fill.zig");
 pub const memory = @import("memory/main.zig");
 pub const random = @import("random/main.zig");
-pub usingnamespace @import("transpose.zig");
+pub const transpose = @import("transpose.zig").transpose;
 pub const convertions = @import("convertions/main.zig");
-pub usingnamespace @import("identity.zig");
-pub usingnamespace @import("print.zig");
+pub const identity = @import("identity.zig").identity;
+pub const print = @import("print.zig").print;
 
 const blas = @import("../blas/main.zig");
 
