@@ -37,14 +37,14 @@ pub fn build(b: *std.Build) void {
     wekua_module.addImport("core", core_module);
     // wekua_module.addImport("tensor", tensor_module);
 
-    const lib_unit_tests = b.addTest(.{
-        .root_module = wekua_module,
+    const core_test = b.addTest(.{
+        .root_module = core_module,
     });
 
-    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+    const run_core_test = b.addRunArtifact(core_test);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_lib_unit_tests.step);
+    test_step.dependOn(&run_core_test.step);
 
     const benchmark_module = b.addModule("benchmark", .{
         .root_source_file = b.path("benchmark/main.zig"),
@@ -71,5 +71,5 @@ pub fn build(b: *std.Build) void {
     run_benchmark_step.dependOn(&run_benchmark.step);
 
     const run_check_step = b.step("check", "ZLS");
-    run_check_step.dependOn(&lib_unit_tests.step);
+    run_check_step.dependOn(&core_test.step);
 }

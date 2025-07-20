@@ -142,7 +142,7 @@ pub fn createOnePerPlatform(
 
         try cl.device.getIds(plat_details.id.?, device_type, devices, null);
 
-        context.* = init(allocator, properties, devices);
+        context.* = try init(allocator, properties, devices);
         contexts_created += 1;
     }
 
@@ -229,16 +229,16 @@ const Context = @This();
 const testing = std.testing;
 
 test "getTypeId returns correct indices for supported types" {
-    try testing.expectEqual(@as(comptime_int, 0), getTypeId(i8));
-    try testing.expectEqual(@as(comptime_int, 1), getTypeId(u8));
-    try testing.expectEqual(@as(comptime_int, 2), getTypeId(i16));
-    try testing.expectEqual(@as(comptime_int, 3), getTypeId(u16));
-    try testing.expectEqual(@as(comptime_int, 4), getTypeId(i32));
-    try testing.expectEqual(@as(comptime_int, 5), getTypeId(u32));
-    try testing.expectEqual(@as(comptime_int, 6), getTypeId(i64));
-    try testing.expectEqual(@as(comptime_int, 7), getTypeId(u64));
-    try testing.expectEqual(@as(comptime_int, 8), getTypeId(f32));
-    try testing.expectEqual(@as(comptime_int, 9), getTypeId(f64));
+    try testing.expectEqual(0, getTypeId(i8));
+    try testing.expectEqual(1, getTypeId(u8));
+    try testing.expectEqual(2, getTypeId(i16));
+    try testing.expectEqual(3, getTypeId(u16));
+    try testing.expectEqual(4, getTypeId(i32));
+    try testing.expectEqual(5, getTypeId(u32));
+    try testing.expectEqual(6, getTypeId(i64));
+    try testing.expectEqual(7, getTypeId(u64));
+    try testing.expectEqual(8, getTypeId(f32));
+    try testing.expectEqual(9, getTypeId(f64));
 }
 
 test "SupportedTypes array contains expected types" {
@@ -295,5 +295,4 @@ test "createOnePerPlatform function with all device type" {
     for (contexts) |context| {
         try testing.expect(context.command_queues.len > 0);
     }
-    deinitMultiples(allocator, contexts);
 }

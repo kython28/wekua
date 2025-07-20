@@ -275,7 +275,7 @@ pub fn getKernelSet(
 
     const allocator = command_queue.allocator;
 
-    const cl_kernels = try allocator.alloc(?cl.kernel.cl_kernel, number_of_cl_kernels);
+    const cl_kernels = try allocator.alloc(?cl.kernel.Kernel, number_of_cl_kernels);
     errdefer allocator.free(cl_kernels);
 
     @memset(cl_kernels, null);
@@ -303,7 +303,7 @@ pub fn createAndGetKernel(
     comptime can_use_vectors: bool,
     number_of_cl_kernels: usize,
     kernel_index: usize,
-) !cl.kernel.cl_kernel {
+) !cl.kernel.Kernel {
     if (!can_use_complex and options.is_complex) {
         @panic("Kernels with complex numbers are not allowed");
     }
@@ -336,7 +336,7 @@ pub fn getClKernel(
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
-) !cl.kernel.cl_kernel {
+) !cl.kernel.Kernel {
     const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.SupportedTypes.len) +
         @intFromBool(is_complex) * core.SupportedTypes.len + @as(usize, core.getTypeId(T)));
 
@@ -366,7 +366,7 @@ pub fn getClNoVectorKernel(
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
-) !cl.kernel.cl_kernel {
+) !cl.kernel.Kernel {
     const type_index: usize = core.getTypeId(T);
     const kernel_index = @intFromBool(is_complex) * core.SupportedTypes.len + type_index;
 
@@ -395,7 +395,7 @@ pub fn getClNoVectorNoComplexSingleKernel(
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
-) !cl.kernel.cl_kernel {
+) !cl.kernel.Kernel {
     return try createAndGetKernel(
         T,
         command_queue,
