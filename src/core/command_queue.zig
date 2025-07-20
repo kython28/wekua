@@ -228,3 +228,215 @@ pub inline fn typeIsSupported(self: *const CommandQueue, comptime T: type) bool 
 }
 
 const CommandQueue = @This();
+
+// Unit Tests
+const testing = std.testing;
+
+test "CommandQueue.init - basic initialization with real device" {
+    const allocator = testing.allocator;
+
+    // Get a real context with devices like context.zig does
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    // Test that we can access the first command queue
+    try testing.expect(context.command_queues.len > 0);
+    
+    const cmd_queue = &context.command_queues[0];
+    
+    // Verify basic initialization
+    try testing.expect(cmd_queue.allocator.ptr == allocator.ptr);
+    try testing.expect(cmd_queue.ctx == context);
+    try testing.expect(cmd_queue.wekua_id == 0);
+    
+    // Verify device info was populated
+    try testing.expect(cmd_queue.device_name.len > 0);
+    try testing.expect(cmd_queue.compute_units > 0);
+    try testing.expect(cmd_queue.max_work_group_size > 0);
+    try testing.expect(cmd_queue.cache_line_size > 0);
+    
+    // Verify vector widths are reasonable
+    for (cmd_queue.vector_widths) |vw| {
+        try testing.expect(vw <= 16); // Should be clamped to max 16
+    }
+}
+
+test "CommandQueue.initMultiples - multiple command queues creation" {
+    const allocator = testing.allocator;
+
+    // Get platforms and devices
+    const platforms = try cl.platform.getAll(allocator);
+    defer cl.platform.releaseList(allocator, platforms);
+
+    if (platforms.len == 0) return; // Skip if no platforms available
+
+    var devices_found = false;
+    for (platforms) |plat| {
+        var num_devices: u32 = undefined;
+        cl.device.getIds(plat.id.?, cl.device.Type.all, null, &num_devices) catch continue;
+        if (num_devices == 0) continue;
+
+        const devices = try allocator.alloc(cl.device.DeviceId, num_devices);
+        defer {
+            for (devices) |dev| {
+                cl.device.release(dev);
+            }
+            allocator.free(devices);
+        }
+
+        try cl.device.getIds(plat.id.?, cl.device.Type.all, devices, null);
+        
+        // Create a context for testing
+        const cl_ctx = try cl.context.create(null, devices, null, null);
+        defer cl.context.release(cl_ctx);
+        
+        const context = try Context.initFromClContext(allocator, cl_ctx);
+        defer context.deinit();
+
+        // Test initMultiples functionality
+        const command_queues = try CommandQueue.initMultiples(allocator, context, devices);
+        defer CommandQueue.deinitMultiples(allocator, command_queues);
+
+        try testing.expect(command_queues.len == devices.len);
+        
+        // Verify each command queue has correct wekua_id
+        for (command_queues, 0..) |cmd_queue, index| {
+            try testing.expect(cmd_queue.wekua_id == index);
+            try testing.expect(cmd_queue.ctx == context);
+            try testing.expect(cmd_queue.device_name.len > 0);
+        }
+        
+        devices_found = true;
+        break;
+    }
+    
+    if (!devices_found) {
+        std.debug.print("Warning: No OpenCL devices found for testing\n", .{});
+    }
+}
+
+test "CommandQueue.get_device_info - device information retrieval" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const cmd_queue = &context.command_queues[0];
+    
+    // Test device name is not empty
+    try testing.expect(cmd_queue.device_name.len > 0);
+    
+    // Test device type is valid
+    const valid_types = [_]cl.device.Type{ .cpu, .gpu, .accelerator, .custom, .all };
+    var type_is_valid = false;
+    for (valid_types) |valid_type| {
+        if (cmd_queue.device_type == valid_type) {
+            type_is_valid = true;
+            break;
+        }
+    }
+    try testing.expect(type_is_valid);
+    
+    // Test local memory type is valid
+    const valid_mem_types = [_]cl.device.LocalMemType{ .local, .global, .none };
+    var mem_type_is_valid = false;
+    for (valid_mem_types) |valid_mem_type| {
+        if (cmd_queue.local_mem_type == valid_mem_type) {
+            mem_type_is_valid = true;
+            break;
+        }
+    }
+    try testing.expect(mem_type_is_valid);
+    
+    // Test that numeric values are reasonable
+    try testing.expect(cmd_queue.local_mem_size >= 0);
+    try testing.expect(cmd_queue.compute_units > 0);
+    try testing.expect(cmd_queue.max_work_group_size > 0);
+    try testing.expect(cmd_queue.cache_line_size > 0);
+}
+
+test "CommandQueue.typeIsSupported - type support checking" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const cmd_queue = &context.command_queues[0];
+    
+    // Test all supported types from Context.SupportedTypes
+    inline for (Context.SupportedTypes) |T| {
+        const is_supported = cmd_queue.typeIsSupported(T);
+        // We can't guarantee support, but the function should return a boolean
+        try testing.expect(@TypeOf(is_supported) == bool);
+    }
+    
+    // Test that at least some basic types are typically supported
+    // Most devices support these basic types
+    const basic_supported = cmd_queue.typeIsSupported(f32) or 
+                           cmd_queue.typeIsSupported(i32) or 
+                           cmd_queue.typeIsSupported(u32);
+    try testing.expect(basic_supported);
+}
+
+test "CommandQueue.deinit - proper cleanup" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    // The deinit is tested implicitly through context.deinit()
+    // We verify that the structure is properly set up for cleanup
+    const cmd_queue = &context.command_queues[0];
+    
+    try testing.expect(cmd_queue.device_name.len > 0);
+    try testing.expect(cmd_queue.allocator.ptr == allocator.ptr);
+    
+    // Test that kernels array is properly initialized
+    for (cmd_queue.kernels) |kernel_set| {
+        // Initially, kernels should be uninitialized
+        try testing.expect(kernel_set.kernels == null);
+        try testing.expect(kernel_set.programs == null);
+        try testing.expect(!kernel_set.initialized);
+    }
+    
+    // Test that headers are properly initialized
+    try testing.expect(cmd_queue.headers.initialized);
+    try testing.expect(cmd_queue.headers.programs != null);
+    try testing.expect(cmd_queue.headers.programs.?.len == KernelsSet.TOTAL_NUMBER_OF_HEADERS);
+}
+
+test "CommandQueue vector widths clamping" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const cmd_queue = &context.command_queues[0];
+    
+    // Verify that all vector widths are clamped to maximum 16
+    for (cmd_queue.vector_widths) |vw| {
+        try testing.expect(vw <= 16);
+        try testing.expect(vw >= 0);
+    }
+}
+
+test "CommandQueue multiple contexts compatibility" {
+    const allocator = testing.allocator;
+
+    const contexts = try Context.createOnePerPlatform(allocator, null, cl.device.Type.all);
+    defer Context.deinitMultiples(allocator, contexts);
+
+    if (contexts.len == 0) return; // Skip if no contexts available
+
+    // Test that each context has properly initialized command queues
+    for (contexts) |context| {
+        try testing.expect(context.command_queues.len > 0);
+        
+        for (context.command_queues, 0..) |cmd_queue, index| {
+            try testing.expect(cmd_queue.wekua_id == index);
+            try testing.expect(cmd_queue.ctx == context);
+            try testing.expect(cmd_queue.device_name.len > 0);
+            try testing.expect(cmd_queue.allocator.ptr == allocator.ptr);
+        }
+    }
+}
