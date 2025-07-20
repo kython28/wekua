@@ -113,6 +113,40 @@ pub fn initFromBestDevice(
     return context;
 }
 
+pub fn createOnePerPlatform(
+    allocator: std.mem.Allocator,
+    properties: ?[]const cl.context.Properties,
+    device_type: cl.device.Type,
+) !*Context {
+    const platforms = try cl.platform.getAll(allocator);
+    defer cl.platform.releaseList(allocator, platforms);
+
+    const contexts = try allocator.alloc(*Context, platforms.len);
+    var contexts_created: usize = 0;
+    errdefer {
+        for (contexts[0..contexts_created]) |ctx| {
+            ctx.deinit();
+        }
+        allocator.free(contexts);
+    }
+
+    for (platforms, contexts) |*plat_details, *context| {
+        var num_devices: u32 = undefined;
+        cl.device.getIds(plat_details.id.?, device_type, null, &num_devices) catch continue;
+        if (num_devices == 0) continue;
+
+        const devices = try allocator.alloc(cl.device.DeviceId, num_devices);
+        defer allocator.free(devices);
+
+        try cl.device.getIds(plat_details.id.?, device_type, devices, null);
+
+        context.* = init(allocator, properties, devices);
+        contexts_created += 1;
+    }
+
+    return contexts;
+}
+
 pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Context) !*Context {
     var context = try allocator.create(Context);
     errdefer allocator.destroy(context);
@@ -163,7 +197,7 @@ pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Contex
     return context;
 }
 
-pub fn release(context: *Context) void {
+pub fn deinit(context: *Context) void {
     const allocator = context.allocator;
 
     CommandQueue.deinitMultiples(allocator, context.command_queues);
@@ -174,6 +208,13 @@ pub fn release(context: *Context) void {
     // context.events_releaser_thread.join();
 
     allocator.destroy(context);
+}
+
+pub fn deinitMultiples(allocator: std.mem.Allocator, contexts: []*Context) void {
+    for (contexts) |ctx| {
+        ctx.deinit();
+    }
+    allocator.free(contexts);
 }
 
 const Context = @This();
