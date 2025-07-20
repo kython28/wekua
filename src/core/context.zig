@@ -138,7 +138,12 @@ pub fn createOnePerPlatform(
         if (num_devices == 0) continue;
 
         const devices = try allocator.alloc(cl.device.DeviceId, num_devices);
-        defer allocator.free(devices);
+        defer {
+            for (devices) |dev| {
+                cl.device.release(dev);
+            }
+            allocator.free(devices);
+        }
 
         try cl.device.getIds(plat_details.id.?, device_type, devices, null);
 
