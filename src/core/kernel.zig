@@ -340,7 +340,7 @@ pub fn getClKernel(
     const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.SupportedTypes.len) +
         @intFromBool(is_complex) * core.SupportedTypes.len + @as(usize, core.getTypeId(T)));
 
-    return try createAndGetKernel(
+    return createAndGetKernel(
         T,
         command_queue,
         kernel_id,
@@ -370,7 +370,7 @@ pub fn getClNoVectorKernel(
     const type_index: usize = core.getTypeId(T);
     const kernel_index = @intFromBool(is_complex) * core.SupportedTypes.len + type_index;
 
-    return try createAndGetKernel(
+    return createAndGetKernel(
         T,
         command_queue,
         kernel_id,
@@ -396,7 +396,7 @@ pub fn getClNoVectorNoComplexSingleKernel(
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.Kernel {
-    return try createAndGetKernel(
+    return createAndGetKernel(
         T,
         command_queue,
         kernel_id,
