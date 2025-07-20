@@ -218,3 +218,73 @@ pub fn deinitMultiples(allocator: std.mem.Allocator, contexts: []*Context) void 
 }
 
 const Context = @This();
+
+// Unit Tests
+const testing = std.testing;
+
+test "getTypeId returns correct indices for supported types" {
+    try testing.expectEqual(@as(comptime_int, 0), getTypeId(i8));
+    try testing.expectEqual(@as(comptime_int, 1), getTypeId(u8));
+    try testing.expectEqual(@as(comptime_int, 2), getTypeId(i16));
+    try testing.expectEqual(@as(comptime_int, 3), getTypeId(u16));
+    try testing.expectEqual(@as(comptime_int, 4), getTypeId(i32));
+    try testing.expectEqual(@as(comptime_int, 5), getTypeId(u32));
+    try testing.expectEqual(@as(comptime_int, 6), getTypeId(i64));
+    try testing.expectEqual(@as(comptime_int, 7), getTypeId(u64));
+    try testing.expectEqual(@as(comptime_int, 8), getTypeId(f32));
+    try testing.expectEqual(@as(comptime_int, 9), getTypeId(f64));
+}
+
+test "SupportedTypes array contains expected types" {
+    try testing.expectEqual(@as(usize, 10), SupportedTypes.len);
+    try testing.expectEqual(i8, SupportedTypes[0]);
+    try testing.expectEqual(u8, SupportedTypes[1]);
+    try testing.expectEqual(i16, SupportedTypes[2]);
+    try testing.expectEqual(u16, SupportedTypes[3]);
+    try testing.expectEqual(i32, SupportedTypes[4]);
+    try testing.expectEqual(u32, SupportedTypes[5]);
+    try testing.expectEqual(i64, SupportedTypes[6]);
+    try testing.expectEqual(u64, SupportedTypes[7]);
+    try testing.expectEqual(f32, SupportedTypes[8]);
+    try testing.expectEqual(f64, SupportedTypes[9]);
+}
+
+test "Context struct has expected fields" {
+    // Test that Context struct has the expected fields
+    const context_info = @typeInfo(Context);
+    try testing.expect(context_info == .Struct);
+    
+    // Verify field names exist (compile-time check)
+    const has_allocator = @hasField(Context, "allocator");
+    const has_ctx = @hasField(Context, "ctx");
+    const has_command_queues = @hasField(Context, "command_queues");
+    
+    try testing.expect(has_allocator);
+    try testing.expect(has_ctx);
+    try testing.expect(has_command_queues);
+}
+
+test "getTypeId compile error for unsupported types" {
+    // This test verifies that unsupported types cause compile errors
+    // We can't actually test the compile error in a unit test,
+    // but we can document the expected behavior
+    
+    // The following would cause compile errors:
+    // _ = getTypeId(bool); // Should fail
+    // _ = getTypeId([]u8); // Should fail
+    // _ = getTypeId(struct{}); // Should fail
+    
+    // Instead, we test that all supported types work
+    comptime {
+        _ = getTypeId(i8);
+        _ = getTypeId(u8);
+        _ = getTypeId(i16);
+        _ = getTypeId(u16);
+        _ = getTypeId(i32);
+        _ = getTypeId(u32);
+        _ = getTypeId(i64);
+        _ = getTypeId(u64);
+        _ = getTypeId(f32);
+        _ = getTypeId(f64);
+    }
+}
