@@ -415,3 +415,420 @@ pub fn getClNoVectorNoComplexSingleKernel(
 }
 
 const KernelSet = @This();
+
+// Unit Tests
+const testing = std.testing;
+
+test "KernelsID enum has correct number of variants" {
+    try testing.expectEqual(TOTAL_NUMBER_OF_KERNELS, @typeInfo(KernelsID).@"enum".fields.len);
+}
+
+test "TOTAL_NUMBER_OF_HEADERS calculation" {
+    const expected = core.SupportedTypes.len * 2 * 2; // types * complex * vectors
+    try testing.expectEqual(expected, TOTAL_NUMBER_OF_HEADERS);
+    try testing.expectEqual(40, TOTAL_NUMBER_OF_HEADERS); // 10 types * 2 * 2
+}
+
+test "CompileOptions default values" {
+    const options = CompileOptions{
+        .kernel_name = "test_kernel",
+    };
+    
+    try testing.expectEqual(false, options.is_complex);
+    try testing.expectEqual(true, options.vectors_enabled);
+    try testing.expectEqual(@as(?[]const u8, null), options.extra_args);
+    try testing.expectEqualStrings("test_kernel", options.kernel_name);
+}
+
+test "CompileOptions with custom values" {
+    const options = CompileOptions{
+        .is_complex = true,
+        .vectors_enabled = false,
+        .kernel_name = "custom_kernel",
+        .extra_args = "-DCUSTOM_FLAG=1",
+    };
+    
+    try testing.expectEqual(true, options.is_complex);
+    try testing.expectEqual(false, options.vectors_enabled);
+    try testing.expectEqualStrings("custom_kernel", options.kernel_name);
+    try testing.expectEqualStrings("-DCUSTOM_FLAG=1", options.extra_args.?);
+}
+
+test "compileHeader - basic functionality" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    // Test compiling header for f32 type
+    const header_program = try compileHeader(f32, command_queue, true, false);
+    try testing.expect(header_program != null);
+    
+    // Test that subsequent calls return the same program (cached)
+    const header_program2 = try compileHeader(f32, command_queue, true, false);
+    try testing.expectEqual(header_program, header_program2);
+}
+
+test "compileHeader - different type combinations" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    // Test different combinations should produce different programs
+    const header1 = try compileHeader(f32, command_queue, true, false);
+    const header2 = try compileHeader(f32, command_queue, true, true);  // complex
+    const header3 = try compileHeader(f32, command_queue, false, false); // no vectors
+    const header4 = try compileHeader(i32, command_queue, true, false);  // different type
+    
+    // All should be different programs
+    try testing.expect(header1 != header2);
+    try testing.expect(header1 != header3);
+    try testing.expect(header1 != header4);
+    try testing.expect(header2 != header3);
+    try testing.expect(header2 != header4);
+    try testing.expect(header3 != header4);
+}
+
+test "getKernelSet - initialization and caching" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    // Test getting a kernel set
+    const kernel_set = try getKernelSet(command_queue, KernelsID.Fill, 10);
+    try testing.expect(kernel_set.initialized);
+    try testing.expect(kernel_set.kernels != null);
+    try testing.expect(kernel_set.programs != null);
+    try testing.expectEqual(@as(usize, 10), kernel_set.kernels.?.len);
+    try testing.expectEqual(@as(usize, 10), kernel_set.programs.?.len);
+    
+    // Test that subsequent calls return the same kernel set (cached)
+    const kernel_set2 = try getKernelSet(command_queue, KernelsID.Fill, 10);
+    try testing.expectEqual(kernel_set, kernel_set2);
+}
+
+test "getKernelSet - different kernel IDs produce different sets" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    const kernel_set1 = try getKernelSet(command_queue, KernelsID.Fill, 5);
+    const kernel_set2 = try getKernelSet(command_queue, KernelsID.AXPY, 5);
+    
+    try testing.expect(kernel_set1 != kernel_set2);
+}
+
+test "compileKernel - basic compilation" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    // Simple test kernel source
+    const test_kernel_source =
+        \\__kernel void test_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = gid;
+        \\}
+    ;
+    
+    const options = CompileOptions{
+        .is_complex = false,
+        .vectors_enabled = false,
+        .kernel_name = "test_kernel",
+    };
+    
+    var kernel: cl.kernel.Kernel = undefined;
+    var program: cl.program.Program = undefined;
+    
+    try compileKernel(f32, command_queue, options, &kernel, &program, test_kernel_source);
+    
+    // Cleanup
+    cl.kernel.release(kernel);
+    cl.program.release(program);
+}
+
+test "compileCustomKernel - with headers" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    // Get a header program
+    const header_program = try compileHeader(f32, command_queue, false, false);
+    
+    const test_kernel_source =
+        \\#include "wekua.h"
+        \\__kernel void test_custom_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = (float)gid;
+        \\}
+    ;
+    
+    const options = CompileOptions{
+        .is_complex = false,
+        .vectors_enabled = false,
+        .kernel_name = "test_custom_kernel",
+    };
+    
+    var program: cl.program.Program = undefined;
+    
+    const kernel = try compileCustomKernel(
+        f32,
+        command_queue,
+        options,
+        &program,
+        &.{header_program},
+        &.{"wekua.h"},
+        &.{test_kernel_source},
+    );
+    
+    // Cleanup
+    cl.kernel.release(kernel);
+    cl.program.release(program);
+}
+
+test "createAndGetKernel - caching behavior" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    const test_kernel_source =
+        \\__kernel void cache_test_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = gid * 2.0f;
+        \\}
+    ;
+    
+    const options = CompileOptions{
+        .is_complex = false,
+        .vectors_enabled = false,
+        .kernel_name = "cache_test_kernel",
+    };
+    
+    // First call should compile the kernel
+    const kernel1 = try createAndGetKernel(
+        f32,
+        command_queue,
+        KernelsID.Fill,
+        test_kernel_source,
+        options,
+        false, // can_use_complex
+        false, // can_use_vectors
+        core.SupportedTypes.len,
+        core.getTypeId(f32),
+    );
+    
+    // Second call should return the cached kernel
+    const kernel2 = try createAndGetKernel(
+        f32,
+        command_queue,
+        KernelsID.Fill,
+        test_kernel_source,
+        options,
+        false,
+        false,
+        core.SupportedTypes.len,
+        core.getTypeId(f32),
+    );
+    
+    try testing.expectEqual(kernel1, kernel2);
+}
+
+test "getClKernel - index calculation" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    // Skip if f32 is not supported
+    if (!command_queue.typeIsSupported(f32)) return;
+    
+    const test_kernel_source =
+        \\__kernel void index_test_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = gid;
+        \\}
+    ;
+    
+    const kernel = try getClKernel(
+        f32,
+        command_queue,
+        false, // is_complex
+        true,  // vectors_enabled
+        KernelsID.Fill,
+        "index_test_kernel",
+        test_kernel_source,
+        null,
+    );
+    
+    try testing.expect(kernel != null);
+}
+
+test "getClNoVectorKernel - no vector support" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    const test_kernel_source =
+        \\__kernel void no_vector_test_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = gid + 1.0f;
+        \\}
+    ;
+    
+    const kernel = try getClNoVectorKernel(
+        f32,
+        command_queue,
+        false, // is_complex
+        KernelsID.AXPY,
+        "no_vector_test_kernel",
+        test_kernel_source,
+        null,
+    );
+    
+    try testing.expect(kernel != null);
+}
+
+test "getClNoVectorNoComplexSingleKernel - simplest case" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    const test_kernel_source =
+        \\__kernel void simple_test_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = 42.0f;
+        \\}
+    ;
+    
+    const kernel = try getClNoVectorNoComplexSingleKernel(
+        f32,
+        command_queue,
+        KernelsID.Sum,
+        "simple_test_kernel",
+        test_kernel_source,
+        null,
+    );
+    
+    try testing.expect(kernel != null);
+}
+
+test "KernelsID enum completeness" {
+    // Test that all expected kernel types are present
+    const kernel_names = std.meta.fieldNames(KernelsID);
+    
+    // Check some essential kernels exist
+    var has_fill = false;
+    var has_gemm = false;
+    var has_axpy = false;
+    var has_tanh = false;
+    var has_mse = false;
+    
+    for (kernel_names) |name| {
+        if (std.mem.eql(u8, name, "Fill")) has_fill = true;
+        if (std.mem.eql(u8, name, "GEMM")) has_gemm = true;
+        if (std.mem.eql(u8, name, "AXPY")) has_axpy = true;
+        if (std.mem.eql(u8, name, "Tanh")) has_tanh = true;
+        if (std.mem.eql(u8, name, "MSE")) has_mse = true;
+    }
+    
+    try testing.expect(has_fill);
+    try testing.expect(has_gemm);
+    try testing.expect(has_axpy);
+    try testing.expect(has_tanh);
+    try testing.expect(has_mse);
+}
+
+test "CompileOptions with extra_args" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    const test_kernel_source =
+        \\#ifdef CUSTOM_DEFINE
+        \\__kernel void extra_args_test_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = CUSTOM_VALUE;
+        \\}
+        \\#else
+        \\__kernel void extra_args_test_kernel(__global float* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = 0.0f;
+        \\}
+        \\#endif
+    ;
+    
+    const kernel = try getClNoVectorNoComplexSingleKernel(
+        f32,
+        command_queue,
+        KernelsID.Identity,
+        "extra_args_test_kernel",
+        test_kernel_source,
+        "-DCUSTOM_DEFINE -DCUSTOM_VALUE=123.0f",
+    );
+    
+    try testing.expect(kernel != null);
+}
+
+test "Multiple kernel types compilation" {
+    const allocator = testing.allocator;
+    
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+    
+    const command_queue = &context.command_queues[0];
+    
+    const test_kernel_source =
+        \\__kernel void multi_type_test_kernel(__global WK_DTYPE* data) {
+        \\    int gid = get_global_id(0);
+        \\    data[gid] = (WK_DTYPE)gid;
+        \\}
+    ;
+    
+    // Test compilation for different supported types
+    const TestTypes = [_]type{ f32, i32, u32 };
+    
+    inline for (TestTypes) |T| {
+        if (command_queue.typeIsSupported(T)) {
+            const kernel = try getClNoVectorNoComplexSingleKernel(
+                T,
+                command_queue,
+                KernelsID.Dot,
+                "multi_type_test_kernel",
+                test_kernel_source,
+                null,
+            );
+            try testing.expect(kernel != null);
+        }
+    }
+}
