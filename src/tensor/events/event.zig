@@ -39,7 +39,7 @@ events_count: MaxEventsPerSetInt,
 
 index: u8,
 
-pub fn init(self: *Event, index: usize, allocator: std.mem.Allocator) void {
+pub fn initValues(self: *Event, index: usize, allocator: std.mem.Allocator) void {
     self.operation = .none;
     self.callbacks = UserCallbackArray.init(allocator);
     self.events_count = 0;
@@ -147,9 +147,9 @@ const Event = @This();
 const testing = std.testing;
 const core = @import("../../core/main.zig");
 
-test "Event.init initializes correctly" {
+test "Event.initValues initializes correctly" {
     var event: Event = undefined;
-    event.init(5, testing.allocator);
+    event.initValues(5, testing.allocator);
     defer event.callbacks.deinit();
     
     try testing.expect(event.operation == .none);
@@ -162,7 +162,7 @@ test "Event.getParent returns correct parent batch" {
     // Create a real batch structure to test getParent
     var batch: Batch = undefined;
     for (&batch.events, 0..) |*event, i| {
-        event.init(i, testing.allocator);
+        event.initValues(i, testing.allocator);
     }
     defer {
         for (&batch.events) |*event| {
@@ -179,7 +179,7 @@ test "Event.append with none operation sets operation and adds event" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event = try cl.event.createUserEvent(context.ctx);
@@ -198,7 +198,7 @@ test "Event.append with matching operation succeeds" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
@@ -219,7 +219,7 @@ test "Event.append with different operation returns full" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
@@ -240,7 +240,7 @@ test "Event.append with write operation allows only one event" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
@@ -260,7 +260,7 @@ test "Event.append with callback stores callback" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     var test_data: u32 = 42;
@@ -288,7 +288,7 @@ test "Event.append returns success_and_full when reaching capacity" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     var events_to_cleanup = std.ArrayList(cl.event.Event).init(testing.allocator);
@@ -320,7 +320,7 @@ test "Event.pop decrements count and resets operation when empty" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event = try cl.event.createUserEvent(context.ctx);
@@ -338,7 +338,7 @@ test "Event.pop with callback removes callback" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     var test_data: u32 = 42;
@@ -379,7 +379,7 @@ test "Event.full returns correct state" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     try testing.expect(event.full() == false);
@@ -397,7 +397,7 @@ test "Event.toSlice returns correct slice" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
@@ -416,7 +416,7 @@ test "Event.toSlice returns correct slice" {
 
 test "Event.appendCallback adds callback without event" {
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     var test_data: u32 = 42;
@@ -436,7 +436,7 @@ test "Event.appendCallback adds callback without event" {
 
 test "Event.executeCallbacks runs all callbacks" {
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     var counter: u32 = 0;
@@ -472,7 +472,7 @@ test "Event.waitForEvents waits and executes callbacks" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     var callback_executed: bool = false;
@@ -503,7 +503,7 @@ test "Event.clear releases events and clears callbacks" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event = try cl.event.createUserEvent(context.ctx);
@@ -533,7 +533,7 @@ test "Event.restart clears and resets state" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     const cl_event = try cl.event.createUserEvent(context.ctx);
@@ -565,7 +565,7 @@ test "Event.append error handling - operation reverts on callback error" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     // Force an allocation error by using a failing allocator
@@ -596,7 +596,7 @@ test "Event operations with mixed scenarios" {
     defer context.deinit();
     
     var event: Event = undefined;
-    event.init(0, testing.allocator);
+    event.initValues(0, testing.allocator);
     defer event.callbacks.deinit();
     
     // Test sequence: none -> read -> try write (should fail) -> continue read
