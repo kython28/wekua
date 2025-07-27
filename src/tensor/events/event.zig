@@ -54,6 +54,12 @@ pub fn init(index: usize, allocator: std.mem.Allocator) !*Event {
     return self;
 }
 
+pub fn deinit(self: *Event) void {
+    const allocator = self.callbacks.allocator;
+    self.callbacks.deinit();
+    allocator.destroy(self);
+}
+
 pub inline fn getParent(self: *Event) *Batch {
     const ptr: usize = @intFromPtr(self) - @offsetOf(Batch, "events") - @as(usize, self.index) * @sizeOf(Event);
     return @ptrFromInt(ptr);
@@ -155,10 +161,9 @@ const Event = @This();
 const testing = std.testing;
 const core = @import("../../core/main.zig");
 
-test "Event.initValues initializes correctly" {
-    var event: Event = undefined;
-    event.initValues(5, testing.allocator);
-    defer event.callbacks.deinit();
+test "Event.init initializes correctly" {
+    const event = try Event.init(5, testing.allocator);
+    defer event.deinit();
 
     try testing.expect(event.operation == .none);
     try testing.expect(event.events_count == 0);
@@ -184,9 +189,8 @@ test "Event.append with none operation sets operation and adds event" {
     );
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
@@ -203,9 +207,8 @@ test "Event.append with matching operation succeeds" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
@@ -224,9 +227,8 @@ test "Event.append with different operation returns full" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
@@ -245,9 +247,8 @@ test "Event.append with write operation allows only one event" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
@@ -265,9 +266,8 @@ test "Event.append with callback stores callback" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     var test_data: u32 = 42;
     const callback = UserCallback{
@@ -293,9 +293,8 @@ test "Event.append returns success_and_full when reaching capacity" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     var events_to_cleanup = std.ArrayList(cl.event.Event).init(testing.allocator);
     defer {
@@ -325,9 +324,8 @@ test "Event.pop decrements count and resets operation when empty" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
@@ -343,9 +341,8 @@ test "Event.pop with callback removes callback" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     var test_data: u32 = 42;
     const callback = UserCallback{
@@ -384,9 +381,8 @@ test "Event.full returns correct state" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     try testing.expect(event.full() == false);
 
@@ -402,9 +398,8 @@ test "Event.toSlice returns correct slice" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
@@ -421,9 +416,8 @@ test "Event.toSlice returns correct slice" {
 }
 
 test "Event.appendCallback adds callback without event" {
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     var test_data: u32 = 42;
     const callback = UserCallback{
@@ -441,9 +435,8 @@ test "Event.appendCallback adds callback without event" {
 }
 
 test "Event.executeCallbacks runs all callbacks" {
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     var counter: u32 = 0;
     const callback1 = UserCallback{
@@ -477,9 +470,8 @@ test "Event.waitForEvents waits and executes callbacks" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     var callback_executed: bool = false;
     const callback = UserCallback{
@@ -574,9 +566,8 @@ test "Event.append error handling - operation reverts on callback error" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     // Force an allocation error by using a failing allocator
     var failing_allocator = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
@@ -605,9 +596,8 @@ test "Event operations with mixed scenarios" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
 
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    const event = try Event.init(0, testing.allocator);
+    defer event.deinit();
 
     // Test sequence: none -> read -> try write (should fail) -> continue read
     try testing.expect(event.operation == .none);
