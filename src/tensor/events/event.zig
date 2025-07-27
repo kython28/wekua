@@ -161,14 +161,8 @@ test "Event.initValues initializes correctly" {
 test "Event.getParent returns correct parent batch" {
     // Create a real batch structure to test getParent
     var batch: Batch = undefined;
-    for (&batch.events, 0..) |*event, i| {
-        event.initValues(i, testing.allocator);
-    }
-    defer {
-        for (&batch.events) |*event| {
-            event.callbacks.deinit();
-        }
-    }
+    try batch.initValue(testing.allocator, null);
+    defer batch.clear();
     
     const parent = batch.events[3].getParent();
     try testing.expect(@intFromPtr(parent) == @intFromPtr(&batch));
@@ -502,9 +496,11 @@ test "Event.clear releases events and clears callbacks" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
     
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    var batch: Batch = undefined;
+    try batch.initValue(testing.allocator, null);
+    defer batch.clear();
+    
+    var event = &batch.events[0];
     
     const cl_event = try cl.event.createUserEvent(context.ctx);
     // Don't defer release here since clear() will handle it
@@ -532,9 +528,11 @@ test "Event.restart clears and resets state" {
     const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
     defer context.deinit();
     
-    var event: Event = undefined;
-    event.initValues(0, testing.allocator);
-    defer event.callbacks.deinit();
+    var batch: Batch = undefined;
+    try batch.initValue(testing.allocator, null);
+    defer batch.clear();
+    
+    var event = &batch.events[0];
     
     const cl_event = try cl.event.createUserEvent(context.ctx);
     // Don't defer release here since restart() will handle it
