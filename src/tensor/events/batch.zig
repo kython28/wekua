@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 const cl = @import("opencl");
 const Event = @import("event.zig");
 
-const BatchLenght = switch (builtin.mode) {
+const Lenght = switch (builtin.mode) {
     .Debug => 4,
     .ReleaseSafe, .ReleaseFast => 128,
     .ReleaseSmall => 16,
@@ -13,7 +13,7 @@ const BatchLenght = switch (builtin.mode) {
 allocator: std.mem.Allocator,
 prev_events: ?[]cl.event.Event,
 
-events: [BatchLenght]Event,
+events: [Lenght]Event,
 events_num: u8,
 
 pub fn init(
@@ -66,7 +66,7 @@ pub inline fn empty(self: *const Batch) bool {
 }
 
 pub inline fn full(self: *const Batch) bool {
-    return (self.events_num == BatchLenght);
+    return (self.events_num == Lenght);
 }
 
 pub inline fn getPrevEvents(self: *const Batch) ?[]const cl.event.Event {
@@ -133,7 +133,7 @@ pub fn waitForPendingEvents(self: *Batch) void {
         }
 
         events_num += 1;
-    } else if (events_num < BatchLenght) {
+    } else if (events_num < Lenght) {
         if (self.events[events_num].operation != .none) {
             events_num += 1;
         }

@@ -5,7 +5,7 @@ const core = @import("../core/main.zig");
 const Context = core.Context;
 const CommandQueue = core.CommandQueue;
 
-pub const EventManager = @import("event_manager.zig");
+pub const Events = @import("events/main.zig");
 const utils = @import("../utils/utils.zig");
 
 pub const helpers = @import("helpers.zig");
@@ -194,11 +194,7 @@ const WorkConfiguration = struct {
 
                     algorithm = @field(blas.gemm.Algorithm, algorithm_name);
 
-                    utils.calculateWorkItems(
-                        g_values,
-                        &@field(self, l_field_name)[i],
-                        @min(block_length2 * block_length2, cmd.max_work_group_size)
-                    );
+                    utils.calculateWorkItems(g_values, &@field(self, l_field_name)[i], @min(block_length2 * block_length2, cmd.max_work_group_size));
                 }
             }
 
@@ -241,7 +237,7 @@ pub fn Tensor(comptime T: type) type {
         memory_layout: MemoryLayout,
         flags: Flags,
 
-        events_manager: EventManager,
+        events: Events,
 
         const Self = @This();
 
@@ -255,7 +251,7 @@ pub fn Tensor(comptime T: type) type {
             self.pitches_buffer = pitches_buffer;
             errdefer cl.buffer.release(pitches_buffer);
 
-            const prev_events = self.events_manager.getPrevEvents(.write);
+            const prev_events = self.events.getPrevEvents(.write);
 
             var new_event: cl.event.cl_event = undefined;
             const command_queue = context.command_queues[0];
@@ -271,7 +267,7 @@ pub fn Tensor(comptime T: type) type {
             );
             errdefer |err| helpers.releaseEvent(new_event, err);
 
-            _ = try self.events_manager.appendNewEvent(.write, prev_events, new_event, null);
+            _ = try self.events.appendNewEvent(.write, prev_events, new_event, null);
         }
 
         pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*Self {
@@ -286,8 +282,8 @@ pub fn Tensor(comptime T: type) type {
             errdefer allocator.destroy(tensor);
 
             tensor.context = context;
-            try tensor.events_manager.init(allocator, @constCast(&context.events_batch_queue));
-            errdefer tensor.events_manager.deinit();
+            try tensor.events.init(allocator, @constCast(&context.events_batch_queue));
+            errdefer tensor.events.deinit();
 
             tensor.arena = std.heap.ArenaAllocator.init(allocator);
             errdefer tensor.arena.deinit();
@@ -408,7 +404,12 @@ pub fn Tensor(comptime T: type) type {
             const size = number_of_elements * @sizeOf(T);
             tensor.memory_layout.size = size;
 
-            tensor.buffer = try cl.buffer.create(context.ctx, config.cl_mem_flags, size, config.host_ptr);
+            tensor.buffer = try cl.buffer.create(
+                context.ctx,
+                config.cl_mem_flags,
+                size,
+                config.host_ptr,
+            );
             errdefer cl.buffer.release(tensor.buffer);
 
             try tensor.createPitchBuffer(context, pitches);
@@ -418,7 +419,7 @@ pub fn Tensor(comptime T: type) type {
         pub fn release(self: *Self) void {
             const allocator = self.context.allocator;
 
-            self.events_manager.deinit();
+            self.events.deinit();
 
             cl.buffer.release(self.buffer);
             cl.buffer.release(self.pitches_buffer);
@@ -431,7 +432,7 @@ pub fn Tensor(comptime T: type) type {
             const tensor = try empty(context, shape, config);
             errdefer tensor.release();
 
-            const prev_events = tensor.events_manager.getPrevEvents(.write);
+            const prev_events = tensor.events.getPrevEvents(.write);
 
             const zero: T = 0;
             const command_queue = context.command_queues[0];
@@ -450,12 +451,12 @@ pub fn Tensor(comptime T: type) type {
             );
             errdefer |err| helpers.releaseEvent(new_event, err);
 
-            _ = try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
+            _ = try tensor.events.appendNewEvent(.write, prev_events, new_event, null);
             return tensor;
         }
 
         pub fn wait(self: *Self) !void {
-            const prev_events = self.events_manager.getPrevEvents(.write) orelse return;
+            const prev_events = self.events.getPrevEvents(.write) orelse return;
             try cl.event.wait_for_many(prev_events);
         }
     };
