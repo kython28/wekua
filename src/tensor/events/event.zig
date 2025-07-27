@@ -21,7 +21,7 @@ pub const Operation = enum {
 };
 
 const MaxEventsPerSet = switch (builtin.mode) {
-    .Debug => 32,
+    .Debug => 8,
     .ReleaseFast, .ReleaseSafe => 256,
     .ReleaseSmall => 64,
 };
