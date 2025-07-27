@@ -96,6 +96,7 @@ pub inline fn clear(self: *Batch) void {
     for (self.sets[0..self.number_of_sets]) |*event| {
         event.clear();
     }
+    self.number_of_sets = 0;
 }
 
 pub fn restart(self: *Batch, new_prev_events: ?[]const cl.event.Event) !void {
@@ -126,6 +127,8 @@ pub fn restart(self: *Batch, new_prev_events: ?[]const cl.event.Event) !void {
             try cl.event.retain(e);
             prev_events[index] = e;
         }
+
+        self.prev_events = prev_events;
     }
 
     for (self.sets[0..self.number_of_sets]) |*event| {
@@ -199,7 +202,7 @@ test "Batch.init with prev_events" {
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
-    defer cl.event.release(cl_event1);
+    defer cl.event.release(cl_event2);
 
     const prev_events = [_]cl.event.Event{ cl_event1, cl_event2 };
 
@@ -306,8 +309,6 @@ test "Batch.clear releases prev_events and clears event states" {
     batch.clear();
 
     try testing.expect(batch.prev_events == null);
-    // Note: We can't easily test that events are cleared since clear() calls event.clear()
-    // which deinitializes the callbacks ArrayList
 }
 
 test "Batch.restart with null new_prev_events" {
@@ -502,6 +503,7 @@ test "Batch.waitForPendingEvents at full capacity" {
 
         try cl.event.setUserEventStatus(cl_event, .complete);
     }
+    number_of_events_to_cleanup = 0;
 
     batch.waitForPendingEvents();
 
