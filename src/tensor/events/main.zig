@@ -2,8 +2,8 @@ const std = @import("std");
 
 const cl = @import("opencl");
 
-const Batch = @import("batch.zig");
 const Event = @import("event.zig");
+const Batch = @import("batch.zig");
 pub const Set = @import("set.zig");
 
 const Operation = Event.Operation;
@@ -24,10 +24,8 @@ pub fn init(
 ) !void {
     self.allocator = allocator;
 
-    const batch = try allocator.create(Batch);
-    errdefer allocator.destroy(batch);
-
-    try batch.init(allocator, null);
+    const batch = try Batch.init(allocator, null);
+    errdefer batch.deinit();
 
     self.batch = batch;
     self.events_releaser_queue = queue;

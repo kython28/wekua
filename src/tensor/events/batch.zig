@@ -16,7 +16,7 @@ prev_events: ?[]cl.event.Event,
 events: [Lenght]Event,
 events_num: u8,
 
-pub fn init(
+pub fn initValue(
     self: *Batch,
     allocator: std.mem.Allocator,
     prev_events: ?[]const cl.event.Event,
@@ -59,6 +59,17 @@ pub fn init(
     }
 
     self.events_num = 0;
+}
+
+pub fn init(
+    allocator: std.mem.Allocator,
+    prev_events: ?[]const cl.event.Event,
+) !Batch {
+    const batch = try allocator.create(Batch);
+    errdefer allocator.destroy(batch);
+
+    try batch.initValue(allocator, prev_events);
+    return batch;
 }
 
 pub inline fn empty(self: *const Batch) bool {
@@ -150,7 +161,7 @@ pub fn waitForPendingEvents(self: *Batch) void {
     }
 }
 
-pub fn release(self: *Batch) void {
+pub fn deinit(self: *Batch) void {
     self.clear();
     self.allocator.destroy(self);
 }

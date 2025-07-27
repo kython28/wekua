@@ -173,9 +173,8 @@ test "Event.init initializes correctly" {
 
 test "Event.getParent returns correct parent batch" {
     // Create a real batch structure to test getParent
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     const parent = batch.events[0].getParent();
     try testing.expect(@intFromPtr(parent) == @intFromPtr(&batch));
@@ -204,7 +203,11 @@ test "Event.append with none operation sets operation and adds event" {
 }
 
 test "Event.append with matching operation succeeds" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -215,16 +218,23 @@ test "Event.append with matching operation succeeds" {
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    _ = try event.append(.read, cl_event1, null);
-    const result = try event.append(.read, cl_event2, null);
-
+    var result = try event.append(.read, cl_event1, null);
     try testing.expect(result == .success);
+
+    result = try event.append(.read, cl_event2, null);
+    try testing.expect(result == .success);
+
     try testing.expect(event.events_count == 2);
+    try testing.expect(event.events[0] == cl_event1);
     try testing.expect(event.events[1] == cl_event2);
 }
 
 test "Event.append with different operation returns full" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -235,16 +245,22 @@ test "Event.append with different operation returns full" {
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    _ = try event.append(.read, cl_event1, null);
-    const result = try event.append(.write, cl_event2, null);
+    var result = try event.append(.read, cl_event1, null);
+    try testing.expect(result == .success);
 
+    result = try event.append(.write, cl_event2, null);
     try testing.expect(result == .full);
+
     try testing.expect(event.operation == .read);
     try testing.expect(event.events_count == 1);
 }
 
 test "Event.append with write operation allows only one event" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -255,15 +271,21 @@ test "Event.append with write operation allows only one event" {
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    _ = try event.append(.write, cl_event1, null);
-    const result = try event.append(.write, cl_event2, null);
+    var result = try event.append(.write, cl_event1, null);
+    try testing.expect(result == .success);
 
+    result = try event.append(.write, cl_event2, null);
     try testing.expect(result == .full);
+
     try testing.expect(event.events_count == 1);
 }
 
 test "Event.append with callback stores callback" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -283,14 +305,19 @@ test "Event.append with callback stores callback" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    _ = try event.append(.read, cl_event, callback);
+    const result = try event.append(.read, cl_event, callback);
+    try testing.expect(result == .success);
 
     try testing.expect(event.callbacks.items.len == 1);
     try testing.expect(event.callbacks.items[0].data == &test_data);
 }
 
 test "Event.append returns success_and_full when reaching capacity" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -315,13 +342,18 @@ test "Event.append returns success_and_full when reaching capacity" {
     // Last append should return success_and_full
     const last_event = try cl.event.createUserEvent(context.ctx);
     try events_to_cleanup.append(last_event);
+
     const result = try event.append(.read, last_event, null);
     try testing.expect(result == .success_and_full);
     try testing.expect(event.events_count == MaxEventsPerSet);
 }
 
 test "Event.pop decrements count and resets operation when empty" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -330,7 +362,8 @@ test "Event.pop decrements count and resets operation when empty" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    _ = try event.append(.read, cl_event, null);
+    const result = try event.append(.read, cl_event, null);
+    try testing.expect(result == .success);
 
     event.pop(false);
     try testing.expect(event.events_count == 0);
@@ -338,7 +371,11 @@ test "Event.pop decrements count and resets operation when empty" {
 }
 
 test "Event.pop with callback removes callback" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -357,7 +394,8 @@ test "Event.pop with callback removes callback" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    _ = try event.append(.read, cl_event, callback);
+    const result = try event.append(.read, cl_event, callback);
+    try testing.expect(result == .success);
 
     try testing.expect(event.callbacks.items.len == 1);
     event.pop(true);
@@ -378,7 +416,11 @@ test "Event.isFull returns correct values for different operations" {
 }
 
 test "Event.full returns correct state" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -390,12 +432,17 @@ test "Event.full returns correct state" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    _ = try event.append(.write, cl_event, null);
+    const result = try event.append(.write, cl_event, null);
+    try testing.expect(result == .success);
     try testing.expect(event.full() == true);
 }
 
 test "Event.toSlice returns correct slice" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -406,8 +453,11 @@ test "Event.toSlice returns correct slice" {
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    _ = try event.append(.read, cl_event1, null);
-    _ = try event.append(.read, cl_event2, null);
+    var result = try event.append(.read, cl_event1, null);
+    try testing.expect(result == .success);
+
+    result = try event.append(.read, cl_event2, null);
+    try testing.expect(result == .success);
 
     const slice = event.toSlice();
     try testing.expect(slice.len == 2);
@@ -467,7 +517,11 @@ test "Event.executeCallbacks runs all callbacks" {
 }
 
 test "Event.waitForEvents waits and executes callbacks" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -487,7 +541,8 @@ test "Event.waitForEvents waits and executes callbacks" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    _ = try event.append(.read, cl_event, callback);
+    const result = try event.append(.read, cl_event, callback);
+    try testing.expect(result == .success);
 
     // Set the user event to complete so waitForEvents doesn't block
     try cl.event.setUserEventStatus(cl_event, .complete);
@@ -497,7 +552,11 @@ test "Event.waitForEvents waits and executes callbacks" {
 }
 
 test "Event.clear releases events and clears callbacks" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     var batch: Batch = undefined;
@@ -519,7 +578,9 @@ test "Event.clear releases events and clears callbacks" {
         .data = &test_data,
     };
 
-    _ = try event.append(.read, cl_event, callback);
+    const result = try event.append(.read, cl_event, callback);
+    try testing.expect(result == .success);
+
     try testing.expect(event.events_count == 1);
     try testing.expect(event.callbacks.items.len == 1);
 
@@ -529,7 +590,11 @@ test "Event.clear releases events and clears callbacks" {
 }
 
 test "Event.restart clears and resets state" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     var batch: Batch = undefined;
@@ -539,6 +604,8 @@ test "Event.restart clears and resets state" {
     var event = &batch.events[0];
 
     const cl_event = try cl.event.createUserEvent(context.ctx);
+    var can_release = true;
+    defer if (can_release) cl.event.release(cl_event);
     // Don't defer release here since restart() will handle it
 
     var test_data: u32 = 42;
@@ -551,7 +618,10 @@ test "Event.restart clears and resets state" {
         .data = &test_data,
     };
 
-    _ = try event.append(.read, cl_event, callback);
+    const result = try event.append(.read, cl_event, callback);
+    try testing.expect(result == .success);
+    can_release = false;
+
     try testing.expect(event.events_count == 1);
     try testing.expect(event.operation == .read);
 
@@ -563,14 +633,21 @@ test "Event.restart clears and resets state" {
 }
 
 test "Event.append error handling - operation reverts on callback error" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
     defer event.deinit();
 
     // Force an allocation error by using a failing allocator
-    var failing_allocator = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
+    var failing_allocator = testing.FailingAllocator.init(
+        testing.allocator,
+        .{ .fail_index = 0 },
+    );
     event.callbacks.deinit();
     event.callbacks = UserCallbackArray.init(failing_allocator.allocator());
 
@@ -593,7 +670,11 @@ test "Event.append error handling - operation reverts on callback error" {
 }
 
 test "Event operations with mixed scenarios" {
-    const context = try core.Context.initFromDeviceType(testing.allocator, null, cl.device.Type.all);
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
     defer context.deinit();
 
     const event = try Event.init(0, testing.allocator);
@@ -604,12 +685,14 @@ test "Event operations with mixed scenarios" {
 
     const read_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(read_event1);
+
     var result = try event.append(.read, read_event1, null);
     try testing.expect(result == .success);
     try testing.expect(event.operation == .read);
 
     const write_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(write_event);
+
     result = try event.append(.write, write_event, null);
     try testing.expect(result == .full);
     try testing.expect(event.operation == .read); // Should remain read
@@ -617,6 +700,7 @@ test "Event operations with mixed scenarios" {
 
     const read_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(read_event2);
+
     result = try event.append(.read, read_event2, null);
     try testing.expect(result == .success);
     try testing.expect(event.events_count == 2);
