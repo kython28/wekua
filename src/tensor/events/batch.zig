@@ -172,10 +172,9 @@ const Batch = @This();
 const testing = std.testing;
 const core = @import("core");
 
-test "Batch.initValue with null prev_events" {
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+test "Batch.init with null prev_events" {
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     try testing.expect(batch.prev_events == null);
     try testing.expect(batch.events_num == 0);
@@ -190,7 +189,7 @@ test "Batch.initValue with null prev_events" {
     }
 }
 
-test "Batch.initValue with prev_events" {
+test "Batch.init with prev_events" {
     const context = try core.Context.initFromDeviceType(
         testing.allocator,
         null,
@@ -201,46 +200,21 @@ test "Batch.initValue with prev_events" {
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
-    defer cl.event.release(cl_event2);
+    defer cl.event.release(cl_event1);
 
     const prev_events = [_]cl.event.Event{ cl_event1, cl_event2 };
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, &prev_events);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, &prev_events);
+    defer batch.deinit();
 
     try testing.expect(batch.prev_events != null);
     try testing.expect(batch.prev_events.?.len == 2);
     try testing.expect(batch.events_num == 0);
 }
 
-test "Batch.init creates and initializes correctly" {
-    const context = try core.Context.initFromDeviceType(
-        testing.allocator,
-        null,
-        cl.device.Type.all,
-    );
-    defer context.deinit();
-
-    const cl_event = try cl.event.createUserEvent(context.ctx);
-    defer cl.event.release(cl_event);
-
-    const prev_events = [_]cl.event.Event{cl_event};
-
-    const batch = try Batch.init(testing.allocator, &prev_events);
-    defer batch.deinit();
-
-    try testing.expect(batch.prev_events != null);
-    try testing.expect(batch.prev_events.?.len == 1);
-    try testing.expect(batch.events_num == 0);
-    try testing.expect(batch.empty());
-    try testing.expect(!batch.full());
-}
-
 test "Batch.empty and full state management" {
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     // Initially empty
     try testing.expect(batch.empty());
@@ -277,9 +251,8 @@ test "Batch.getPrevEvents returns correct events" {
 
     const prev_events = [_]cl.event.Event{ cl_event1, cl_event2 };
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, &prev_events);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, &prev_events);
+    defer batch.deinit();
 
     const returned_events = batch.getPrevEvents();
     try testing.expect(returned_events != null);
@@ -289,9 +262,8 @@ test "Batch.getPrevEvents returns correct events" {
 }
 
 test "Batch.getPrevEvents returns null when no prev_events" {
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     const returned_events = batch.getPrevEvents();
     try testing.expect(returned_events == null);
@@ -310,14 +282,20 @@ test "Batch.clear releases prev_events and clears event states" {
 
     const prev_events = [_]cl.event.Event{cl_event};
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, &prev_events);
+    const batch = try Batch.init(testing.allocator, &prev_events);
+    defer batch.deinit();
 
     // Add some events to simulate state
     const test_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(test_event);
 
-    const result = try batch.events[0].append(.read, test_event, null);
+    try cl.event.retain(test_event);
+
+    const result = batch.events[0].append(.read, test_event, null) catch |err| {
+        cl.event.release(test_event);
+        return err;
+    };
+
     try testing.expect(result == .success);
     batch.events_num = 1;
 
@@ -346,9 +324,8 @@ test "Batch.restart with null new_prev_events" {
 
     const prev_events = [_]cl.event.Event{cl_event};
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, &prev_events);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, &prev_events);
+    defer batch.deinit();
 
     // Add some state
     batch.events_num = 2;
@@ -377,9 +354,8 @@ test "Batch.restart with new prev_events" {
     const old_prev_events = [_]cl.event.Event{old_event};
     const new_prev_events = [_]cl.event.Event{ new_event1, new_event2 };
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, &old_prev_events);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, &old_prev_events);
+    defer batch.deinit();
 
     // Add some state
     batch.events_num = 1;
@@ -392,12 +368,14 @@ test "Batch.restart with new prev_events" {
 }
 
 test "Batch.restart with too many events returns error" {
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     // Create an array that's too large
-    const too_many_events = try testing.allocator.alloc(cl.event.Event, Event.MaxEventsPerSet * 2 + 1);
+    const too_many_events = try testing.allocator.alloc(
+        cl.event.Event,
+        Event.MaxEventsPerSet * 2 + 1,
+    );
     defer testing.allocator.free(too_many_events);
 
     const result = batch.restart(too_many_events);
@@ -405,9 +383,8 @@ test "Batch.restart with too many events returns error" {
 }
 
 test "Batch.waitForPendingEvents with no events" {
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     // Should not panic or error
     batch.waitForPendingEvents();
@@ -423,15 +400,19 @@ test "Batch.waitForPendingEvents with events in first slot" {
     );
     defer context.deinit();
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
+    try cl.event.retain(cl_event);
+
     // Add event to first slot but don't increment events_num
-    const result = try batch.events[0].append(.read, cl_event, null);
+    const result = batch.events[0].append(.read, cl_event, null) catch |err| {
+        cl.event.release(cl_event);
+        return err;
+    };
     try testing.expect(result == .success);
 
     // Set event to complete so waitForEvents doesn't block
@@ -450,21 +431,30 @@ test "Batch.waitForPendingEvents with events beyond current count" {
     );
     defer context.deinit();
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
+    try cl.event.retain(cl_event1);
+
     // Add events
-    var result = try batch.events[0].append(.read, cl_event1, null);
+    var result = batch.events[0].append(.read, cl_event1, null) catch |err| {
+        cl.event.release(cl_event1);
+        return err;
+    };
     try testing.expect(result == .success);
     batch.events_num = 1;
 
-    result = try batch.events[1].append(.write, cl_event2, null);
+    try cl.event.retain(cl_event2);
+
+    result = batch.events[1].append(.write, cl_event2, null) catch |err| {
+        cl.event.release(cl_event2);
+        return err;
+    };
     try testing.expect(result == .success_and_full);
 
     // Set events to complete
@@ -484,27 +474,31 @@ test "Batch.waitForPendingEvents at full capacity" {
     );
     defer context.deinit();
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     // Fill to capacity
     batch.events_num = Length;
 
-    var events_to_cleanup = std.ArrayList(cl.event.Event).init(testing.allocator);
+    const events_to_cleanup = try testing.allocator.alloc(cl.event.Event, Length);
+    var number_of_events_to_cleanup: usize = 0;
     defer {
-        for (events_to_cleanup.items) |e| {
+        for (events_to_cleanup[0..number_of_events_to_cleanup]) |e| {
             cl.event.release(e);
         }
-        events_to_cleanup.deinit();
+        testing.allocator.free(events_to_cleanup);
     }
 
     // Add events to each slot
     for (0..Length) |i| {
         const cl_event = try cl.event.createUserEvent(context.ctx);
-        try events_to_cleanup.append(cl_event);
+        events_to_cleanup[i] = cl_event;
+        number_of_events_to_cleanup += 1;
 
-        const result = try batch.events[i].append(.read, cl_event, null);
+        const result = batch.events[i].append(.read, cl_event, null) catch |err| {
+            cl.event.release(cl_event);
+            return err;
+        };
         try testing.expect(result == .success or result == .success_and_full);
 
         try cl.event.setUserEventStatus(cl_event, .complete);
@@ -529,69 +523,22 @@ test "Batch.deinit calls clear and destroys" {
     const prev_events = [_]cl.event.Event{cl_event};
 
     const batch = try Batch.init(testing.allocator, &prev_events);
+    defer batch.deinit();
 
     // Add some state
     const test_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(test_event);
 
-    const result = try batch.events[0].append(.read, test_event, null);
+    try cl.event.retain(test_event);
+
+    const result = batch.events[0].append(.read, test_event, null) catch |err| {
+        cl.event.release(test_event);
+        return err;
+    };
     try testing.expect(result == .success);
 
     // Set event to complete
     try cl.event.setUserEventStatus(test_event, .complete);
-
-    // deinit should handle everything
-    batch.deinit();
-}
-
-test "Batch error handling during initValue with prev_events retain failure" {
-    const context = try core.Context.initFromDeviceType(
-        testing.allocator,
-        null,
-        cl.device.Type.all,
-    );
-    defer context.deinit();
-
-    const cl_event = try cl.event.createUserEvent(context.ctx);
-    defer cl.event.release(cl_event);
-
-    const prev_events = [_]cl.event.Event{cl_event};
-
-    var batch: Batch = undefined;
-
-    // This test is tricky because we can't easily force cl.event.retain to fail
-    // But we can test the successful path
-    try batch.initValue(testing.allocator, &prev_events);
-    defer batch.clear();
-
-    try testing.expect(batch.prev_events != null);
-    try testing.expect(batch.prev_events.?.len == 1);
-}
-
-test "Batch state transitions during operations" {
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
-
-    // Test empty -> not empty transition
-    try testing.expect(batch.empty());
-    batch.events_num = 1;
-    try testing.expect(!batch.empty());
-    try testing.expect(!batch.full());
-
-    // Test not full -> full transition
-    batch.events_num = Length - 1;
-    try testing.expect(!batch.full());
-    batch.events_num = Length;
-    try testing.expect(batch.full());
-
-    // Test full -> not full transition
-    batch.events_num = Length - 1;
-    try testing.expect(!batch.full());
-
-    // Test not empty -> empty transition
-    batch.events_num = 0;
-    try testing.expect(batch.empty());
 }
 
 test "Batch multiple restart cycles" {
@@ -607,9 +554,8 @@ test "Batch multiple restart cycles" {
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     // First restart with events
     const prev_events1 = [_]cl.event.Event{cl_event1};
@@ -629,9 +575,8 @@ test "Batch multiple restart cycles" {
 }
 
 test "Batch events array initialization and indexing" {
-    var batch: Batch = undefined;
-    try batch.initValue(testing.allocator, null);
-    defer batch.clear();
+    const batch = try Batch.init(testing.allocator, null);
+    defer batch.deinit();
 
     // Verify all events are properly initialized with correct indices
     for (batch.events, 0..) |*event, expected_index| {
@@ -641,6 +586,6 @@ test "Batch events array initialization and indexing" {
 
         // Verify getParent works correctly
         const parent = event.getParent();
-        try testing.expect(@intFromPtr(parent) == @intFromPtr(&batch));
+        try testing.expect(@intFromPtr(parent) == @intFromPtr(batch));
     }
 }
