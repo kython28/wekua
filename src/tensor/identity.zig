@@ -35,7 +35,7 @@ pub fn identity(
     );
     const cmd = command_queue.cmd;
 
-    const prev_events = tensor.events_manager.getPrevEvents(.write);
+    const prev_events = tensor.events.getPrevEvents(.write);
 
     const set_arg = cl.kernel.set_arg;
     const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
@@ -63,5 +63,5 @@ pub fn identity(
     );
     errdefer |err| helpers.releaseEvent(new_event, err);
 
-    _ = try tensor.events_manager.appendNewEvent(.write, prev_events, new_event, null);
+    _ = try tensor.events.appendNewEvent(.write, prev_events, new_event, null);
 }

@@ -49,11 +49,11 @@ pub fn transpose(
     );
     const cmd = command_queue.cmd;
 
-    const src_prev_events = tensor.events_manager.getPrevEvents(.read);
-    const dst_prev_events = result_tensor.events_manager.getPrevEvents(.write);
+    const src_prev_events = tensor.events.getPrevEvents(.read);
+    const dst_prev_events = result_tensor.events.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const events_set = try w_tensor.EventManager.EventsSet.init(
+    const events_set = try w_tensor.Events.EventsSet.init(
         allocator,
         &.{ src_prev_events, dst_prev_events },
         null,

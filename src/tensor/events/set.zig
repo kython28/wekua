@@ -100,7 +100,7 @@ pub fn appendNewEvent(
 
     var event: *Event = undefined;
     for (new_ops, tensors) |new_op, tensor| {
-        event = try tensor.events_manager.appendNewEvent(
+        event = try tensor.events.appendNewEvent(
             new_op,
             prev_events,
             new_Event,

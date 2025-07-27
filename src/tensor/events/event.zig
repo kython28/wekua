@@ -100,7 +100,7 @@ pub fn append(
 pub inline fn pop(self: *Event, had_callback: bool) void {
     const events_count = self.events_count;
     self.events_count = events_count - 1;
-    if (events_count == 0) {
+    if (events_count == 1) {
         self.operation = .none;
     }
 
@@ -159,7 +159,7 @@ const Event = @This();
 
 // Tests
 const testing = std.testing;
-const core = @import("../../core/main.zig");
+const core = @import("core");
 
 test "Event.init initializes correctly" {
     const event = try Event.init(5, testing.allocator);
@@ -177,7 +177,7 @@ test "Event.getParent returns correct parent batch" {
     defer batch.deinit();
 
     const parent = batch.events[0].getParent();
-    try testing.expect(@intFromPtr(parent) == @intFromPtr(&batch));
+    try testing.expect(@intFromPtr(parent) == @intFromPtr(batch));
 }
 
 test "Event.append with none operation sets operation and adds event" {
@@ -272,7 +272,7 @@ test "Event.append with write operation allows only one event" {
     defer cl.event.release(cl_event2);
 
     var result = try event.append(.write, cl_event1, null);
-    try testing.expect(result == .success);
+    try testing.expect(result == .success_and_full);
 
     result = try event.append(.write, cl_event2, null);
     try testing.expect(result == .full);
@@ -309,7 +309,7 @@ test "Event.append with callback stores callback" {
     try testing.expect(result == .success);
 
     try testing.expect(event.callbacks.items.len == 1);
-    try testing.expect(event.callbacks.items[0].data == &test_data);
+    try testing.expect(@intFromPtr(event.callbacks.items[0].data) == @intFromPtr(&test_data));
 }
 
 test "Event.append returns success_and_full when reaching capacity" {
@@ -433,7 +433,7 @@ test "Event.full returns correct state" {
     defer cl.event.release(cl_event);
 
     const result = try event.append(.write, cl_event, null);
-    try testing.expect(result == .success);
+    try testing.expect(result == .success_and_full);
     try testing.expect(event.full() == true);
 }
 
@@ -481,7 +481,7 @@ test "Event.appendCallback adds callback without event" {
 
     try event.appendCallback(callback);
     try testing.expect(event.callbacks.items.len == 1);
-    try testing.expect(event.callbacks.items[0].data == &test_data);
+    try testing.expect(@intFromPtr(event.callbacks.items[0].data) == @intFromPtr(&test_data));
 }
 
 test "Event.executeCallbacks runs all callbacks" {

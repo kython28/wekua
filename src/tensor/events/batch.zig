@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 const cl = @import("opencl");
 const Event = @import("event.zig");
 
-const Lenght = switch (builtin.mode) {
+pub const Length = switch (builtin.mode) {
     .Debug => 4,
     .ReleaseSafe, .ReleaseFast => 128,
     .ReleaseSmall => 16,
@@ -13,7 +13,7 @@ const Lenght = switch (builtin.mode) {
 allocator: std.mem.Allocator,
 prev_events: ?[]cl.event.Event,
 
-events: [Lenght]Event,
+events: [Length]Event,
 events_num: u8,
 
 pub fn initValue(
@@ -55,7 +55,7 @@ pub fn initValue(
     }
 
     for (&self.events, 0..) |*e, index| {
-        e.init(index, allocator);
+        e.initValues(index, allocator);
     }
 
     self.events_num = 0;
@@ -64,7 +64,7 @@ pub fn initValue(
 pub fn init(
     allocator: std.mem.Allocator,
     prev_events: ?[]const cl.event.Event,
-) !Batch {
+) !*Batch {
     const batch = try allocator.create(Batch);
     errdefer allocator.destroy(batch);
 
@@ -77,7 +77,7 @@ pub inline fn empty(self: *const Batch) bool {
 }
 
 pub inline fn full(self: *const Batch) bool {
-    return (self.events_num == Lenght);
+    return (self.events_num == Length);
 }
 
 pub inline fn getPrevEvents(self: *const Batch) ?[]const cl.event.Event {
@@ -144,7 +144,7 @@ pub fn waitForPendingEvents(self: *Batch) void {
         }
 
         events_num += 1;
-    } else if (events_num < Lenght) {
+    } else if (events_num < Length) {
         if (self.events[events_num].operation != .none) {
             events_num += 1;
         }

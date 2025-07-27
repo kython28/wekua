@@ -1,14 +1,14 @@
-pub const wLinkedList = @import("linked_list.zig");
-pub const wQueue = @import("queue.zig");
+pub const linked_list_module = @import("linked_list.zig");
+pub const queue_module = @import("queue.zig");
 
 const std = @import("std");
 
-pub fn calculateWorkItems(global_work_items: []const u64, local_work_items: []u64, max_work_group_size: u64) void {
-    const max_per_cu: u64 = @intFromFloat(
-        std.math.pow(
-            f64, @as(f64, @floatFromInt(max_work_group_size)), 1.0 / @as(f64, @floatFromInt(global_work_items.len))
-        )
-    );
+pub fn calculateWorkItems(
+    global_work_items: []const u64,
+    local_work_items: []u64,
+    max_work_group_size: u64,
+) void {
+    const max_per_cu: u64 = @intFromFloat(std.math.pow(f64, @as(f64, @floatFromInt(max_work_group_size)), 1.0 / @as(f64, @floatFromInt(global_work_items.len))));
 
     for (global_work_items, local_work_items) |g, *l| {
         if (g < max_per_cu) {

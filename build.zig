@@ -10,6 +10,13 @@ pub fn build(b: *std.Build) void {
     });
     const opencl_module = opencl_package.module("opencl");
 
+    const utils_module = b.addModule("utils", .{
+        .root_source_file = b.path("src/utils/utils.zig"),
+        .target = target,
+        .optimize = optimize,
+        .single_threaded = false,
+    });
+
     const core_module = b.addModule("core", .{
         .root_source_file = b.path("src/core/main.zig"),
         .target = target,
@@ -18,14 +25,15 @@ pub fn build(b: *std.Build) void {
     });
     core_module.addImport("opencl", opencl_module);
 
-    // const tensor_module = b.addModule("tensor", .{
-    //     .root_source_file = b.path("src/tensor/main.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .single_threaded = false,
-    // });
-    // tensor_module.addImport("opencl", opencl_module);
-    // tensor_module.addImport("core", core_module);
+    const tensor_module = b.addModule("tensor", .{
+        .root_source_file = b.path("src/tensor/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .single_threaded = false,
+    });
+    tensor_module.addImport("opencl", opencl_module);
+    tensor_module.addImport("core", core_module);
+    tensor_module.addImport("utils", utils_module);
 
     const wekua_module = b.addModule("wekua", .{
         .root_source_file = b.path("src/wekua.zig"),
@@ -35,16 +43,23 @@ pub fn build(b: *std.Build) void {
     });
     wekua_module.addImport("opencl", opencl_module);
     wekua_module.addImport("core", core_module);
-    // wekua_module.addImport("tensor", tensor_module);
+    wekua_module.addImport("tensor", tensor_module);
+    wekua_module.addImport("utils", utils_module);
 
     const core_test = b.addTest(.{
         .root_module = core_module,
     });
 
+    const tensor_test = b.addTest(.{
+        .root_module = tensor_module,
+    });
+
     const run_core_test = b.addRunArtifact(core_test);
+    const run_tensor_test = b.addRunArtifact(tensor_test);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_core_test.step);
+    test_step.dependOn(&run_tensor_test.step);
 
     const benchmark_module = b.addModule("benchmark", .{
         .root_source_file = b.path("benchmark/main.zig"),
@@ -72,4 +87,5 @@ pub fn build(b: *std.Build) void {
 
     const run_check_step = b.step("check", "ZLS");
     run_check_step.dependOn(&core_test.step);
+    run_check_step.dependOn(&tensor_test.step);
 }

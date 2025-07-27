@@ -35,11 +35,11 @@ fn copy_tensor_with_different_row_pitch(
     const dst_row_pitch = dst.memory_layout.row_pitch * @sizeOf(T);
     const dst_slice_pitch = dst.memory_layout.slice_pitch * @sizeOf(T);
 
-    const src_prev_events = src.events_manager.getPrevEvents(.read);
-    const dst_prev_events = dst.events_manager.getPrevEvents(.write);
+    const src_prev_events = src.events.getPrevEvents(.read);
+    const dst_prev_events = dst.events.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const events_set = try w_tensor.EventManager.EventsSet.init(
+    const events_set = try w_tensor.Events.EventsSet.init(
         allocator,
         &.{ src_prev_events, dst_prev_events },
         null,
@@ -73,11 +73,11 @@ fn copy_tensor_with_same_row_pitch(
     src: *Tensor(T),
     dst: *Tensor(T),
 ) !void {
-    const src_prev_events = src.events_manager.getPrevEvents(.read);
-    const dst_prev_events = dst.events_manager.getPrevEvents(.write);
+    const src_prev_events = src.events.getPrevEvents(.read);
+    const dst_prev_events = dst.events.getPrevEvents(.write);
 
     const allocator = command_queue.allocator;
-    const events_set = try w_tensor.EventManager.EventsSet.init(
+    const events_set = try w_tensor.Events.EventsSet.init(
         allocator,
         &.{ src_prev_events, dst_prev_events },
         null,

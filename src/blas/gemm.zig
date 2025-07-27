@@ -237,11 +237,11 @@ pub fn gemm(
     const cmd = command_queue.cmd;
     const allocator = command_queue.allocator;
 
-    const a_prev_events = a.events_manager.getPrevEvents(.read);
-    const b_prev_events = b.events_manager.getPrevEvents(.read);
-    const c_prev_events = c.events_manager.getPrevEvents(.write);
+    const a_prev_events = a.events.getPrevEvents(.read);
+    const b_prev_events = b.events.getPrevEvents(.read);
+    const c_prev_events = c.events.getPrevEvents(.write);
 
-    const events_set = try w_tensor.EventManager.EventsSet.init(
+    const events_set = try w_tensor.Events.EventsSet.init(
         allocator,
         &.{ a_prev_events, b_prev_events, c_prev_events },
         null,

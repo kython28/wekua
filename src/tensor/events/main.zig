@@ -7,9 +7,9 @@ const Batch = @import("batch.zig");
 pub const Set = @import("set.zig");
 
 const Operation = Event.Operation;
-const BatchLenght = Batch.Length;
+const BatchLength = Batch.Length;
 
-const queue_module = @import("../../utils/queue.zig");
+const queue_module = @import("utils").queue_module;
 pub const BatchQueue = queue_module.Queue(*Batch);
 pub const UserCallback = Event.UserCallback;
 
@@ -33,7 +33,7 @@ pub fn init(
 
 pub fn deinit(self: *Events) void {
     self.batch.waitForPendingEvents();
-    self.batch.release();
+    self.batch.deinit();
 }
 
 pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
@@ -42,7 +42,7 @@ pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
     const batch = self.batch;
 
     const events_num = batch.events_num;
-    if (events_num == BatchLenght) {
+    if (events_num == BatchLength) {
         const event: *Event = &batch.events[events_num - 1];
         return event.toSlice();
     }
@@ -104,11 +104,8 @@ fn getNewBatch(self: *Events, prev_events: ?[]const cl.event.Event) !*Batch {
     const old_batch = self.batch;
 
     const allocator = self.allocator;
-    const new_batch = try allocator.create(Batch);
-    errdefer allocator.destroy(new_batch);
-
-    try new_batch.init(allocator, prev_events);
-    errdefer new_batch.release();
+    const new_batch = try Batch.init(allocator, prev_events);
+    errdefer new_batch.deinit();
 
     self.batch = new_batch;
     errdefer self.batch = old_batch;
@@ -127,7 +124,7 @@ pub fn appendNewEvent(
     var batch = self.batch;
 
     var events_num = batch.events_num;
-    if (events_num == BatchLenght) {
+    if (events_num == BatchLength) {
         batch = try self.getNewBatch(prev_Events);
         events_num = 0;
     }
@@ -137,8 +134,8 @@ pub fn appendNewEvent(
         .success => {},
         .full => {
             events_num += 1;
-            if (events_num == BatchLenght) {
-                batch.events_num = BatchLenght;
+            if (events_num == BatchLength) {
+                batch.events_num = BatchLength;
 
                 batch = try self.getNewBatch(prev_Events);
                 events_num = 0;
@@ -158,3 +155,7 @@ pub fn appendNewEvent(
 }
 
 const Events = @This();
+
+test {
+    std.testing.refAllDecls(Event);
+}
