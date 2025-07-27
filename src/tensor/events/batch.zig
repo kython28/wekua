@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const cl = @import("opencl");
-const Event = @import("event.zig");
+const Sets = @import("set.zig");
 
 pub const Length = switch (builtin.mode) {
     .Debug => 4,
@@ -13,8 +13,8 @@ pub const Length = switch (builtin.mode) {
 allocator: std.mem.Allocator,
 prev_events: ?[]cl.event.Event,
 
-events: [Length]Event,
-events_num: u8,
+sets: [Length]Sets,
+number_of_sets: u8,
 
 pub fn initValue(
     self: *Batch,
@@ -54,11 +54,11 @@ pub fn initValue(
         self.prev_events = null;
     }
 
-    for (&self.events, 0..) |*e, index| {
+    for (&self.sets, 0..) |*e, index| {
         e.initValues(index, allocator);
     }
 
-    self.events_num = 0;
+    self.number_of_sets = 0;
 }
 
 pub fn init(
@@ -73,11 +73,11 @@ pub fn init(
 }
 
 pub inline fn empty(self: *const Batch) bool {
-    return (self.events_num == 0);
+    return (self.number_of_sets == 0);
 }
 
 pub inline fn full(self: *const Batch) bool {
-    return (self.events_num == Length);
+    return (self.number_of_sets == Length);
 }
 
 pub inline fn getPrevEvents(self: *const Batch) ?[]const cl.event.Event {
@@ -93,7 +93,7 @@ pub inline fn clear(self: *Batch) void {
         self.prev_events = null;
     }
 
-    for (self.events[0..self.events_num]) |*event| {
+    for (self.sets[0..self.number_of_sets]) |*event| {
         event.clear();
     }
 }
@@ -108,7 +108,7 @@ pub fn restart(self: *Batch, new_prev_events: ?[]const cl.event.Event) !void {
     }
 
     if (new_prev_events) |pv| {
-        if (pv.len > Event.MaxEventsPerSet * 2) return error.EventsArrayTooLong;
+        if (pv.len > Sets.MaxEventsPerSet * 2) return error.EventsArrayTooLong;
 
         var index: usize = 0;
         errdefer {
@@ -117,41 +117,40 @@ pub fn restart(self: *Batch, new_prev_events: ?[]const cl.event.Event) !void {
             }
         }
 
-        const prev_events = &self.prev_events;
+        const prev_events = try self.allocator.alloc(cl.event.Event, pv.len);
+        errdefer self.allocator.free(prev_events);
+
         while (index < pv.len) : (index += 1) {
             const e = pv[index];
 
             try cl.event.retain(e);
             prev_events[index] = e;
         }
-
-        self.prev_events_len = @intCast(pv.len);
     }
 
-    for (self.events[0..self.events_num]) |*event| {
+    for (self.sets[0..self.number_of_sets]) |*event| {
         event.restart();
     }
 
-    self.prev_events_len = 0;
-    self.events_num = 0;
+    self.number_of_sets = 0;
 }
 
 pub fn waitForPendingEvents(self: *Batch) void {
-    var events_num = self.events_num;
+    var events_num = self.number_of_sets;
     if (events_num == 0) {
-        if (self.events[0].operation == .none) {
+        if (self.sets[0].operation == .none) {
             return;
         }
 
         events_num += 1;
     } else if (events_num < Length) {
-        if (self.events[events_num].operation != .none) {
+        if (self.sets[events_num].operation != .none) {
             events_num += 1;
         }
     }
-    self.events_num = events_num;
+    self.number_of_sets = events_num;
 
-    for (self.events[0..events_num]) |*event| {
+    for (self.sets[0..events_num]) |*event| {
         event.waitForEvents() catch |err| {
             std.debug.panic(
                 "Unexpected error while waiting for events finalization: {s}",
@@ -177,12 +176,12 @@ test "Batch.init with null prev_events" {
     defer batch.deinit();
 
     try testing.expect(batch.prev_events == null);
-    try testing.expect(batch.events_num == 0);
+    try testing.expect(batch.number_of_sets == 0);
     try testing.expect(batch.empty());
     try testing.expect(!batch.full());
 
     // Check that all events are properly initialized
-    for (batch.events, 0..) |*event, i| {
+    for (&batch.sets, 0..) |*event, i| {
         try testing.expect(event.index == i);
         try testing.expect(event.operation == .none);
         try testing.expect(event.events_count == 0);
@@ -209,7 +208,7 @@ test "Batch.init with prev_events" {
 
     try testing.expect(batch.prev_events != null);
     try testing.expect(batch.prev_events.?.len == 2);
-    try testing.expect(batch.events_num == 0);
+    try testing.expect(batch.number_of_sets == 0);
 }
 
 test "Batch.empty and full state management" {
@@ -221,17 +220,17 @@ test "Batch.empty and full state management" {
     try testing.expect(!batch.full());
 
     // Simulate adding events
-    batch.events_num = 1;
+    batch.number_of_sets = 1;
     try testing.expect(!batch.empty());
     try testing.expect(!batch.full());
 
     // Fill to capacity
-    batch.events_num = Length;
+    batch.number_of_sets = Length;
     try testing.expect(!batch.empty());
     try testing.expect(batch.full());
 
     // Reset
-    batch.events_num = 0;
+    batch.number_of_sets = 0;
     try testing.expect(batch.empty());
     try testing.expect(!batch.full());
 }
@@ -291,17 +290,17 @@ test "Batch.clear releases prev_events and clears event states" {
 
     try cl.event.retain(test_event);
 
-    const result = batch.events[0].append(.read, test_event, null) catch |err| {
+    const result = batch.sets[0].append(.read, test_event, null) catch |err| {
         cl.event.release(test_event);
         return err;
     };
 
     try testing.expect(result == .success);
-    batch.events_num = 1;
+    batch.number_of_sets = 1;
 
     // Verify state before clear
     try testing.expect(batch.prev_events != null);
-    try testing.expect(batch.events[0].events_count == 1);
+    try testing.expect(batch.sets[0].events_count == 1);
 
     // Clear should release everything
     batch.clear();
@@ -328,12 +327,12 @@ test "Batch.restart with null new_prev_events" {
     defer batch.deinit();
 
     // Add some state
-    batch.events_num = 2;
+    batch.number_of_sets = 2;
 
     try batch.restart(null);
 
     try testing.expect(batch.prev_events == null);
-    try testing.expect(batch.events_num == 0);
+    try testing.expect(batch.number_of_sets == 0);
 }
 
 test "Batch.restart with new prev_events" {
@@ -358,13 +357,13 @@ test "Batch.restart with new prev_events" {
     defer batch.deinit();
 
     // Add some state
-    batch.events_num = 1;
+    batch.number_of_sets = 1;
 
     try batch.restart(&new_prev_events);
 
     try testing.expect(batch.prev_events != null);
     try testing.expect(batch.prev_events.?.len == 2);
-    try testing.expect(batch.events_num == 0);
+    try testing.expect(batch.number_of_sets == 0);
 }
 
 test "Batch.restart with too many events returns error" {
@@ -374,7 +373,7 @@ test "Batch.restart with too many events returns error" {
     // Create an array that's too large
     const too_many_events = try testing.allocator.alloc(
         cl.event.Event,
-        Event.MaxEventsPerSet * 2 + 1,
+        Sets.MaxEventsPerSet * 2 + 1,
     );
     defer testing.allocator.free(too_many_events);
 
@@ -389,7 +388,7 @@ test "Batch.waitForPendingEvents with no events" {
     // Should not panic or error
     batch.waitForPendingEvents();
 
-    try testing.expect(batch.events_num == 0);
+    try testing.expect(batch.number_of_sets == 0);
 }
 
 test "Batch.waitForPendingEvents with events in first slot" {
@@ -409,7 +408,7 @@ test "Batch.waitForPendingEvents with events in first slot" {
     try cl.event.retain(cl_event);
 
     // Add event to first slot but don't increment events_num
-    const result = batch.events[0].append(.read, cl_event, null) catch |err| {
+    const result = batch.sets[0].append(.read, cl_event, null) catch |err| {
         cl.event.release(cl_event);
         return err;
     };
@@ -420,7 +419,7 @@ test "Batch.waitForPendingEvents with events in first slot" {
 
     batch.waitForPendingEvents();
 
-    try testing.expect(batch.events_num == 1);
+    try testing.expect(batch.number_of_sets == 1);
 }
 
 test "Batch.waitForPendingEvents with events beyond current count" {
@@ -442,16 +441,16 @@ test "Batch.waitForPendingEvents with events beyond current count" {
     try cl.event.retain(cl_event1);
 
     // Add events
-    var result = batch.events[0].append(.read, cl_event1, null) catch |err| {
+    var result = batch.sets[0].append(.read, cl_event1, null) catch |err| {
         cl.event.release(cl_event1);
         return err;
     };
     try testing.expect(result == .success);
-    batch.events_num = 1;
+    batch.number_of_sets = 1;
 
     try cl.event.retain(cl_event2);
 
-    result = batch.events[1].append(.write, cl_event2, null) catch |err| {
+    result = batch.sets[1].append(.write, cl_event2, null) catch |err| {
         cl.event.release(cl_event2);
         return err;
     };
@@ -463,7 +462,7 @@ test "Batch.waitForPendingEvents with events beyond current count" {
 
     batch.waitForPendingEvents();
 
-    try testing.expect(batch.events_num == 2);
+    try testing.expect(batch.number_of_sets == 2);
 }
 
 test "Batch.waitForPendingEvents at full capacity" {
@@ -478,7 +477,7 @@ test "Batch.waitForPendingEvents at full capacity" {
     defer batch.deinit();
 
     // Fill to capacity
-    batch.events_num = Length;
+    batch.number_of_sets = Length;
 
     const events_to_cleanup = try testing.allocator.alloc(cl.event.Event, Length);
     var number_of_events_to_cleanup: usize = 0;
@@ -495,7 +494,7 @@ test "Batch.waitForPendingEvents at full capacity" {
         events_to_cleanup[i] = cl_event;
         number_of_events_to_cleanup += 1;
 
-        const result = batch.events[i].append(.read, cl_event, null) catch |err| {
+        const result = batch.sets[i].append(.read, cl_event, null) catch |err| {
             cl.event.release(cl_event);
             return err;
         };
@@ -506,7 +505,7 @@ test "Batch.waitForPendingEvents at full capacity" {
 
     batch.waitForPendingEvents();
 
-    try testing.expect(batch.events_num == Length);
+    try testing.expect(batch.number_of_sets == Length);
 }
 
 test "Batch.deinit calls clear and destroys" {
@@ -531,7 +530,7 @@ test "Batch.deinit calls clear and destroys" {
 
     try cl.event.retain(test_event);
 
-    const result = batch.events[0].append(.read, test_event, null) catch |err| {
+    const result = batch.sets[0].append(.read, test_event, null) catch |err| {
         cl.event.release(test_event);
         return err;
     };
@@ -579,7 +578,7 @@ test "Batch events array initialization and indexing" {
     defer batch.deinit();
 
     // Verify all events are properly initialized with correct indices
-    for (batch.events, 0..) |*event, expected_index| {
+    for (&batch.sets, 0..) |*event, expected_index| {
         try testing.expect(event.index == expected_index);
         try testing.expect(event.operation == .none);
         try testing.expect(event.events_count == 0);

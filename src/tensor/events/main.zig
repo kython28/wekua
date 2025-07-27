@@ -2,16 +2,16 @@ const std = @import("std");
 
 const cl = @import("opencl");
 
-const Event = @import("event.zig");
+const Set = @import("set.zig");
 const Batch = @import("batch.zig");
-pub const Set = @import("set.zig");
+pub const Combined = @import("combined.zig");
 
-const Operation = Event.Operation;
+const Operation = Set.Operation;
 const BatchLength = Batch.Length;
 
 const queue_module = @import("utils").queue_module;
 pub const BatchQueue = queue_module.Queue(*Batch);
-pub const UserCallback = Event.UserCallback;
+pub const UserCallback = Set.UserCallback;
 
 allocator: std.mem.Allocator,
 batch: *Batch,
@@ -41,17 +41,17 @@ pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
 
     const batch = self.batch;
 
-    const events_num = batch.events_num;
+    const events_num = batch.number_of_sets;
     if (events_num == BatchLength) {
-        const event: *Event = &batch.events[events_num - 1];
+        const event: *Set = &batch.sets[events_num - 1];
         return event.toSlice();
     }
 
-    const event: *Event = &batch.events[events_num];
+    const event: *Set = &batch.sets[events_num];
     switch (event.operation) {
         .read => switch (new_op) {
             .write, .partial_write => {
-                batch.events_num += 1;
+                batch.number_of_sets += 1;
                 return event.toSlice();
             },
             .read => {},
@@ -59,7 +59,7 @@ pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
         },
         .write => unreachable,
         .partial_write => {
-            batch.events_num += 1;
+            batch.number_of_sets += 1;
             return event.toSlice();
         },
         .none => {},
@@ -69,7 +69,7 @@ pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
         return batch.getPrevEvents();
     }
 
-    const prev_event = &batch.events[events_num - 1];
+    const prev_event = &batch.sets[events_num - 1];
     return prev_event.toSlice();
 }
 
@@ -120,28 +120,28 @@ pub fn appendNewEvent(
     prev_Events: ?[]const cl.event.Event,
     new_Event: cl.event.Event,
     user_callback: ?UserCallback,
-) !*Event {
+) !*Set {
     var batch = self.batch;
 
-    var events_num = batch.events_num;
+    var events_num = batch.number_of_sets;
     if (events_num == BatchLength) {
         batch = try self.getNewBatch(prev_Events);
         events_num = 0;
     }
 
-    var event: *Event = &batch.events[events_num];
+    var event: *Set = &batch.sets[events_num];
     loop: switch (try event.append(new_op, new_Event, user_callback)) {
         .success => {},
         .full => {
             events_num += 1;
             if (events_num == BatchLength) {
-                batch.events_num = BatchLength;
+                batch.number_of_sets = BatchLength;
 
                 batch = try self.getNewBatch(prev_Events);
                 events_num = 0;
             }
 
-            event = &batch.events[events_num];
+            event = &batch.sets[events_num];
             const new_result = try event.append(new_op, new_Event, user_callback);
             continue :loop new_result;
         },
@@ -150,12 +150,12 @@ pub fn appendNewEvent(
         },
     }
 
-    batch.events_num = events_num;
+    batch.number_of_sets = events_num;
     return event;
 }
 
 const Events = @This();
 
 test {
-    std.testing.refAllDecls(Event);
+    std.testing.refAllDecls(Set);
 }
