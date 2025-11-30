@@ -5,28 +5,17 @@
 
     .dependencies = .{
         .@"zig-opencl" = .{
-            .url = "https://github.com/kython28/zig-opencl/archive/refs/tags/v0.7.0.tar.gz",
-            .hash = "zigopencl-0.7.0-z-Vhw5iCAgDN0peHgzz6rlhJ6bkm9Dqr33bsr-5fqs3R",
+            .url = "https://github.com/kython28/zig-opencl/archive/refs/tags/v0.7.1.tar.gz",
+            .hash = "zigopencl-0.7.0-z-Vhw6WCAgAh7NHZmt3sCXtOQYAySW8uRbkWoJ7HkykG"
         },
     },
 
-    // Specifies the set of files and directories that are included in this package.
-    // Only files and directories listed here are included in the `hash` that
-    // is computed for this package.
-    // Paths are relative to the build root. Use the empty string (`""`) to refer to
-    // the build root itself.
-    // A directory listed here means that all files within, recursively, are included.
     .paths = .{
-        // This makes *all* files, recursively, included in this package. It is generally
-        // better to explicitly list the files and directories instead, to insure that
-        // fetching from tarballs, file system paths, and version control all result
-        // in the same contents hash.
-        "",
-        // For example...
-        //"build.zig",
-        //"build.zig.zon",
-        //"src",
-        //"LICENSE",
-        //"README.md",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+        "benchmark",
     },
 }

@@ -48,10 +48,12 @@ pub fn build(b: *std.Build) void {
 
     const core_test = b.addTest(.{
         .root_module = core_module,
+        .use_llvm = true,
     });
 
     const tensor_test = b.addTest(.{
         .root_module = tensor_module,
+        .use_llvm = true,
     });
 
     const run_core_test = b.addRunArtifact(core_test);
@@ -71,6 +73,7 @@ pub fn build(b: *std.Build) void {
     const benchmark = b.addExecutable(.{
         .root_module = benchmark_module,
         .name = "benchmark",
+        .use_llvm = true,
     });
     benchmark.addIncludePath(.{ .cwd_relative = "/usr/include/" });
     benchmark.linkSystemLibrary("wekua");

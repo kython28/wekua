@@ -39,24 +39,23 @@ events_count: MaxEventsPerSetInt,
 
 index: u8,
 
-pub fn initValues(self: *Set, index: usize, allocator: std.mem.Allocator) void {
+pub fn initValues(self: *Set, index: usize) void {
     self.operation = .none;
-    self.callbacks = UserCallbackArray.init(allocator);
+    self.callbacks = .empty;
     self.events_count = 0;
     self.index = @intCast(index);
 }
 
-pub fn init(index: usize, allocator: std.mem.Allocator) !*Set {
+pub fn init(index: usize, allocator: std.mem.Allocator) error{OutOfMemory}!*Set {
     const self = try allocator.create(Set);
     errdefer allocator.destroy(self);
 
-    self.initValues(index, allocator);
+    self.initValues(index);
     return self;
 }
 
-pub fn deinit(self: *Set) void {
-    const allocator = self.callbacks.allocator;
-    self.callbacks.deinit();
+pub fn deinit(self: *Set, allocator: std.mem.Allocator) void {
+    self.callbacks.deinit(allocator);
     allocator.destroy(self);
 }
 
@@ -67,10 +66,11 @@ pub inline fn getParent(self: *Set) *Batch {
 
 pub fn append(
     self: *Set,
+    allocator: std.mem.Allocator,
     operation: Operation,
     event: cl.event.Event,
     user_callback: ?UserCallback,
-) !AppendResult {
+) error{OutOfMemory}!AppendResult {
     const current_operation = self.operation;
     const events_count = self.events_count;
 
@@ -86,7 +86,7 @@ pub fn append(
     }
 
     if (user_callback) |callback| {
-        try self.callbacks.append(callback);
+        try self.callbacks.append(allocator, callback);
     }
 
     self.events[events_count] = event;
@@ -125,8 +125,12 @@ pub inline fn toSlice(self: *const Set) []const cl.event.Event {
     return self.events[0..self.events_count];
 }
 
-pub inline fn appendCallback(self: *Set, callback: UserCallback) !void {
-    try self.callbacks.append(callback);
+pub inline fn appendCallback(
+    self: *Set,
+    allocator: std.mem.Allocator,
+    callback: UserCallback,
+) error{OutOfMemory}!void {
+    try self.callbacks.append(allocator, callback);
 }
 
 pub inline fn executeCallbacks(self: *const Set) void {
@@ -140,16 +144,16 @@ pub inline fn waitForEvents(self: *const Set) !void {
     self.executeCallbacks();
 }
 
-pub inline fn clear(self: *Set) void {
+pub inline fn clear(self: *Set, allocator: std.mem.Allocator) void {
     for (self.events[0..self.events_count]) |event| {
         cl.event.release(event);
     }
 
-    self.callbacks.deinit();
+    self.callbacks.deinit(allocator);
 }
 
-pub inline fn restart(self: *Set) void {
-    self.clear();
+pub inline fn restart(self: *Set, allocator: std.mem.Allocator) void {
+    self.clear(allocator);
 
     self.operation = .none;
     self.events_count = 0;
@@ -163,7 +167,7 @@ const core = @import("core");
 
 test "Set.init initializes correctly" {
     const set = try Set.init(5, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     try testing.expect(set.operation == .none);
     try testing.expect(set.events_count == 0);
@@ -189,12 +193,12 @@ test "Set.append with none operation sets operation and adds event" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    const result = try set.append(.read, cl_event, null);
+    const result = try set.append(testing.allocator, .read, cl_event, null);
 
     try testing.expect(result == .success);
     try testing.expect(set.operation == .read);
@@ -211,17 +215,17 @@ test "Set.append with matching operation succeeds" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    var result = try set.append(.read, cl_event1, null);
+    var result = try set.append(testing.allocator, .read, cl_event1, null);
     try testing.expect(result == .success);
 
-    result = try set.append(.read, cl_event2, null);
+    result = try set.append(testing.allocator, .read, cl_event2, null);
     try testing.expect(result == .success);
 
     try testing.expect(set.events_count == 2);
@@ -238,17 +242,17 @@ test "Set.append with different operation returns full" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    var result = try set.append(.read, cl_event1, null);
+    var result = try set.append(testing.allocator, .read, cl_event1, null);
     try testing.expect(result == .success);
 
-    result = try set.append(.write, cl_event2, null);
+    result = try set.append(testing.allocator, .write, cl_event2, null);
     try testing.expect(result == .full);
 
     try testing.expect(set.operation == .read);
@@ -264,17 +268,17 @@ test "Set.append with write operation allows only one event" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    var result = try set.append(.write, cl_event1, null);
+    var result = try set.append(testing.allocator, .write, cl_event1, null);
     try testing.expect(result == .success_and_full);
 
-    result = try set.append(.write, cl_event2, null);
+    result = try set.append(testing.allocator, .write, cl_event2, null);
     try testing.expect(result == .full);
 
     try testing.expect(set.events_count == 1);
@@ -289,7 +293,7 @@ test "Set.append with callback stores callback" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     var test_data: u32 = 42;
     const callback = UserCallback{
@@ -305,7 +309,7 @@ test "Set.append with callback stores callback" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    const result = try set.append(.read, cl_event, callback);
+    const result = try set.append(testing.allocator, .read, cl_event, callback);
     try testing.expect(result == .success);
 
     try testing.expect(set.callbacks.items.len == 1);
@@ -321,29 +325,29 @@ test "Set.append returns success_and_full when reaching capacity" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
-    var events_to_cleanup = std.ArrayList(cl.event.Event).init(testing.allocator);
+    var events_to_cleanup: std.ArrayList(cl.event.Event) = .empty;
     defer {
         for (events_to_cleanup.items) |e| {
             cl.event.release(e);
         }
-        events_to_cleanup.deinit();
+        events_to_cleanup.deinit(testing.allocator);
     }
 
     // Fill up to capacity - 1 for read operation
     for (0..MaxEventsPerSet - 1) |_| {
         const cl_event = try cl.event.createUserEvent(context.ctx);
-        try events_to_cleanup.append(cl_event);
-        const result = try set.append(.read, cl_event, null);
+        try events_to_cleanup.append(testing.allocator, cl_event);
+        const result = try set.append(testing.allocator, .read, cl_event, null);
         try testing.expect(result == .success);
     }
 
     // Last append should return success_and_full
     const last_event = try cl.event.createUserEvent(context.ctx);
-    try events_to_cleanup.append(last_event);
+    try events_to_cleanup.append(testing.allocator, last_event);
 
-    const result = try set.append(.read, last_event, null);
+    const result = try set.append(testing.allocator, .read, last_event, null);
     try testing.expect(result == .success_and_full);
     try testing.expect(set.events_count == MaxEventsPerSet);
 }
@@ -357,12 +361,12 @@ test "Set.pop decrements count and resets operation when empty" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    const result = try set.append(.read, cl_event, null);
+    const result = try set.append(testing.allocator, .read, cl_event, null);
     try testing.expect(result == .success);
 
     set.pop(false);
@@ -379,7 +383,7 @@ test "Set.pop with callback removes callback" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     var test_data: u32 = 42;
     const callback = UserCallback{
@@ -394,7 +398,7 @@ test "Set.pop with callback removes callback" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    const result = try set.append(.read, cl_event, callback);
+    const result = try set.append(testing.allocator, .read, cl_event, callback);
     try testing.expect(result == .success);
 
     try testing.expect(set.callbacks.items.len == 1);
@@ -424,7 +428,7 @@ test "Set.full returns correct state" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     try testing.expect(set.full() == false);
 
@@ -432,7 +436,7 @@ test "Set.full returns correct state" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    const result = try set.append(.write, cl_event, null);
+    const result = try set.append(testing.allocator, .write, cl_event, null);
     try testing.expect(result == .success_and_full);
     try testing.expect(set.full() == true);
 }
@@ -446,17 +450,17 @@ test "Set.toSlice returns correct slice" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    var result = try set.append(.read, cl_event1, null);
+    var result = try set.append(testing.allocator, .read, cl_event1, null);
     try testing.expect(result == .success);
 
-    result = try set.append(.read, cl_event2, null);
+    result = try set.append(testing.allocator, .read, cl_event2, null);
     try testing.expect(result == .success);
 
     const slice = set.toSlice();
@@ -467,7 +471,7 @@ test "Set.toSlice returns correct slice" {
 
 test "Set.appendCallback adds callback without event" {
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     var test_data: u32 = 42;
     const callback = UserCallback{
@@ -479,14 +483,14 @@ test "Set.appendCallback adds callback without event" {
         .data = &test_data,
     };
 
-    try set.appendCallback(callback);
+    try set.appendCallback(testing.allocator, callback);
     try testing.expect(set.callbacks.items.len == 1);
     try testing.expect(@intFromPtr(set.callbacks.items[0].data) == @intFromPtr(&test_data));
 }
 
 test "Set.executeCallbacks runs all callbacks" {
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     var counter: u32 = 0;
     const callback1 = UserCallback{
@@ -509,8 +513,8 @@ test "Set.executeCallbacks runs all callbacks" {
         .data = &counter,
     };
 
-    try set.appendCallback(callback1);
-    try set.appendCallback(callback2);
+    try set.appendCallback(testing.allocator, callback1);
+    try set.appendCallback(testing.allocator, callback2);
 
     set.executeCallbacks();
     try testing.expect(counter == 11);
@@ -525,7 +529,7 @@ test "Set.waitForEvents waits and executes callbacks" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     var callback_executed: bool = false;
     const callback = UserCallback{
@@ -541,7 +545,7 @@ test "Set.waitForEvents waits and executes callbacks" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
-    const result = try set.append(.read, cl_event, callback);
+    const result = try set.append(testing.allocator, .read, cl_event, callback);
     try testing.expect(result == .success);
 
     // Set the user event to complete so waitForEvents doesn't block
@@ -577,13 +581,13 @@ test "Set.clear releases events and clears callbacks" {
         .data = &test_data,
     };
 
-    const result = try set.append(.read, cl_event, callback);
+    const result = try set.append(testing.allocator, .read, cl_event, callback);
     try testing.expect(result == .success);
 
     try testing.expect(set.events_count == 1);
     try testing.expect(set.callbacks.items.len == 1);
 
-    set.clear();
+    set.clear(testing.allocator);
     // After clear, callbacks should be deinitialized
     // We can't test events_count here since clear() releases the events
 }
@@ -616,7 +620,7 @@ test "Set.restart clears and resets state" {
         .data = &test_data,
     };
 
-    const result = try set.append(.read, cl_event, callback);
+    const result = try set.append(testing.allocator, .read, cl_event, callback);
     try testing.expect(result == .success);
     can_release = false;
 
@@ -624,7 +628,7 @@ test "Set.restart clears and resets state" {
     try testing.expect(set.operation == .read);
 
     // Restart should reset everything
-    set.restart();
+    set.restart(testing.allocator);
     try testing.expect(set.events_count == 0);
     try testing.expect(set.operation == .none);
     // callbacks are reinitialized in restart, so we need to deinit them
@@ -639,15 +643,15 @@ test "Set.append error handling - operation reverts on callback error" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     // Force an allocation error by using a failing allocator
     var failing_allocator = testing.FailingAllocator.init(
         testing.allocator,
         .{ .fail_index = 0 },
     );
-    set.callbacks.deinit();
-    set.callbacks = UserCallbackArray.init(failing_allocator.allocator());
+    set.callbacks.deinit(testing.allocator);
+    set.callbacks = .empty;
 
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
@@ -662,7 +666,7 @@ test "Set.append error handling - operation reverts on callback error" {
     };
 
     // This should fail and operation should remain .none
-    const result = set.append(.read, cl_event, callback);
+    const result = set.append(failing_allocator.allocator(), .read, cl_event, callback);
     try testing.expectError(error.OutOfMemory, result);
     try testing.expect(set.operation == .none);
 }
@@ -676,7 +680,7 @@ test "Set operations with mixed scenarios" {
     defer context.deinit();
 
     const set = try Set.init(0, testing.allocator);
-    defer set.deinit();
+    defer set.deinit(testing.allocator);
 
     // Test sequence: none -> read -> try write (should fail) -> continue read
     try testing.expect(set.operation == .none);
@@ -684,14 +688,14 @@ test "Set operations with mixed scenarios" {
     const read_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(read_event1);
 
-    var result = try set.append(.read, read_event1, null);
+    var result = try set.append(testing.allocator, .read, read_event1, null);
     try testing.expect(result == .success);
     try testing.expect(set.operation == .read);
 
     const write_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(write_event);
 
-    result = try set.append(.write, write_event, null);
+    result = try set.append(testing.allocator, .write, write_event, null);
     try testing.expect(result == .full);
     try testing.expect(set.operation == .read); // Should remain read
     try testing.expect(set.events_count == 1); // Should still be 1
@@ -699,7 +703,7 @@ test "Set operations with mixed scenarios" {
     const read_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(read_event2);
 
-    result = try set.append(.read, read_event2, null);
+    result = try set.append(testing.allocator, .read, read_event2, null);
     try testing.expect(result == .success);
     try testing.expect(set.events_count == 2);
 }

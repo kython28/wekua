@@ -22,7 +22,14 @@ pub fn Queue(comptime T: type) type {
             };
         }
 
-        pub fn put(self: *Self, data: T) !void {
+        pub fn isEmpty(self: *Self) bool {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            return self.list.isEmpty();
+        }
+
+        pub fn put(self: *Self, data: T) error{OutOfMemory}!void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
@@ -30,16 +37,16 @@ pub fn Queue(comptime T: type) type {
             self.cond.signal();
         }
 
-        pub fn put_node(self: *Self, node: LinkedList.Node) void {
+        pub fn putNode(self: *Self, node: LinkedList.Node) void {
             const mutex = &self.mutex;
             mutex.lock();
             defer mutex.unlock();
 
-            self.list.append_node(node);
+            self.list.appendNode(node);
             self.cond.signal();
         }
 
-        pub fn get_node(self: *Self, wait: bool) !?LinkedList.Node {
+        pub fn getNode(self: *Self, wait: bool) ?LinkedList.Node {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -52,11 +59,11 @@ pub fn Queue(comptime T: type) type {
                 self.cond.wait(&self.mutex);
             }
 
-            const last_node = try self.list.popleft_node();
+            const last_node = self.list.popLeftNode();
             return last_node;
         }
 
-        pub fn get(self: *Self, wait: bool) !?T {
+        pub fn get(self: *Self, wait: bool) ?T {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -69,11 +76,11 @@ pub fn Queue(comptime T: type) type {
                 self.cond.wait(&self.mutex);
             }
 
-            const data = try self.list.popleft();
+            const data = self.list.popLeft();
             return data;
         }
 
-        pub fn get_last_node(self: *Self, wait: bool) !?LinkedList.Node {
+        pub fn getLastNode(self: *Self, wait: bool) ?LinkedList.Node {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -86,11 +93,11 @@ pub fn Queue(comptime T: type) type {
                 self.cond.wait(&self.mutex);
             }
 
-            const last_node = try self.list.pop_node();
+            const last_node = self.list.popNode();
             return last_node;
         }
 
-        pub fn get_last(self: *Self, wait: bool) !?T {
+        pub fn getLast(self: *Self, wait: bool) ?T {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -103,7 +110,7 @@ pub fn Queue(comptime T: type) type {
                 self.cond.wait(&self.mutex);
             }
 
-            const data = try self.list.pop();
+            const data = self.list.pop();
             return data;
         }
 

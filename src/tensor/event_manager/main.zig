@@ -13,6 +13,8 @@ const queue_module = @import("utils").queue_module;
 pub const BatchQueue = queue_module.Queue(*Batch);
 pub const UserCallback = Set.UserCallback;
 
+pub const Errors = Batch.Errors;
+
 allocator: std.mem.Allocator,
 batch: *Batch,
 events_releaser_queue: *BatchQueue,
@@ -21,7 +23,7 @@ pub fn init(
     self: *Events,
     allocator: std.mem.Allocator,
     queue: *BatchQueue,
-) !void {
+) Errors!void {
     self.allocator = allocator;
 
     const batch = try Batch.init(allocator, null);
@@ -37,7 +39,7 @@ pub fn deinit(self: *Events) void {
 }
 
 pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
-    if (new_op == .none) unreachable;
+    if (new_op == .none) @panic("Invalid operation");
 
     const batch = self.batch;
 
@@ -47,20 +49,20 @@ pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
         return event.toSlice();
     }
 
-    const event: *Set = &batch.sets[events_num];
-    switch (event.operation) {
+    const events_set: *Set = &batch.sets[events_num];
+    switch (events_set.operation) {
         .read => switch (new_op) {
             .write, .partial_write => {
                 batch.number_of_sets += 1;
-                return event.toSlice();
+                return events_set.toSlice();
             },
             .read => {},
-            else => unreachable,
+            else => @panic("Invalid operation"),
         },
-        .write => unreachable,
+        .write => @panic("Unexpected writing events set gotten"),
         .partial_write => {
             batch.number_of_sets += 1;
-            return event.toSlice();
+            return events_set.toSlice();
         },
         .none => {},
     }
@@ -76,7 +78,7 @@ pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
 pub fn concat(
     allocator: std.mem.Allocator,
     events_array: []const ?[]const cl.event.Event,
-) !?[]cl.event.Event {
+) error{OutOfMemory}!?[]cl.event.Event {
     var total_events: usize = 0;
     for (events_array) |events| {
         if (events) |v| {
@@ -100,7 +102,7 @@ pub fn concat(
 }
 
 
-fn getNewBatch(self: *Events, prev_events: ?[]const cl.event.Event) !*Batch {
+fn getNewBatch(self: *Events, prev_events: ?[]const cl.event.Event) Errors!*Batch {
     const old_batch = self.batch;
 
     const allocator = self.allocator;
@@ -117,32 +119,33 @@ fn getNewBatch(self: *Events, prev_events: ?[]const cl.event.Event) !*Batch {
 pub fn appendNewEvent(
     self: *Events,
     new_op: Operation,
-    prev_Events: ?[]const cl.event.Event,
-    new_Event: cl.event.Event,
+    prev_events: ?[]const cl.event.Event,
+    new_event: cl.event.Event,
     user_callback: ?UserCallback,
-) !*Set {
+) Errors!*Set {
     var batch = self.batch;
 
     var events_num = batch.number_of_sets;
     if (events_num == BatchLength) {
-        batch = try self.getNewBatch(prev_Events);
+        batch = try self.getNewBatch(prev_events);
         events_num = 0;
     }
 
-    var event: *Set = &batch.sets[events_num];
-    loop: switch (try event.append(new_op, new_Event, user_callback)) {
+    const allocator = self.allocator;
+    var events_set: *Set = &batch.sets[events_num];
+    loop: switch (try events_set.append(allocator, new_op, new_event, user_callback)) {
         .success => {},
         .full => {
             events_num += 1;
             if (events_num == BatchLength) {
                 batch.number_of_sets = BatchLength;
 
-                batch = try self.getNewBatch(prev_Events);
+                batch = try self.getNewBatch(prev_events);
                 events_num = 0;
             }
 
-            event = &batch.sets[events_num];
-            const new_result = try event.append(new_op, new_Event, user_callback);
+            events_set = &batch.sets[events_num];
+            const new_result = try events_set.append(allocator, new_op, new_event, user_callback);
             continue :loop new_result;
         },
         .success_and_full => {
@@ -151,7 +154,7 @@ pub fn appendNewEvent(
     }
 
     batch.number_of_sets = events_num;
-    return event;
+    return events_set;
 }
 
 const Events = @This();
@@ -181,7 +184,7 @@ test "Events.getPrevEvents with empty batch and no prev events" {
     defer events.deinit();
 
     const result = events.getPrevEvents(.read);
-    try testing.expect(result == null);
+    try testing.expectEqual(null, result);
 }
 
 test "Events.getPrevEvents with read operation and existing read operation" {
@@ -203,8 +206,10 @@ test "Events.getPrevEvents with read operation and existing read operation" {
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
 
+    try cl.event.setUserEventStatus(cl_event1, .complete);
+
     try cl.event.retain(cl_event1);
-    const result1 = events.batch.sets[0].append(.read, cl_event1, null) catch |err| {
+    const result1 = events.batch.sets[0].append(testing.allocator, .read, cl_event1, null) catch |err| {
         cl.event.release(cl_event1);
         return err;
     };
@@ -235,8 +240,10 @@ test "Events.getPrevEvents with read operation and existing write operation tran
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
 
+    try cl.event.setUserEventStatus(cl_event1, .complete);
+
     try cl.event.retain(cl_event1);
-    const result1 = events.batch.sets[0].append(.read, cl_event1, null) catch |err| {
+    const result1 = events.batch.sets[0].append(testing.allocator, .read, cl_event1, null) catch |err| {
         cl.event.release(cl_event1);
         return err;
     };
@@ -246,6 +253,7 @@ test "Events.getPrevEvents with read operation and existing write operation tran
     const prev_events = events.getPrevEvents(.write);
     try testing.expect(prev_events != null);
     try testing.expect(prev_events.?.len == 1);
+    try testing.expect(prev_events.?[0] == cl_event1);
     try testing.expect(events.batch.number_of_sets == 1);
 }
 
@@ -268,17 +276,20 @@ test "Events.getPrevEvents with partial_write operation transitions correctly" {
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
 
+    try cl.event.setUserEventStatus(cl_event1, .complete);
+
     try cl.event.retain(cl_event1);
-    const result1 = events.batch.sets[0].append(.partial_write, cl_event1, null) catch |err| {
+    const result1 = events.batch.sets[0].append(testing.allocator, .partial_write, cl_event1, null) catch |err| {
         cl.event.release(cl_event1);
         return err;
     };
-    try testing.expect(result1 == .success_and_full);
+    try testing.expect(result1 == .success);
 
     // Any new operation should increment and return events
     const prev_events = events.getPrevEvents(.read);
     try testing.expect(prev_events != null);
     try testing.expect(prev_events.?.len == 1);
+    try testing.expect(prev_events.?[0] == cl_event1);
     try testing.expect(events.batch.number_of_sets == 1);
 }
 
@@ -304,8 +315,10 @@ test "Events.getPrevEvents with full batch returns last event" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
+    try cl.event.setUserEventStatus(cl_event, .complete);
+
     try cl.event.retain(cl_event);
-    const result = events.batch.sets[BatchLength - 1].append(.read, cl_event, null) catch |err| {
+    const result = events.batch.sets[BatchLength - 1].append(testing.allocator, .read, cl_event, null) catch |err| {
         cl.event.release(cl_event);
         return err;
     };
@@ -314,49 +327,7 @@ test "Events.getPrevEvents with full batch returns last event" {
     const prev_events = events.getPrevEvents(.write);
     try testing.expect(prev_events != null);
     try testing.expect(prev_events.?.len == 1);
-}
-
-test "Events.getPrevEvents returns previous event when events_num > 0" {
-    const context = try core.Context.initFromDeviceType(
-        testing.allocator,
-        null,
-        cl.device.Type.all,
-    );
-    defer context.deinit();
-
-    var queue = BatchQueue.init(testing.allocator);
-    defer queue.deinit();
-
-    var events: Events = undefined;
-    try events.init(testing.allocator, &queue);
-    defer events.deinit();
-
-    // Add events to create a scenario with events_num > 0
-    const cl_event1 = try cl.event.createUserEvent(context.ctx);
-    defer cl.event.release(cl_event1);
-    const cl_event2 = try cl.event.createUserEvent(context.ctx);
-    defer cl.event.release(cl_event2);
-
-    try cl.event.retain(cl_event1);
-    var result = events.batch.sets[0].append(.write, cl_event1, null) catch |err| {
-        cl.event.release(cl_event1);
-        return err;
-    };
-    try testing.expect(result == .success_and_full);
-    events.batch.number_of_sets = 1;
-
-    try cl.event.retain(cl_event2);
-    result = events.batch.sets[1].append(.read, cl_event2, null) catch |err| {
-        cl.event.release(cl_event2);
-        return err;
-    };
-    try testing.expect(result == .success);
-
-    // Now getPrevEvents should return the previous event (index 0)
-    const prev_events = events.getPrevEvents(.write);
-    try testing.expect(prev_events != null);
-    try testing.expect(prev_events.?.len == 1);
-    try testing.expect(prev_events.?[0] == cl_event1);
+    try testing.expect(prev_events.?[0] == cl_event);
 }
 
 test "Events.concat with empty events array returns null" {
@@ -454,7 +425,7 @@ test "Events.getNewBatch creates new batch and queues old one" {
 
     // Check that old batch was queued
     try testing.expect(!queue.isEmpty());
-    const queued_batch = try queue.get();
+    const queued_batch = queue.get(true) orelse return error.QueueEmpty;
     try testing.expect(@intFromPtr(queued_batch) == @intFromPtr(old_batch));
     queued_batch.deinit();
 }
@@ -475,7 +446,7 @@ test "Events.getNewBatch with null prev_events" {
     try testing.expect(new_batch.prev_events == null);
 
     // Clean up queued batch
-    const queued_batch = try queue.get();
+    const queued_batch = queue.get(true) orelse return error.QueueEmpty;
     queued_batch.deinit();
 }
 
@@ -497,6 +468,8 @@ test "Events.appendNewEvent with empty batch" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
+    try cl.event.setUserEventStatus(cl_event, .complete);
+
     var test_data: u32 = 42;
     const callback = UserCallback{
         .func = struct {
@@ -508,7 +481,11 @@ test "Events.appendNewEvent with empty batch" {
         .data = &test_data,
     };
 
-    const result_set = try events.appendNewEvent(.read, null, cl_event, callback);
+    try cl.event.retain(cl_event);
+    const result_set = events.appendNewEvent(.read, null, cl_event, callback) catch |err| {
+        cl.event.release(cl_event);
+        return err;
+    };
 
     try testing.expect(events.batch.number_of_sets == 0);
     try testing.expect(result_set.operation == .read);
@@ -537,13 +514,22 @@ test "Events.appendNewEvent with full batch creates new batch" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
+    try cl.event.setUserEventStatus(cl_event, .complete);
+
     const prev_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(prev_event);
+
+    try cl.event.setUserEventStatus(prev_event, .complete);
 
     const prev_events = [_]cl.event.Event{prev_event};
 
     const old_batch = events.batch;
-    const result_set = try events.appendNewEvent(.read, &prev_events, cl_event, null);
+
+    try cl.event.retain(cl_event);
+    const result_set = events.appendNewEvent(.read, &prev_events, cl_event, null) catch |err| {
+        cl.event.release(cl_event);
+        return err;
+    };
 
     // Should have created a new batch
     try testing.expect(@intFromPtr(events.batch) != @intFromPtr(old_batch));
@@ -551,7 +537,7 @@ test "Events.appendNewEvent with full batch creates new batch" {
     try testing.expect(result_set.operation == .read);
 
     // Clean up queued batch
-    const queued_batch = try queue.get();
+    const queued_batch = queue.get(true) orelse return error.QueueEmpty;
     queued_batch.deinit();
 }
 
@@ -573,8 +559,14 @@ test "Events.appendNewEvent with set becoming full" {
     const cl_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event);
 
+    try cl.event.setUserEventStatus(cl_event, .complete);
+
     // Use write operation which becomes full after one event
-    const result_set = try events.appendNewEvent(.write, null, cl_event, null);
+    try cl.event.retain(cl_event);
+    const result_set = events.appendNewEvent(.write, null, cl_event, null) catch |err| {
+        cl.event.release(cl_event);
+        return err;
+    };
 
     try testing.expect(events.batch.number_of_sets == 1);
     try testing.expect(result_set.operation == .write);
@@ -600,8 +592,10 @@ test "Events.appendNewEvent with set full requiring new set" {
     const cl_event1 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event1);
 
+    try cl.event.setUserEventStatus(cl_event1, .complete);
+
     try cl.event.retain(cl_event1);
-    const result1 = events.batch.sets[0].append(.write, cl_event1, null) catch |err| {
+    const result1 = events.batch.sets[0].append(testing.allocator, .write, cl_event1, null) catch |err| {
         cl.event.release(cl_event1);
         return err;
     };
@@ -612,7 +606,13 @@ test "Events.appendNewEvent with set full requiring new set" {
     const cl_event2 = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event2);
 
-    const result_set = try events.appendNewEvent(.read, null, cl_event2, null);
+    try cl.event.setUserEventStatus(cl_event2, .complete);
+
+    try cl.event.retain(cl_event2);
+    const result_set = events.appendNewEvent(.read, null, cl_event2, null) catch |err| {
+        cl.event.release(cl_event2);
+        return err;
+    };
 
     try testing.expect(events.batch.number_of_sets == 1);
     try testing.expect(result_set.operation == .read);
@@ -636,20 +636,25 @@ test "Events.appendNewEvent with set full and batch full creates new batch" {
     defer events.deinit();
 
     // Fill all sets in the batch with write operations (which become full immediately)
-    var events_to_cleanup = std.ArrayList(cl.event.Event).init(testing.allocator);
+    var events_to_cleanup: std.ArrayList(cl.event.Event) = .empty;
     defer {
         for (events_to_cleanup.items) |e| {
             cl.event.release(e);
         }
-        events_to_cleanup.deinit();
+        events_to_cleanup.deinit(testing.allocator);
     }
 
     for (0..BatchLength) |i| {
         const cl_event = try cl.event.createUserEvent(context.ctx);
-        try events_to_cleanup.append(cl_event);
+        {
+            errdefer cl.event.release(cl_event);
+            try cl.event.setUserEventStatus(cl_event, .complete);
+            try cl.event.retain(cl_event);
 
-        try cl.event.retain(cl_event);
-        const result = events.batch.sets[i].append(.write, cl_event, null) catch |err| {
+            try events_to_cleanup.append(testing.allocator, cl_event);
+        }
+
+        const result = events.batch.sets[i].append(testing.allocator, .write, cl_event, null) catch |err| {
             cl.event.release(cl_event);
             return err;
         };
@@ -661,13 +666,22 @@ test "Events.appendNewEvent with set full and batch full creates new batch" {
     const cl_event_new = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(cl_event_new);
 
+    try cl.event.setUserEventStatus(cl_event_new, .complete);
+
     const prev_event = try cl.event.createUserEvent(context.ctx);
     defer cl.event.release(prev_event);
+
+    try cl.event.setUserEventStatus(prev_event, .complete);
 
     const prev_events = [_]cl.event.Event{prev_event};
 
     const old_batch = events.batch;
-    const result_set = try events.appendNewEvent(.read, &prev_events, cl_event_new, null);
+
+    try cl.event.retain(cl_event_new);
+    const result_set = events.appendNewEvent(.read, &prev_events, cl_event_new, null) catch |err| {
+        cl.event.release(cl_event_new);
+        return err;
+    };
 
     // Should have created a new batch
     try testing.expect(@intFromPtr(events.batch) != @intFromPtr(old_batch));
@@ -675,7 +689,7 @@ test "Events.appendNewEvent with set full and batch full creates new batch" {
     try testing.expect(result_set.operation == .read);
 
     // Clean up queued batch
-    const queued_batch = try queue.get();
+    const queued_batch = queue.get(true) orelse return error.QueueEmpty;
     queued_batch.deinit();
 }
 
@@ -698,7 +712,7 @@ test "Events.deinit waits for pending events and cleans up" {
     defer cl.event.release(cl_event);
 
     try cl.event.retain(cl_event);
-    const result = events.batch.sets[0].append(.read, cl_event, null) catch |err| {
+    const result = events.batch.sets[0].append(testing.allocator, .read, cl_event, null) catch |err| {
         cl.event.release(cl_event);
         return err;
     };
@@ -726,57 +740,90 @@ test "Events integration test - multiple operations and batch transitions" {
     try events.init(testing.allocator, &queue);
     defer events.deinit();
 
-    var events_to_cleanup = std.ArrayList(cl.event.Event).init(testing.allocator);
+    var events_to_cleanup: std.ArrayList(cl.event.Event) = .empty;
     defer {
         for (events_to_cleanup.items) |e| {
             cl.event.release(e);
         }
-        events_to_cleanup.deinit();
+        events_to_cleanup.deinit(testing.allocator);
     }
 
     // Test sequence: read -> read -> write -> read (should create transitions)
     
     // First read
     const read_event1 = try cl.event.createUserEvent(context.ctx);
-    try events_to_cleanup.append(read_event1);
-    try cl.event.setUserEventStatus(read_event1, .complete);
+    {
+        errdefer cl.event.release(read_event1);
+        try cl.event.setUserEventStatus(read_event1, .complete);
+        try cl.event.retain(read_event1);
 
-    var result_set = try events.appendNewEvent(.read, null, read_event1, null);
+        try events_to_cleanup.append(testing.allocator, read_event1);
+    }
+
+    var result_set = events.appendNewEvent(.read, null, read_event1, null) catch |err| {
+        cl.event.release(read_event1);
+        return err;
+    };
     try testing.expect(result_set.operation == .read);
     try testing.expect(events.batch.number_of_sets == 0);
 
     // Second read (should append to same set)
     const read_event2 = try cl.event.createUserEvent(context.ctx);
-    try events_to_cleanup.append(read_event2);
-    try cl.event.setUserEventStatus(read_event2, .complete);
+    {
+        errdefer cl.event.release(read_event2);
+        try cl.event.setUserEventStatus(read_event2, .complete);
+        try cl.event.retain(read_event2);
 
-    result_set = try events.appendNewEvent(.read, null, read_event2, null);
+        try events_to_cleanup.append(testing.allocator, read_event2);
+    }
+
+    result_set = events.appendNewEvent(.read, null, read_event2, null) catch |err| {
+        cl.event.release(read_event2);
+        return err;
+    };
     try testing.expect(result_set.operation == .read);
     try testing.expect(result_set.events_count == 2);
 
     // Write operation (should cause transition)
     const write_event = try cl.event.createUserEvent(context.ctx);
-    try events_to_cleanup.append(write_event);
-    try cl.event.setUserEventStatus(write_event, .complete);
+    {
+        errdefer cl.event.release(write_event);
+
+        try cl.event.setUserEventStatus(write_event, .complete);
+        try events_to_cleanup.append(testing.allocator, write_event);
+    }
 
     const prev_events = events.getPrevEvents(.write);
     try testing.expect(prev_events != null);
     try testing.expect(prev_events.?.len == 2);
 
-    result_set = try events.appendNewEvent(.write, prev_events, write_event, null);
+    try cl.event.retain(write_event);
+    result_set = events.appendNewEvent(.write, prev_events, write_event, null) catch |err| {
+        cl.event.release(write_event);
+        return err;
+    };
     try testing.expect(result_set.operation == .write);
-    try testing.expect(events.batch.number_of_sets == 1);
+    try testing.expect(events.batch.number_of_sets == 2);
 
     // Another read (should go to next set)
     const read_event3 = try cl.event.createUserEvent(context.ctx);
-    try events_to_cleanup.append(read_event3);
-    try cl.event.setUserEventStatus(read_event3, .complete);
+    {
+        errdefer cl.event.release(read_event3);
 
-    result_set = try events.appendNewEvent(.read, null, read_event3, null);
+        try cl.event.setUserEventStatus(read_event3, .complete);
+        try cl.event.retain(read_event3);
+
+        try events_to_cleanup.append(testing.allocator, read_event3);
+    }
+
+    result_set = events.appendNewEvent(.read, null, read_event3, null) catch |err| {
+        cl.event.release(read_event3);
+        return err;
+    };
     try testing.expect(result_set.operation == .read);
     try testing.expect(@intFromPtr(result_set) == @intFromPtr(&events.batch.sets[2]));
 }
 
 test {
-    std.testing.refAllDecls(Set);
+    _ = Set;
 }

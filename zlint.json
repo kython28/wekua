@@ -1,4 +1,0 @@
-{
-    "ignore-rules": ["unsafe-undefined"],
-    "ignore": ["tests/"]
-}
