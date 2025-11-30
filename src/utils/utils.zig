@@ -1,5 +1,5 @@
 pub const linked_list_module = @import("linked_list.zig");
-pub const queue_module = @import("queue.zig");
+// pub const queue_module = @import("queue.zig");
 
 const std = @import("std");
 
@@ -8,7 +8,14 @@ pub fn calculateWorkItems(
     local_work_items: []u64,
     max_work_group_size: u64,
 ) void {
-    const max_per_cu: u64 = @intFromFloat(std.math.pow(f64, @as(f64, @floatFromInt(max_work_group_size)), 1.0 / @as(f64, @floatFromInt(global_work_items.len))));
+    const max_work_group_size_float: f64 = @floatFromInt(max_work_group_size);
+    const global_work_items_len_float: f64 = @floatFromInt(global_work_items.len);
+    const max_per_cu_float = std.math.pow(
+        f64,
+        max_work_group_size_float,
+        1.0 / global_work_items_len_float,
+    );
+    const max_per_cu: u64 = @intFromFloat(max_per_cu_float);
 
     for (global_work_items, local_work_items) |g, *l| {
         if (g < max_per_cu) {
@@ -77,4 +84,8 @@ pub fn unravelIndex(
         a.* = (remaining - r) / number_of_elements;
         remaining = r;
     }
+}
+
+test {
+    _ = linked_list_module;
 }

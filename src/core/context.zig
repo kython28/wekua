@@ -2,7 +2,6 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const CommandQueue = @import("command_queue.zig");
-// const events_releaser = @import("events_releaser.zig");
 
 pub const SupportedTypes: [10]type = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
 
@@ -19,8 +18,7 @@ pub fn getTypeId(comptime T: type) comptime_int {
 allocator: std.mem.Allocator,
 ctx: cl.context.Context,
 command_queues: []CommandQueue,
-// events_batch_queue: events_releaser.EventsBatchQueue,
-// events_releaser_thread: std.Thread,
+
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -186,34 +184,13 @@ pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Contex
     context.command_queues = try CommandQueue.initMultiples(allocator, context, devices);
     errdefer CommandQueue.deinitMultiples(allocator, context.command_queues);
 
-    // context.events_batch_queue = events_releaser.EventsBatchQueue.init(allocator);
-    // {
-    //     errdefer context.events_batch_queue.release();
-
-    //     context.events_releaser_thread = try std.Thread.spawn(
-    //         .{},
-    //         events_releaser.eventsBatchReleaserWorker,
-    //         .{&context.events_batch_queue},
-    //     );
-    // }
-    // errdefer {
-    //     context.events_batch_queue.release();
-    //     context.events_releaser_thread.join();
-    // }
-
     return context;
 }
 
 pub fn deinit(context: *Context) void {
     const allocator = context.allocator;
-
     CommandQueue.deinitMultiples(allocator, context.command_queues);
-
     cl.context.release(context.ctx);
-
-    // context.events_batch_queue.release();
-    // context.events_releaser_thread.join();
-
     allocator.destroy(context);
 }
 

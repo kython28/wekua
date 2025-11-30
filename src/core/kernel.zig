@@ -198,7 +198,7 @@ pub fn compileCustomKernel(
         null,
     ) catch |err| {
         switch (err) {
-            error.compile_program_failure => {
+            error.CompileProgramFailure => {
                 showBuildLog(new_program, command_queue) catch |err2| {
                     std.log.err("Unexpected error while showing build log: {s}", .{@errorName(err2)});
                     std.log.warn("No able to show build log", .{});
@@ -218,7 +218,7 @@ pub fn compileCustomKernel(
         null,
     ) catch |err| {
         switch (err) {
-            error.link_program_failure => {
+            error.LinkProgramFailure => {
                 showBuildLog(new_program, command_queue) catch |err2| {
                     std.log.err(
                         "Unexpected error while showing build log: {s}",
