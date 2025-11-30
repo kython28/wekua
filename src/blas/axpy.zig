@@ -124,8 +124,8 @@ fn axpyWithVectors(
 
     const cmd = command_queue.cmd;
 
-    const x_prev_events = x.events.getPrevEvents(.read);
-    const y_prev_events = y.events.getPrevEvents(.write);
+    const x_prev_events = x.event_manager.getPrevEvents(.read);
+    const y_prev_events = y.event_manager.getPrevEvents(.write);
 
     const events_set = try w_tensor.EventManager.EventsSet.init(
         allocator,
@@ -206,8 +206,8 @@ fn axpyWithoutVectors(
 
     const cmd = command_queue.cmd;
 
-    const x_prev_events = x.events.getPrevEvents(.read);
-    const y_prev_events = y.events.getPrevEvents(.write);
+    const x_prev_events = x.event_manager.getPrevEvents(.read);
+    const y_prev_events = y.event_manager.getPrevEvents(.write);
 
     const events_set = try w_tensor.EventManager.EventsSet.init(
         allocator,

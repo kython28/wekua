@@ -168,21 +168,8 @@ test "Events.init initializes correctly" {
     try events.init(testing.allocator, &queue);
     defer events.deinit();
 
-    try testing.expect(events.allocator.ptr == testing.allocator.ptr);
     try testing.expect(events.batch.number_of_sets == 0);
     try testing.expect(@intFromPtr(events.events_releaser_queue) == @intFromPtr(&queue));
-}
-
-test "Events.getPrevEvents with none operation panics" {
-    var queue = BatchQueue.init(testing.allocator);
-    defer queue.deinit();
-
-    var events: Events = undefined;
-    try events.init(testing.allocator, &queue);
-    defer events.deinit();
-
-    // This should panic, but we can't easily test panics in Zig
-    // Just document the expected behavior
 }
 
 test "Events.getPrevEvents with empty batch and no prev events" {

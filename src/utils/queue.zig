@@ -11,9 +11,9 @@ pub fn Queue(comptime T: type) type {
 
         releasing: bool,
 
-        const this = @This();
+        const Self = @This();
 
-        pub fn init(allocator: std.mem.Allocator) this {
+        pub fn init(allocator: std.mem.Allocator) Self {
             return .{
                 .mutex = std.Thread.Mutex{},
                 .list = LinkedList.init(allocator),
@@ -22,7 +22,7 @@ pub fn Queue(comptime T: type) type {
             };
         }
 
-        pub fn put(self: *this, data: T) !void {
+        pub fn put(self: *Self, data: T) !void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
@@ -30,7 +30,7 @@ pub fn Queue(comptime T: type) type {
             self.cond.signal();
         }
 
-        pub fn put_node(self: *this, node: LinkedList.Node) void {
+        pub fn put_node(self: *Self, node: LinkedList.Node) void {
             const mutex = &self.mutex;
             mutex.lock();
             defer mutex.unlock();
@@ -39,7 +39,7 @@ pub fn Queue(comptime T: type) type {
             self.cond.signal();
         }
 
-        pub fn get_node(self: *this, wait: bool) !?LinkedList.Node {
+        pub fn get_node(self: *Self, wait: bool) !?LinkedList.Node {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -56,7 +56,7 @@ pub fn Queue(comptime T: type) type {
             return last_node;
         }
 
-        pub fn get(self: *this, wait: bool) !?T {
+        pub fn get(self: *Self, wait: bool) !?T {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -73,7 +73,7 @@ pub fn Queue(comptime T: type) type {
             return data;
         }
 
-        pub fn get_last_node(self: *this, wait: bool) !?LinkedList.Node {
+        pub fn get_last_node(self: *Self, wait: bool) !?LinkedList.Node {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -90,7 +90,7 @@ pub fn Queue(comptime T: type) type {
             return last_node;
         }
 
-        pub fn get_last(self: *this, wait: bool) !?T {
+        pub fn get_last(self: *Self, wait: bool) !?T {
             self.mutex.lock();
             defer self.mutex.unlock();
             defer self.cond.signal();
@@ -107,7 +107,7 @@ pub fn Queue(comptime T: type) type {
             return data;
         }
 
-        pub fn release(self: *this) void {
+        pub fn deinit(self: *Self) void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
