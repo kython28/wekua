@@ -144,16 +144,12 @@ pub inline fn waitForEvents(self: *const Set) !void {
     self.executeCallbacks();
 }
 
-pub inline fn clear(self: *Set, allocator: std.mem.Allocator) void {
+pub fn clear(self: *Set, allocator: std.mem.Allocator) void {
     for (self.events[0..self.events_count]) |event| {
         cl.event.release(event);
     }
 
     self.callbacks.deinit(allocator);
-}
-
-pub inline fn restart(self: *Set, allocator: std.mem.Allocator) void {
-    self.clear(allocator);
 
     self.operation = .none;
     self.events_count = 0;
@@ -178,7 +174,7 @@ test "Set.init initializes correctly" {
 test "Set.getParent returns correct parent batch" {
     // Create a real batch structure to test getParent
     const batch = try Batch.init(testing.allocator, null);
-    defer batch.deinit();
+    defer batch.deinit(testing.allocator);
 
     const parent = batch.sets[0].getParent();
     try testing.expect(@intFromPtr(parent) == @intFromPtr(batch));
@@ -564,7 +560,7 @@ test "Set.clear releases events and clears callbacks" {
     defer context.deinit();
 
     const batch = try Batch.init(testing.allocator, null);
-    defer batch.deinit();
+    defer batch.deinit(testing.allocator);
 
     var set = &batch.sets[0];
 
@@ -601,7 +597,7 @@ test "Set.restart clears and resets state" {
     defer context.deinit();
 
     const batch = try Batch.init(testing.allocator, null);
-    defer batch.deinit();
+    defer batch.deinit(testing.allocator);
 
     var set = &batch.sets[0];
 

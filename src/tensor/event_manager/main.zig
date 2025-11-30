@@ -9,20 +9,17 @@ pub const Combined = @import("combined.zig");
 const Operation = Set.Operation;
 const BatchLength = Batch.Length;
 
-const queue_module = @import("utils").queue_module;
-pub const BatchQueue = queue_module.Queue(*Batch);
 pub const UserCallback = Set.UserCallback;
-
 pub const Errors = Batch.Errors;
 
 allocator: std.mem.Allocator,
 batch: *Batch,
-events_releaser_queue: *BatchQueue,
+batches: Batch.BatchQueue,
+can_restart: bool,
 
 pub fn init(
     self: *Events,
     allocator: std.mem.Allocator,
-    queue: *BatchQueue,
 ) Errors!void {
     self.allocator = allocator;
 
@@ -30,16 +27,52 @@ pub fn init(
     errdefer batch.deinit();
 
     self.batch = batch;
-    self.events_releaser_queue = queue;
+    self.batches = Batch.BatchQueue{};
+    self.can_restart = false;
+}
+
+fn deinitBatches(self: *Events) void {
+    const allocator = self.allocator;
+
+    var maybe_node = self.batches.head;
+    while (maybe_node) |node| {
+        const batch = &node.data;
+        maybe_node = node.next;
+
+        batch.deinit(allocator);
+    }
+}
+
+fn waitForPendingEvents(self: *Events) void {
+    var maybe_node = self.batches.head;
+    while (maybe_node) |node| {
+        const batch = &node.data;
+        maybe_node = node.next;
+
+        batch.waitForPendingEvents();
+    }
+    self.batch.waitForPendingEvents();
 }
 
 pub fn deinit(self: *Events) void {
-    self.batch.waitForPendingEvents();
-    self.batch.deinit();
+    self.waitForPendingEvents();
+    self.deinitBatches();
+    self.batch.deinit(self.allocator);
+}
+
+fn restart(self: *Events) void {
+    self.waitForPendingEvents();
+    self.deinitBatches();
+    self.batch.clear(self.allocator);
+    self.can_restart = false;
 }
 
 pub fn getPrevEvents(self: *Events, new_op: Operation) ?[]const cl.event.Event {
     if (new_op == .none) @panic("Invalid operation");
+
+    if (self.can_restart) {
+        self.restart();
+    }
 
     const batch = self.batch;
 
@@ -107,12 +140,10 @@ fn getNewBatch(self: *Events, prev_events: ?[]const cl.event.Event) Errors!*Batc
 
     const allocator = self.allocator;
     const new_batch = try Batch.init(allocator, prev_events);
-    errdefer new_batch.deinit();
 
     self.batch = new_batch;
-    errdefer self.batch = old_batch;
+    old_batch.push(&self.batches);
 
-    try self.events_releaser_queue.put(old_batch);
     return new_batch;
 }
 
@@ -123,6 +154,10 @@ pub fn appendNewEvent(
     new_event: cl.event.Event,
     user_callback: ?UserCallback,
 ) Errors!*Set {
+    if (self.can_restart) {
+        self.restart();
+    }
+
     var batch = self.batch;
 
     var events_num = batch.number_of_sets;
@@ -826,4 +861,5 @@ test "Events integration test - multiple operations and batch transitions" {
 
 test {
     _ = Set;
+    _ = Batch;
 }
