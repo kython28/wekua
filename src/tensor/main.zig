@@ -20,11 +20,11 @@ pub const helpers = @import("helpers.zig");
 
 // const blas = @import("../blas/main.zig");
 
-pub const Errors = error{
+pub const Errors = EventManager.Errors || error{
     InvalidValue,
     InvalidCoordinates,
-    TensorDoesNotSupportComplexNumbers,
     InvalidBuffer,
+    TensorDoesNotSupportComplexNumbers,
     UnqualTensorsAttribute,
     UnqualTensorsShape,
     UnqualTensorsDimension,
@@ -83,7 +83,7 @@ const WorkConfiguration = struct {
         number_of_vectors: u64,
         last_size: u64,
         vl_shape: []const u64,
-    ) !void {
+    ) error{OutOfMemory}!void {
         _ = T;
         const local_work_items_1d = try arena_allocator.alloc(u64, command_queues.len);
         const lobal_work_items_for_vectors_1d = try arena_allocator.alloc(u64, command_queues.len);
@@ -230,8 +230,8 @@ pub fn Tensor(comptime T: type) type {
         context: *const Context,
         arena: std.heap.ArenaAllocator,
 
-        buffer: cl.buffer.cl_mem,
-        pitches_buffer: cl.buffer.cl_mem,
+        buffer: cl.buffer.Mem,
+        pitches_buffer: cl.buffer.Mem,
 
         dimensions: Dimensions,
         work_configuration: WorkConfiguration,
@@ -242,7 +242,7 @@ pub fn Tensor(comptime T: type) type {
 
         const Self = @This();
 
-        fn createPitchBuffer(self: *Self, context: *const Context, pitches: []const u64) !void {
+        fn createPitchBuffer(self: *Self, context: *const Context, pitches: []const u64) Errors!void {
             const pitches_buffer = try cl.buffer.create(
                 context.ctx,
                 @intFromEnum(cl.buffer.enums.mem_flags.read_write),
@@ -254,7 +254,7 @@ pub fn Tensor(comptime T: type) type {
 
             const prev_events = self.event_manager.getPrevEvents(.write);
 
-            var new_event: cl.event.cl_event = undefined;
+            var new_event: cl.event.Event = undefined;
             const command_queue = context.command_queues[0];
             try cl.buffer.write(
                 command_queue.cmd,
@@ -271,7 +271,7 @@ pub fn Tensor(comptime T: type) type {
             _ = try self.event_manager.appendNewEvent(.write, prev_events, new_event, null);
         }
 
-        pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) !*Self {
+        pub fn empty(context: *const Context, shape: []const u64, config: CreateConfig) Errors!*Self {
             if (shape.len == 0) {
                 return Errors.InvalidValue;
             }
@@ -429,7 +429,7 @@ pub fn Tensor(comptime T: type) type {
             allocator.destroy(self);
         }
 
-        pub fn alloc(context: *const Context, shape: []const u64, config: CreateConfig) !*Self {
+        pub fn alloc(context: *const Context, shape: []const u64, config: CreateConfig) Errors!*Self {
             const tensor = try empty(context, shape, config);
             errdefer tensor.release();
 
@@ -450,19 +450,447 @@ pub fn Tensor(comptime T: type) type {
                 prev_events,
                 &new_event,
             );
-            errdefer |err| helpers.releaseEvent(new_event, err);
+            errdefer helpers.releaseEvent(new_event);
 
             _ = try tensor.event_manager.appendNewEvent(.write, prev_events, new_event, null);
             return tensor;
         }
 
-        pub fn wait(self: *Self) !void {
+        pub fn wait(self: *Self) Errors!void {
             const prev_events = self.event_manager.getPrevEvents(.write) orelse return;
-            try cl.event.wait_for_many(prev_events);
+            try cl.event.waitForMany(prev_events);
         }
     };
 }
 
+// Tests
+const testing = std.testing;
+
+test "Tensor.empty creates tensor with correct shape (f32)" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.dimensions.shape.len == 3);
+    try testing.expect(tensor.dimensions.shape[0] == 2);
+    try testing.expect(tensor.dimensions.shape[1] == 3);
+    try testing.expect(tensor.dimensions.shape[2] == 4);
+    try testing.expect(!tensor.flags.is_complex);
+    try testing.expect(tensor.flags.vectors_enabled);
+}
+
+test "Tensor.empty creates tensor with correct shape (i32)" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 5, 10 };
+    const tensor = try Tensor(i32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.dimensions.shape.len == 2);
+    try testing.expect(tensor.dimensions.shape[0] == 5);
+    try testing.expect(tensor.dimensions.shape[1] == 10);
+    try testing.expect(!tensor.flags.is_complex);
+}
+
+test "Tensor.empty with complex numbers disables vectors" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 4, 4 };
+    const tensor = try Tensor(f32).empty(context, &shape, .{ .is_complex = true });
+    defer tensor.release();
+
+    try testing.expect(tensor.flags.is_complex);
+    try testing.expect(!tensor.flags.vectors_enabled);
+}
+
+test "Tensor.empty with vectors disabled" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 8, 8 };
+    const tensor = try Tensor(f64).empty(context, &shape, .{ .vectors_enabled = false });
+    defer tensor.release();
+
+    try testing.expect(!tensor.flags.is_complex);
+    try testing.expect(!tensor.flags.vectors_enabled);
+}
+
+test "Tensor.empty with 1D shape" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{100};
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.dimensions.shape.len == 1);
+    try testing.expect(tensor.dimensions.shape[0] == 100);
+}
+
+test "Tensor.empty with 4D shape" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 3, 4, 5 };
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.dimensions.shape.len == 4);
+    try testing.expect(tensor.dimensions.shape[0] == 2);
+    try testing.expect(tensor.dimensions.shape[1] == 3);
+    try testing.expect(tensor.dimensions.shape[2] == 4);
+    try testing.expect(tensor.dimensions.shape[3] == 5);
+}
+
+test "Tensor.empty returns InvalidValue for empty shape" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{};
+    const result = Tensor(f32).empty(context, &shape, .{});
+
+    try testing.expectError(Errors.InvalidValue, result);
+}
+
+test "Tensor.empty returns InvalidValue for shape with zero dimension" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 0, 4 };
+    const result = Tensor(f32).empty(context, &shape, .{});
+
+    try testing.expectError(Errors.InvalidValue, result);
+}
+
+test "Tensor.alloc creates tensor and initializes to zero" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 3 };
+    const tensor = try Tensor(f32).alloc(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.dimensions.shape.len == 2);
+    try testing.expect(tensor.dimensions.shape[0] == 2);
+    try testing.expect(tensor.dimensions.shape[1] == 3);
+
+    // Wait for initialization to complete
+    try tensor.wait();
+}
+
+test "Tensor.alloc with different types" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{10};
+
+    // Test with different numeric types
+    {
+        const tensor_i8 = try Tensor(i8).alloc(context, &shape, .{});
+        defer tensor_i8.release();
+        try tensor_i8.wait();
+    }
+
+    {
+        const tensor_u32 = try Tensor(u32).alloc(context, &shape, .{});
+        defer tensor_u32.release();
+        try tensor_u32.wait();
+    }
+
+    {
+        const tensor_f64 = try Tensor(f64).alloc(context, &shape, .{});
+        defer tensor_f64.release();
+        try tensor_f64.wait();
+    }
+}
+
+test "Tensor.release cleans up resources correctly" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 5, 5 };
+    const tensor = try Tensor(f32).alloc(context, &shape, .{});
+
+    // Wait for operations to complete before releasing
+    try tensor.wait();
+
+    // Release should clean up all resources
+    tensor.release();
+}
+
+test "Tensor.wait with no pending events" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{10};
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    // Should not error even with no pending events
+    try tensor.wait();
+}
+
+test "Tensor.wait synchronizes events correctly" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 3, 3 };
+    const tensor = try Tensor(f32).alloc(context, &shape, .{});
+    defer tensor.release();
+
+    // This should wait for the fill operation to complete
+    try tensor.wait();
+}
+
+test "Tensor event_manager initializes correctly" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{5};
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.event_manager.batch.number_of_sets == 0);
+}
+
+test "Tensor dimensions calculated correctly for 2D tensor" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 4, 8 };
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.dimensions.number_of_elements_without_padding == 32);
+    try testing.expect(tensor.dimensions.pitches.len == 2);
+}
+
+test "Tensor pitches buffer created correctly" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    // Pitches buffer should be created and have the correct length
+    try testing.expect(tensor.dimensions.pitches.len == 3);
+}
+
+test "helpers.eqlNumberSpace returns error for mismatched complex flags" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 2 };
+    const tensor_a = try Tensor(f32).empty(context, &shape, .{ .is_complex = false });
+    defer tensor_a.release();
+
+    const tensor_b = try Tensor(f32).empty(context, &shape, .{ .is_complex = true });
+    defer tensor_b.release();
+
+    const result = helpers.eqlNumberSpace(f32, tensor_a, tensor_b);
+    try testing.expectError(Errors.TensorDoesNotSupportComplexNumbers, result);
+}
+
+test "helpers.eqlNumberSpace succeeds for matching complex flags" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 2 };
+    const tensor_a = try Tensor(f32).empty(context, &shape, .{ .is_complex = true });
+    defer tensor_a.release();
+
+    const tensor_b = try Tensor(f32).empty(context, &shape, .{ .is_complex = true });
+    defer tensor_b.release();
+
+    try helpers.eqlNumberSpace(f32, tensor_a, tensor_b);
+}
+
+test "helpers.eqlTensorsDimensions returns error for mismatched shapes" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape_a = [_]u64{ 2, 3 };
+    const tensor_a = try Tensor(f32).empty(context, &shape_a, .{});
+    defer tensor_a.release();
+
+    const shape_b = [_]u64{ 3, 2 };
+    const tensor_b = try Tensor(f32).empty(context, &shape_b, .{});
+    defer tensor_b.release();
+
+    const result = helpers.eqlTensorsDimensions(f32, tensor_a, tensor_b);
+    try testing.expectError(Errors.UnqualTensorsShape, result);
+}
+
+test "helpers.eqlTensorsDimensions succeeds for matching shapes" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 3, 4, 5 };
+    const tensor_a = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor_a.release();
+
+    const tensor_b = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor_b.release();
+
+    try helpers.eqlTensorsDimensions(f32, tensor_a, tensor_b);
+}
+
+test "helpers.eqlTensors returns error for mismatched vectors_enabled" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 4, 4 };
+    const tensor_a = try Tensor(f32).empty(context, &shape, .{ .vectors_enabled = true });
+    defer tensor_a.release();
+
+    const tensor_b = try Tensor(f32).empty(context, &shape, .{ .vectors_enabled = false });
+    defer tensor_b.release();
+
+    const result = helpers.eqlTensors(f32, tensor_a, tensor_b);
+    try testing.expectError(Errors.UnqualTensorsAttribute, result);
+}
+
+test "helpers.eqlTensors succeeds for matching tensors" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 3, 3 };
+    const config = CreateConfig{ .is_complex = false, .vectors_enabled = true };
+
+    const tensor_a = try Tensor(f32).empty(context, &shape, config);
+    defer tensor_a.release();
+
+    const tensor_b = try Tensor(f32).empty(context, &shape, config);
+    defer tensor_b.release();
+
+    try helpers.eqlTensors(f32, tensor_a, tensor_b);
+}
+
+test "Tensor memory layout calculated correctly" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{ 2, 4, 8 };
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(tensor.memory_layout.size > 0);
+    try testing.expect(tensor.memory_layout.row_pitch >= shape[2]);
+}
+
+test "Tensor context reference is correct" {
+    const context = try core.Context.initFromDeviceType(
+        testing.allocator,
+        null,
+        cl.device.Type.all,
+    );
+    defer context.deinit();
+
+    const shape = [_]u64{10};
+    const tensor = try Tensor(f32).empty(context, &shape, .{});
+    defer tensor.release();
+
+    try testing.expect(@intFromPtr(tensor.context) == @intFromPtr(context));
+}
+
 test {
-    std.testing.refAllDecls(EventManager);
+    _ = EventManager;
 }

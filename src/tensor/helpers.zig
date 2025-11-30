@@ -3,8 +3,9 @@ const std = @import("std");
 
 const cl = @import("opencl");
 
-const w_tensor = @import("main.zig");
-const Tensor = w_tensor.Tensor;
+const tensor_module = @import("main.zig");
+const Tensor = tensor_module.Tensor;
+const Errors = tensor_module.Errors;
 
 pub const prevEventsResource = struct {
     allocator: std.mem.Allocator,
@@ -37,36 +38,35 @@ pub fn createPrevEventsResource(
     return resources;
 }
 
-pub fn releaseEvent(event: cl.event.cl_event, err: anyerror) void {
+pub fn releaseEvent(event: cl.event.cl_event) void {
     cl.event.wait(event) catch |err2| {
         std.debug.panic(
-            "An error ocurred ({s}) while waiting for new event and dealing with another error ({s})",
+            "An error ocurred ({s}) while waiting for new event and dealing with another error",
             .{
                 @errorName(err2),
-                @errorName(err),
             },
         );
     };
     cl.event.release(event);
 }
 
-pub inline fn eqlNumberSpace(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
+pub inline fn eqlNumberSpace(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) Errors!void {
     if (tensor_a.flags.is_complex != tensor_b.flags.is_complex) {
-        return w_tensor.Errors.TensorDoesNotSupportComplexNumbers;
+        return Errors.TensorDoesNotSupportComplexNumbers;
     }
 }
 
-pub inline fn eqlTensorsDimensions(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
+pub inline fn eqlTensorsDimensions(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) Errors!void {
     if (!std.mem.eql(u64, tensor_a.dimensions.shape, tensor_b.dimensions.shape)) {
-        return w_tensor.Errors.UnqualTensorsShape;
+        return Errors.UnqualTensorsShape;
     }
 }
 
-pub inline fn eqlTensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) !void {
+pub inline fn eqlTensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) Errors!void {
     try eqlTensorsDimensions(T, tensor_a, tensor_b);
     try eqlNumberSpace(T, tensor_a, tensor_b);
 
     if (tensor_a.flags.vectors_enabled != tensor_b.flags.vectors_enabled) {
-        return w_tensor.Errors.UnqualTensorsAttribute;
+        return Errors.UnqualTensorsAttribute;
     }
 }
