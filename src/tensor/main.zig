@@ -28,7 +28,7 @@ pub const Errors = error{
     UnqualTensorsAttribute,
     UnqualTensorsShape,
     UnqualTensorsDimension,
-};
+} || std.mem.Allocator.Error || cl.errors.OpenCLError;
 
 pub const CreateConfig = struct {
     cl_mem_flags: cl.buffer.MemFlags = cl.buffer.MemFlag.read_write,
@@ -165,9 +165,9 @@ const WorkConfiguration = struct {
 
         // for (command_queues, 0..) |cmd, i| {
         //     const type_index = core.Context.getTypeId(T);
-
+        //
         //     comptime var block_length2 = 4;
-
+        //
         //     // var algorithm: blas.gemm.Algorithm = .generic;
         //     inline while (block_length2 < 64) : (block_length2 *= 2) {
         //         const block_size = cmd.vector_widths[type_index] * block_length2 * @sizeOf(T);
@@ -176,14 +176,14 @@ const WorkConfiguration = struct {
         //             .global => ((block_size * block_length2) <= 16 * 1024),
         //             else => unreachable,
         //         };
-
+        //
         //         if (block_length2 <= max_block_length and blocks_fit_in_local_mem) {
         //             const algorithm_name = std.fmt.comptimePrint("{0}x{0}", .{block_length2});
         //             const g_field_name = std.fmt.comptimePrint("global_work_items_gemm_{s}", .{algorithm_name});
         //             const l_field_name = std.fmt.comptimePrint("local_work_items_gemm_{s}", .{algorithm_name});
-
+        //
         //             const g_values = &@field(self, g_field_name)[i];
-
+        //
         //             switch (cmd.local_mem_type) {
         //                 .local => @memcpy(g_values, &self.global_work_items_gemm_generic),
         //                 .global => {
@@ -192,13 +192,13 @@ const WorkConfiguration = struct {
         //                 },
         //                 else => unreachable,
         //             }
-
+        //
         //             algorithm = @field(blas.gemm.Algorithm, algorithm_name);
-
+        //
         //             utils.calculateWorkItems(g_values, &@field(self, l_field_name)[i], @min(block_length2 * block_length2, cmd.max_work_group_size));
         //         }
         //     }
-
+        //
         //     self.gemm_algorithm_per_device[i] = algorithm;
         // }
     }
@@ -248,7 +248,7 @@ pub fn Tensor(comptime T: type) type {
         ) Errors!void {
             const pitches_buffer = try cl.buffer.create(
                 context.cl_context,
-                @intFromEnum(cl.buffer.enums.mem_flags.read_write),
+                cl.buffer.MemFlag.read_write,
                 pitches.len * @sizeOf(u64),
                 null,
             );
@@ -290,9 +290,6 @@ pub fn Tensor(comptime T: type) type {
             errdefer allocator.destroy(tensor);
 
             tensor.context = context;
-            try tensor.event_manager.init(allocator, @constCast(&context.events_batch_queue));
-            errdefer tensor.event_manager.deinit();
-
             tensor.arena = std.heap.ArenaAllocator.init(allocator);
             errdefer tensor.arena.deinit();
 
@@ -449,7 +446,7 @@ pub fn Tensor(comptime T: type) type {
             const command_queue = context.command_queues[0];
             const cmd = command_queue.cl_command_queue;
 
-            var new_event: cl.event.cl_event = undefined;
+            var new_event: cl.event.Event = undefined;
             try cl.buffer.fill(
                 cmd,
                 tensor.buffer,
@@ -466,4 +463,433 @@ pub fn Tensor(comptime T: type) type {
             return tensor;
         }
     };
+}
+
+// Unit Tests
+const testing = std.testing;
+
+test "Tensor.empty - basic initialization for all types" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expect(tensor.context == context);
+            try testing.expectEqual(@as(usize, 3), tensor.dimensions.shape.len);
+            try testing.expectEqual(@as(u64, 2), tensor.dimensions.shape[0]);
+            try testing.expectEqual(@as(u64, 3), tensor.dimensions.shape[1]);
+            try testing.expectEqual(@as(u64, 4), tensor.dimensions.shape[2]);
+        }
+    }
+}
+
+test "Tensor.empty - 1D tensor" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{10};
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expectEqual(@as(usize, 1), tensor.dimensions.shape.len);
+            try testing.expectEqual(@as(u64, 10), tensor.dimensions.shape[0]);
+            try testing.expect(tensor.dimensions.number_of_elements >= 10);
+        }
+    }
+}
+
+test "Tensor.empty - 2D tensor" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 5, 7 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expectEqual(@as(usize, 2), tensor.dimensions.shape.len);
+            try testing.expectEqual(@as(u64, 5), tensor.dimensions.shape[0]);
+            try testing.expectEqual(@as(u64, 7), tensor.dimensions.shape[1]);
+        }
+    }
+}
+
+test "Tensor.empty - 4D tensor" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4, 5 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expectEqual(@as(usize, 4), tensor.dimensions.shape.len);
+            try testing.expectEqual(@as(u64, 2), tensor.dimensions.shape[0]);
+            try testing.expectEqual(@as(u64, 3), tensor.dimensions.shape[1]);
+            try testing.expectEqual(@as(u64, 4), tensor.dimensions.shape[2]);
+            try testing.expectEqual(@as(u64, 5), tensor.dimensions.shape[3]);
+        }
+    }
+}
+
+test "Tensor.empty - invalid empty shape" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const pipeline = try Pipeline.init(&context.command_queues[0]);
+    defer pipeline.deinit();
+
+    const shape: []const u64 = &.{};
+    const config = CreateConfig{};
+
+    const result = Tensor(f32).empty(context, pipeline, shape, config);
+    try testing.expectError(Errors.InvalidValue, result);
+}
+
+test "Tensor.empty - invalid zero dimension" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const pipeline = try Pipeline.init(&context.command_queues[0]);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 0, 4 };
+    const config = CreateConfig{};
+
+    const result = Tensor(f32).empty(context, pipeline, &shape, config);
+    try testing.expectError(Errors.InvalidValue, result);
+}
+
+test "Tensor.empty - complex flag disables vectors" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3 };
+    const config = CreateConfig{ .is_complex = true };
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expect(tensor.flags.is_complex);
+            try testing.expect(!tensor.flags.vectors_enabled);
+        }
+    }
+}
+
+test "Tensor.empty - vectors can be disabled" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3 };
+    const config = CreateConfig{ .vectors_enabled = false };
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expect(!tensor.flags.vectors_enabled);
+        }
+    }
+}
+
+test "Tensor.alloc - creates zeroed tensor" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expect(tensor.context == context);
+            try testing.expectEqual(@as(usize, 3), tensor.dimensions.shape.len);
+
+            try pipeline.waitAndCleanup();
+        }
+    }
+}
+
+test "Tensor - dimensions calculated correctly" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            // Number of elements without padding should be 2*3*4 = 24
+            try testing.expectEqual(@as(u64, 24), tensor.dimensions.number_of_elements_without_padding);
+
+            // Total elements should be >= elements without padding (due to padding)
+            try testing.expect(tensor.dimensions.number_of_elements >= tensor.dimensions.number_of_elements_without_padding);
+        }
+    }
+}
+
+test "Tensor - pitches calculated correctly" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            // Verify pitches array has same length as shape
+            try testing.expectEqual(shape.len, tensor.dimensions.pitches.len);
+
+            // Last pitch should equal multiplier (1 for non-complex)
+            try testing.expectEqual(@as(u64, 1), tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
+        }
+    }
+}
+
+test "Tensor - memory layout" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            // Size should be at least the minimum required
+            const min_size = tensor.dimensions.number_of_elements_without_padding * @sizeOf(T);
+            try testing.expect(tensor.memory_layout.size >= min_size);
+
+            // Row pitch should be >= last dimension
+            try testing.expect(tensor.memory_layout.row_pitch >= shape[shape.len - 1]);
+        }
+    }
+}
+
+test "Tensor.release - proper cleanup" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            tensor.release();
+        }
+    }
+}
+
+test "Tensor - multiple tensors on same context" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape1 = [_]u64{ 2, 3 };
+    const shape2 = [_]u64{ 4, 5, 6 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor1 = try Tensor(T).alloc(context, pipeline, &shape1, config);
+            defer tensor1.release();
+
+            const tensor2 = try Tensor(T).alloc(context, pipeline, &shape2, config);
+            defer tensor2.release();
+
+            // Both should reference the same context
+            try testing.expect(tensor1.context == tensor2.context);
+
+            // But should have different shapes
+            try testing.expect(tensor1.dimensions.shape.len != tensor2.dimensions.shape.len);
+
+            try pipeline.waitAndCleanup();
+        }
+    }
+}
+
+test "Tensor - work configuration initialized" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            // Verify work configuration arrays are allocated
+            try testing.expectEqual(context.command_queues.len, tensor.work_configuration.local_work_items.len);
+            try testing.expectEqual(context.command_queues.len, tensor.work_configuration.local_work_items_without_vectors.len);
+            try testing.expectEqual(context.command_queues.len, tensor.work_configuration.local_work_items_1d.len);
+            try testing.expectEqual(context.command_queues.len, tensor.work_configuration.local_work_items_for_vectors_1d.len);
+        }
+    }
+}
+
+test "Tensor.empty - custom memory flags" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3 };
+    const config = CreateConfig{
+        .cl_mem_flags = cl.buffer.MemFlag.read_only,
+    };
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            try testing.expectEqual(@as(usize, 2), tensor.dimensions.shape.len);
+        }
+    }
+}
+
+test "Tensor - vl_shape calculated" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = CreateConfig{};
+
+    inline for (core.Context.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer tensor.release();
+
+            // vl_shape should have same length as shape
+            try testing.expectEqual(shape.len, tensor.dimensions.vl_shape.len);
+
+            // First dimensions should match
+            for (shape[0 .. shape.len - 1], tensor.dimensions.vl_shape[0 .. shape.len - 1]) |s, vl| {
+                try testing.expectEqual(s, vl);
+            }
+        }
+    }
 }
