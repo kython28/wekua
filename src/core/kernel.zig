@@ -628,7 +628,7 @@ test "getClKernel - index calculation" {
     const command_queue = &context.command_queues[0];
 
     // Skip if f32 is not supported
-    if (!command_queue.typeIsSupported(f32)) return;
+    if (!command_queue.isTypeSupported(f32)) return;
 
     const test_kernel_source =
         \\__kernel void index_test_kernel(__global float* data) {
@@ -752,7 +752,7 @@ test "Multiple kernel types compilation" {
     const TestTypes = [_]type{ f32, i32, u32 };
 
     inline for (TestTypes) |T| {
-        if (command_queue.typeIsSupported(T)) {
+        if (command_queue.isTypeSupported(T)) {
             _ = try getClNoVectorNoComplexSingleKernel(
                 T,
                 command_queue,

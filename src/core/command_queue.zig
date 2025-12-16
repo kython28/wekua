@@ -223,7 +223,7 @@ pub fn deinitMultiples(allocator: std.mem.Allocator, command_queues: []CommandQu
     allocator.free(command_queues);
 }
 
-pub inline fn typeIsSupported(self: *const CommandQueue, comptime T: type) bool {
+pub inline fn isTypeSupported(self: *const CommandQueue, comptime T: type) bool {
     return self.vector_widths[Context.getTypeId(T)] > 0;
 }
 
@@ -344,7 +344,7 @@ test "CommandQueue.get_device_info - device information retrieval" {
     try testing.expect(cmd_queue.cache_line_size > 0);
 }
 
-test "CommandQueue.typeIsSupported - type support checking" {
+test "CommandQueue.isTypeSupported - type support checking" {
     const allocator = testing.allocator;
 
     const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
@@ -354,9 +354,9 @@ test "CommandQueue.typeIsSupported - type support checking" {
 
     // Test that at least some basic types are typically supported
     // Most devices support these basic types
-    const basic_supported = cmd_queue.typeIsSupported(f32) or
-        cmd_queue.typeIsSupported(i32) or
-        cmd_queue.typeIsSupported(u32);
+    const basic_supported = cmd_queue.isTypeSupported(f32) or
+        cmd_queue.isTypeSupported(i32) or
+        cmd_queue.isTypeSupported(u32);
     try testing.expect(basic_supported);
 }
 
