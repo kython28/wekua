@@ -79,9 +79,9 @@ fn compileHeader(
     }
 
     const new_header_prg = try cl.program.createWithSource(
-        command_queue.ctx.ctx,
+        command_queue.context.cl_context,
         @as([*]const []const u8, @ptrCast(&wekua_header))[0..1],
-        command_queue.allocator,
+        command_queue.context.allocator,
     );
 
     programs.?[index] = new_header_prg;
@@ -99,8 +99,9 @@ fn showBuildLog(program: cl.program.Program, command_queue: *const CommandQueue)
         &msg_len,
     );
 
-    const compile_log: []u8 = try command_queue.allocator.alloc(u8, msg_len);
-    defer command_queue.allocator.free(compile_log);
+    const allocator = command_queue.context.allocator;
+    const compile_log: []u8 = try allocator.alloc(u8, msg_len);
+    defer allocator.free(compile_log);
 
     try cl.program.get_build_info(
         program,
@@ -127,8 +128,9 @@ pub fn compileCustomKernel(
     header_names: []const []const u8,
     source_codes: []const []const u8,
 ) !cl.kernel.Kernel {
-    const cl_ctx = command_queue.ctx.ctx;
-    const allocator = command_queue.allocator;
+    const context = command_queue.context;
+    const cl_ctx = context.cl_context;
+    const allocator = context.allocator;
     const new_program = try cl.program.createWithSource(
         cl_ctx,
         source_codes,
@@ -273,7 +275,7 @@ pub fn getKernelSet(
         return kernels_set;
     }
 
-    const allocator = command_queue.allocator;
+    const allocator = command_queue.context.allocator;
 
     const cl_kernels = try allocator.alloc(?cl.kernel.Kernel, number_of_cl_kernels);
     errdefer allocator.free(cl_kernels);

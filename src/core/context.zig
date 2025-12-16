@@ -4,6 +4,7 @@ const cl = @import("opencl");
 const CommandQueue = @import("command_queue.zig");
 
 pub const SupportedTypes: [10]type = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
+pub const Errors = cl.errors.OpenCLError || error{OutOfMemory, DevicesArrayEmpty};
 
 pub fn getTypeId(comptime T: type) comptime_int {
     inline for (SupportedTypes, 0..) |t, i| {
@@ -16,7 +17,7 @@ pub fn getTypeId(comptime T: type) comptime_int {
 }
 
 allocator: std.mem.Allocator,
-ctx: cl.context.Context,
+cl_context: cl.context.Context,
 command_queues: []CommandQueue,
 
 
@@ -24,7 +25,7 @@ pub fn init(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.Properties,
     devices: []cl.device.DeviceId,
-) !*Context {
+) Errors!*Context {
     if (devices.len == 0) return error.DevicesArrayEmpty;
 
     const cl_ctx = try cl.context.create(properties, devices, null, null);
@@ -38,7 +39,7 @@ pub fn initFromDeviceType(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.Properties,
     device_type: cl.device.Type,
-) !*Context {
+) Errors!*Context {
     const cl_ctx = try cl.context.createFromType(properties, device_type, null, null);
     errdefer cl.context.release(cl_ctx);
 
@@ -50,7 +51,7 @@ pub fn initFromBestDevice(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.Properties,
     device_type: cl.device.Type,
-) !*Context {
+) Errors!*Context {
     const platforms = try cl.platform.getAll(allocator);
     defer cl.platform.releaseList(allocator, platforms);
 
@@ -117,7 +118,7 @@ pub fn createOnePerPlatform(
     allocator: std.mem.Allocator,
     properties: ?[]const cl.context.Properties,
     device_type: cl.device.Type,
-) ![]*Context {
+) Errors![]*Context {
     const platforms = try cl.platform.getAll(allocator);
     defer cl.platform.releaseList(allocator, platforms);
 
@@ -152,7 +153,7 @@ pub fn createOnePerPlatform(
     return contexts;
 }
 
-pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Context) !*Context {
+pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Context) Errors!*Context {
     var context = try allocator.create(Context);
     errdefer allocator.destroy(context);
 
@@ -180,7 +181,7 @@ pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Contex
     );
 
     context.allocator = allocator;
-    context.ctx = cl_ctx;
+    context.cl_context = cl_ctx;
     context.command_queues = try CommandQueue.initMultiples(allocator, context, devices);
     errdefer CommandQueue.deinitMultiples(allocator, context.command_queues);
 
@@ -190,7 +191,7 @@ pub fn initFromClContext(allocator: std.mem.Allocator, cl_ctx: cl.context.Contex
 pub fn deinit(context: *Context) void {
     const allocator = context.allocator;
     CommandQueue.deinitMultiples(allocator, context.command_queues);
-    cl.context.release(context.ctx);
+    cl.context.release(context.cl_context);
     allocator.destroy(context);
 }
 

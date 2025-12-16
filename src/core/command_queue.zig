@@ -4,9 +4,10 @@ const cl = @import("opencl");
 const Context = @import("context.zig");
 const KernelsSet = @import("kernel.zig");
 
-allocator: std.mem.Allocator,
-ctx: *const Context,
-cmd: cl.command_queue.CommandQueue,
+pub const Errors = cl.errors.OpenCLError || error{OutOfMemory};
+
+context: *const Context,
+cl_command_queue: cl.command_queue.CommandQueue,
 device: cl.device.DeviceId,
 
 device_name: []u8,
@@ -29,7 +30,7 @@ fn get_device_info(
     self: *CommandQueue,
     allocator: std.mem.Allocator,
     device: cl.device.DeviceId,
-) !void {
+) Errors!void {
     const device_info_enum = cl.device.Info;
 
     var device_name_size: usize = undefined;
@@ -124,15 +125,14 @@ pub fn init(
     self: *CommandQueue,
     ctx: *const Context,
     device: cl.device.DeviceId,
-) !void {
-    const cmd: cl.command_queue.CommandQueue = try cl.command_queue.create(ctx.ctx, device, 0);
+) Errors!void {
+    const cmd: cl.command_queue.CommandQueue = try cl.command_queue.create(ctx.cl_context, device, 0);
     errdefer cl.command_queue.release(cmd);
 
     const allocator = ctx.allocator;
 
-    self.allocator = allocator;
-    self.ctx = ctx;
-    self.cmd = cmd;
+    self.context = ctx;
+    self.cl_command_queue = cmd;
     self.device = device;
     self.wekua_id = 0;
 
@@ -180,7 +180,7 @@ pub fn initMultiples(
 }
 
 pub fn deinit(self: *CommandQueue) void {
-    const allocator = self.allocator;
+    const allocator = self.context.allocator;
 
     const kernels = self.kernels;
     for (&kernels) |*set| {
@@ -210,10 +210,10 @@ pub fn deinit(self: *CommandQueue) void {
 
     allocator.free(self.device_name);
 
-    cl.command_queue.finish(self.cmd) catch |err| {
+    cl.command_queue.finish(self.cl_command_queue) catch |err| {
         std.debug.panic("An error ocurred while executing clFinish: {s}", .{@errorName(err)});
     };
-    cl.command_queue.release(self.cmd);
+    cl.command_queue.release(self.cl_command_queue);
 }
 
 pub fn deinitMultiples(allocator: std.mem.Allocator, command_queues: []CommandQueue) void {
@@ -245,7 +245,7 @@ test "CommandQueue.init - basic initialization with real device" {
     const cmd_queue = &context.command_queues[0];
 
     // Verify basic initialization
-    try testing.expect(cmd_queue.ctx == context);
+    try testing.expect(cmd_queue.context == context);
     try testing.expect(cmd_queue.wekua_id == 0);
 
     // Verify device info was populated
@@ -298,7 +298,7 @@ test "CommandQueue.initMultiples - multiple command queues creation" {
         // Verify each command queue has correct wekua_id
         for (context.command_queues, 0..) |cmd_queue, index| {
             try testing.expect(cmd_queue.wekua_id == index);
-            try testing.expect(cmd_queue.ctx == context);
+            try testing.expect(cmd_queue.context == context);
             try testing.expect(cmd_queue.device_name.len > 0);
         }
     }
@@ -371,7 +371,6 @@ test "CommandQueue.deinit - proper cleanup" {
     const cmd_queue = &context.command_queues[0];
 
     try testing.expect(cmd_queue.device_name.len > 0);
-    try testing.expect(cmd_queue.allocator.ptr == allocator.ptr);
 
     // Test that kernels array is properly initialized
     for (cmd_queue.kernels) |kernel_set| {
@@ -416,9 +415,8 @@ test "CommandQueue multiple contexts compatibility" {
 
         for (context.command_queues, 0..) |cmd_queue, index| {
             try testing.expect(cmd_queue.wekua_id == index);
-            try testing.expect(cmd_queue.ctx == context);
+            try testing.expect(cmd_queue.context == context);
             try testing.expect(cmd_queue.device_name.len > 0);
-            try testing.expect(cmd_queue.allocator.ptr == allocator.ptr);
         }
     }
 }
