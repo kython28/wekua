@@ -3,8 +3,7 @@ pub const CommandQueue = @import("command_queue.zig");
 pub const KernelsSet = @import("kernel.zig");
 pub const Pipeline = @import("pipeline.zig");
 
-pub const getTypeId = Context.getTypeId;
-pub const SupportedTypes = Context.SupportedTypes;
+pub const types = @import("types.zig");
 
 test {
     const std = @import("std");

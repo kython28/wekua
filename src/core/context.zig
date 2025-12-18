@@ -3,18 +3,7 @@ const cl = @import("opencl");
 
 const CommandQueue = @import("command_queue.zig");
 
-pub const SupportedTypes: [10]type = .{ i8, u8, i16, u16, i32, u32, i64, u64, f32, f64 };
 pub const Errors = cl.errors.OpenCLError || error{OutOfMemory, DevicesArrayEmpty};
-
-pub fn getTypeId(comptime T: type) comptime_int {
-    inline for (SupportedTypes, 0..) |t, i| {
-        if (T == t) {
-            return i;
-        }
-    }
-
-    @compileError("Type not supported");
-}
 
 allocator: std.mem.Allocator,
 cl_context: cl.context.Context,
@@ -210,33 +199,6 @@ const Context = @This();
 
 // Unit Tests
 const testing = std.testing;
-
-test "getTypeId returns correct indices for supported types" {
-    try testing.expectEqual(0, getTypeId(i8));
-    try testing.expectEqual(1, getTypeId(u8));
-    try testing.expectEqual(2, getTypeId(i16));
-    try testing.expectEqual(3, getTypeId(u16));
-    try testing.expectEqual(4, getTypeId(i32));
-    try testing.expectEqual(5, getTypeId(u32));
-    try testing.expectEqual(6, getTypeId(i64));
-    try testing.expectEqual(7, getTypeId(u64));
-    try testing.expectEqual(8, getTypeId(f32));
-    try testing.expectEqual(9, getTypeId(f64));
-}
-
-test "SupportedTypes array contains expected types" {
-    try testing.expectEqual(@as(usize, 10), SupportedTypes.len);
-    try testing.expectEqual(i8, SupportedTypes[0]);
-    try testing.expectEqual(u8, SupportedTypes[1]);
-    try testing.expectEqual(i16, SupportedTypes[2]);
-    try testing.expectEqual(u16, SupportedTypes[3]);
-    try testing.expectEqual(i32, SupportedTypes[4]);
-    try testing.expectEqual(u32, SupportedTypes[5]);
-    try testing.expectEqual(i64, SupportedTypes[6]);
-    try testing.expectEqual(u64, SupportedTypes[7]);
-    try testing.expectEqual(f32, SupportedTypes[8]);
-    try testing.expectEqual(f64, SupportedTypes[9]);
-}
 
 test "init function with empty devices array" {
     const allocator = testing.allocator;

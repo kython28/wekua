@@ -1,6 +1,7 @@
 const std = @import("std");
 const cl = @import("opencl");
 
+const types = @import("types.zig");
 const Context = @import("context.zig");
 const KernelsSet = @import("kernel.zig");
 
@@ -224,7 +225,7 @@ pub fn deinitMultiples(allocator: std.mem.Allocator, command_queues: []CommandQu
 }
 
 pub inline fn isTypeSupported(self: *const CommandQueue, comptime T: type) bool {
-    return self.vector_widths[Context.getTypeId(T)] > 0;
+    return (self.vector_widths[types.getTypeId(T)] > 0);
 }
 
 const CommandQueue = @This();

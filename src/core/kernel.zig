@@ -50,7 +50,7 @@ pub const KernelsID = enum(u16) {
 };
 
 pub const TOTAL_NUMBER_OF_KERNELS = @typeInfo(KernelsID).@"enum".fields.len;
-pub const TOTAL_NUMBER_OF_HEADERS = core.SupportedTypes.len * 2 * 2;
+pub const TOTAL_NUMBER_OF_HEADERS = core.types.SupportedTypes.len * 2 * 2;
 
 kernels: ?[]?cl.kernel.Kernel = null,
 programs: ?[]?cl.program.Program = null,
@@ -69,7 +69,7 @@ fn compileHeader(
     vectors_enabled: bool,
     is_complex: bool,
 ) !cl.program.Program {
-    const type_index: u16 = core.getTypeId(T);
+    const type_index: u16 = core.types.getTypeId(T);
     const index: u16 = type_index * 4 + @as(u16, @intFromBool(vectors_enabled)) * 2 + @intFromBool(is_complex);
 
     const headers = &command_queue.headers;
@@ -138,7 +138,7 @@ pub fn compileCustomKernel(
     );
     defer cl.program.release(new_program);
 
-    const type_index = core.getTypeId(T);
+    const type_index = core.types.getTypeId(T);
     const vector_width = blk: {
         if (options.vectors_enabled and !options.is_complex) {
             break :blk command_queue.vector_widths[type_index];
@@ -339,8 +339,8 @@ pub fn getClKernel(
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.Kernel {
-    const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.SupportedTypes.len) +
-        @intFromBool(is_complex) * core.SupportedTypes.len + @as(usize, core.getTypeId(T)));
+    const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.types.SupportedTypes.len) +
+        @intFromBool(is_complex) * core.types.SupportedTypes.len + @as(usize, core.types.getTypeId(T)));
 
     return createAndGetKernel(
         T,
@@ -355,7 +355,7 @@ pub fn getClKernel(
         },
         true,
         true,
-        core.SupportedTypes.len * 2 * 2,
+        core.types.SupportedTypes.len * 2 * 2,
         kernel_index,
     );
 }
@@ -369,8 +369,8 @@ pub fn getClNoVectorKernel(
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) !cl.kernel.Kernel {
-    const type_index: usize = core.getTypeId(T);
-    const kernel_index = @intFromBool(is_complex) * core.SupportedTypes.len + type_index;
+    const type_index: usize = core.types.getTypeId(T);
+    const kernel_index = @intFromBool(is_complex) * core.types.SupportedTypes.len + type_index;
 
     return createAndGetKernel(
         T,
@@ -385,7 +385,7 @@ pub fn getClNoVectorKernel(
         },
         true,
         false,
-        core.SupportedTypes.len * 2,
+        core.types.SupportedTypes.len * 2,
         kernel_index,
     );
 }
@@ -411,8 +411,8 @@ pub fn getClNoVectorNoComplexSingleKernel(
         },
         false,
         false,
-        core.SupportedTypes.len,
-        core.getTypeId(T),
+        core.types.SupportedTypes.len,
+        core.types.getTypeId(T),
     );
 }
 
@@ -599,8 +599,8 @@ test "createAndGetKernel - caching behavior" {
         options,
         false, // can_use_complex
         false, // can_use_vectors
-        core.SupportedTypes.len,
-        core.getTypeId(f32),
+        core.types.SupportedTypes.len,
+        core.types.getTypeId(f32),
     );
 
     // Second call should return the cached kernel
@@ -612,8 +612,8 @@ test "createAndGetKernel - caching behavior" {
         options,
         false,
         false,
-        core.SupportedTypes.len,
-        core.getTypeId(f32),
+        core.types.SupportedTypes.len,
+        core.types.getTypeId(f32),
     );
 
     try testing.expectEqual(kernel1, kernel2);
