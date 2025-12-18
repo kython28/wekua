@@ -10,8 +10,8 @@ const Tensor = tensor_module.Tensor;
 
 pub fn getValue(
     comptime T: type,
-    tensor: *Tensor(T),
     pipeline: *Pipeline,
+    tensor: *Tensor(T),
     coor: []const u64,
     scalar: *T,
 ) !void {

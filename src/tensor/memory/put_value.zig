@@ -10,8 +10,8 @@ const helpers = @import("../helpers.zig");
 
 pub fn putValue(
     comptime T: type,
-    tensor: *Tensor(T),
     pipeline: *Pipeline,
+    tensor: *Tensor(T),
     coor: []const u64,
     scalar: *const T,
 ) !void {
