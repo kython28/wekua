@@ -43,10 +43,14 @@ pub fn append(self: *Pipeline, events: []const cl.event.Event) error{OutOfMemory
     try self.events_batches.append(allocator, new_events);
 }
 
-pub fn waitAndCleanup(self: *Pipeline) cl.errors.OpenCLError!void {
+pub fn waitAndCleanup(self: *Pipeline) void {
     const events_batches = self.events_batches.items;
+    if (events_batches.len == 0) return;
+
     for (events_batches) |events| {
-        try cl.event.waitForMany(events);
+        cl.event.waitForMany(events) catch |err| {
+            std.debug.panic("Unexpected error ({s}) while waiting for events", .{@errorName(err)});
+        };
     }
 
     for (events_batches) |events| {
@@ -204,7 +208,7 @@ test "Pipeline.waitAndCleanup - clears all events" {
     try cl.event.setUserEventStatus(event2, .complete);
 
     // Wait and cleanup
-    try pipeline.waitAndCleanup();
+    pipeline.waitAndCleanup();
 
     // After cleanup, events_batches should be cleared
     try testing.expectEqual(@as(usize, 0), pipeline.events_batches.items.len);
