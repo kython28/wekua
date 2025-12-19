@@ -5,6 +5,7 @@ const Pipeline = core.Pipeline;
 
 const tensor_module = @import("../main.zig");
 const Tensor = tensor_module.Tensor;
+const TensorErrors = tensor_module.Errors;
 
 const helpers = @import("../helpers.zig");
 
@@ -14,7 +15,7 @@ pub fn putValue(
     tensor: *Tensor(T),
     coor: []const u64,
     scalar: *const T,
-) !void {
+) TensorErrors!void {
     if (coor.len != tensor.dimensions.shape.len) {
         return tensor_module.Errors.InvalidCoordinates;
     }
@@ -28,7 +29,7 @@ pub fn putValue(
     offset *= core.types.getTypeSize(T);
 
     const prev_events = pipeline.prevEvents();
-    var new_event: cl.event.cl_event = undefined;
+    var new_event: cl.event.Event = undefined;
 
     try cl.buffer.write(
         pipeline.command_queue.cl_command_queue,

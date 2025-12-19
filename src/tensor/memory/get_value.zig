@@ -7,6 +7,7 @@ const helpers = @import("../helpers.zig");
 
 const tensor_module = @import("../main.zig");
 const Tensor = tensor_module.Tensor;
+const TensorErrors = tensor_module.Errors;
 
 pub fn getValue(
     comptime T: type,
@@ -14,7 +15,7 @@ pub fn getValue(
     tensor: *Tensor(T),
     coor: []const u64,
     scalar: *T,
-) !void {
+) TensorErrors!void {
     if (coor.len != tensor.dimensions.shape.len) {
         return tensor_module.Errors.InvalidCoordinates;
     }
@@ -29,7 +30,7 @@ pub fn getValue(
 
     const prev_events = pipeline.prevEvents();
 
-    var new_event: cl.event.cl_event = undefined;
+    var new_event: cl.event.Event = undefined;
     try cl.buffer.read(
         pipeline.command_queue.cl_command_queue,
         tensor.buffer,
