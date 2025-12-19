@@ -30,21 +30,29 @@ pub const SupportedTypes: [20]type = .{
     Complex(f64),
 };
 
-pub fn getTypeId(comptime T: type) comptime_int {
-    @setEvalBranchQuota(2000);
+fn getTypeIndex(comptime T: type) comptime_int {
+    @setEvalBranchQuota(4000);
     inline for (SupportedTypes, 0..) |t, i| {
         if (T == t) {
-            return i % 10;
+            return i;
         }
     }
 
     @compileError("Type not supported");
 }
 
+pub fn getTypeId(comptime T: type) comptime_int {
+    return getTypeIndex(T) % 10;
+}
+
 pub fn isComplex(comptime T: type) bool {
-    return getTypeId(T) >= 10;
+    return getTypeIndex(T) >= 10;
 }
 
 pub fn getTypeSize(comptime T: type) comptime_int {
-    return @sizeOf(SupportedTypes[getTypeId(T) % 10]);
+    return @sizeOf(SupportedTypes[getTypeId(T)]);
+}
+
+pub fn getType(comptime T: type) type {
+    return SupportedTypes[getTypeId(T)];
 }

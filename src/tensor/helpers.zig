@@ -39,11 +39,11 @@ pub fn createPrevEventsResource(
 }
 
 pub fn releaseEvent(event: cl.event.Event) void {
-    cl.event.wait(event) catch |err2| {
+    cl.event.wait(event) catch |err| {
         std.debug.panic(
             "An error ocurred ({s}) while waiting for new event and dealing with another error",
             .{
-                @errorName(err2),
+                @errorName(err),
             },
         );
     };
