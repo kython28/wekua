@@ -49,11 +49,13 @@ pub fn build(b: *std.Build) void {
     const core_test = b.addTest(.{
         .root_module = core_module,
         .use_llvm = true,
+        .name = "core",
     });
 
     const tensor_test = b.addTest(.{
         .root_module = tensor_module,
         .use_llvm = true,
+        .name = "tensor",
     });
 
     const run_core_test = b.addRunArtifact(core_test);
