@@ -396,7 +396,7 @@ pub fn Tensor(comptime T: type) type {
                 vl_shape,
             );
 
-            const size = number_of_elements * @sizeOf(T);
+            const size = number_of_elements * core.types.getTypeSize(T);
             tensor.memory_layout.size = size;
 
             tensor.buffer = try cl.buffer.create(
@@ -443,7 +443,7 @@ pub fn Tensor(comptime T: type) type {
                 cmd,
                 tensor.buffer,
                 &zero,
-                @sizeOf(T),
+                core.types.getTypeSize(T),
                 0,
                 tensor.memory_layout.size,
                 prev_events,
@@ -459,6 +459,10 @@ pub fn Tensor(comptime T: type) type {
 
 // Unit Tests
 const testing = std.testing;
+
+test {
+    std.testing.refAllDecls(@This());
+}
 
 test "Tensor.empty - basic initialization for all types" {
     const allocator = testing.allocator;
@@ -689,7 +693,11 @@ test "Tensor - dimensions calculated correctly" {
             defer tensor.release(pipeline);
 
             // Number of elements without padding should be 2*3*4 = 24
-            try testing.expectEqual(@as(u64, 24), tensor.dimensions.number_of_elements_without_padding);
+            if (comptime core.types.isComplex(T)) {
+                try testing.expectEqual(@as(u64, 48), tensor.dimensions.number_of_elements_without_padding);
+            }else{
+                try testing.expectEqual(@as(u64, 24), tensor.dimensions.number_of_elements_without_padding);
+            }
 
             // Total elements should be >= elements without padding (due to padding)
             try testing.expect(tensor.dimensions.number_of_elements >= tensor.dimensions.number_of_elements_without_padding);
@@ -719,7 +727,11 @@ test "Tensor - pitches calculated correctly" {
             try testing.expectEqual(shape.len, tensor.dimensions.pitches.len);
 
             // Last pitch should equal multiplier (1 for non-complex)
-            try testing.expectEqual(@as(u64, 1), tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
+            if (comptime core.types.isComplex(T)) {
+                try testing.expectEqual(@as(u64, 2), tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
+            }else{
+                try testing.expectEqual(@as(u64, 1), tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
+            }
         }
     }
 }
@@ -743,7 +755,7 @@ test "Tensor - memory layout" {
             defer tensor.release(pipeline);
 
             // Size should be at least the minimum required
-            const min_size = tensor.dimensions.number_of_elements_without_padding * @sizeOf(T);
+            const min_size = tensor.dimensions.number_of_elements_without_padding * core.types.getTypeSize(T);
             try testing.expect(tensor.memory_layout.size >= min_size);
 
             // Row pitch should be >= last dimension
