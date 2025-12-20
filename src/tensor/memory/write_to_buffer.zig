@@ -33,8 +33,8 @@ pub fn writeToBuffer(
     const buff_origin: [3]usize = .{ 0, 0, 0 };
     const region: [3]usize = .{ width, height, depth };
 
-    const buf_row_pitch = tensor.memory_layout.row_pitch * core.types.getTypeSize(T);
-    const buf_slice_pitch = tensor.memory_layout.slice_pitch * core.types.getTypeSize(T);
+    const buf_row_pitch = tensor.memory_layout.row_pitch * @sizeOf(T);
+    const buf_slice_pitch = tensor.memory_layout.slice_pitch * @sizeOf(T);
 
     const host_row_pitch = width;
     const host_slice_pitch = height * host_row_pitch;

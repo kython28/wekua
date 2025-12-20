@@ -298,8 +298,6 @@ pub fn Tensor(comptime T: type) type {
             const vectors_enabled = (!is_complex and config.vectors_enabled);
             tensor.flags.vectors_enabled = vectors_enabled;
 
-            const multiplier = if (is_complex) 2 else 1;
-
             var vector_width: u64 = 1;
             if (vectors_enabled) {
                 for (command_queues) |cmd| {
@@ -325,7 +323,7 @@ pub fn Tensor(comptime T: type) type {
             const padded_penultimate_size = penultimate_size + (penultimate_size % 2);
             const depth: usize = number_of_elements_without_padding;
 
-            number_of_elements_without_padding *= multiplier * last_size * penultimate_size;
+            number_of_elements_without_padding *= last_size * penultimate_size;
             tensor.dimensions.number_of_elements_without_padding = number_of_elements_without_padding;
 
             var row_pitch: u64 = last_size;
@@ -338,15 +336,10 @@ pub fn Tensor(comptime T: type) type {
 
             var row_pitch_for_vectors = row_pitch / vector_width;
             vl_shape[last_element_index] = row_pitch_for_vectors;
-            row_pitch_for_vectors *= multiplier;
-            row_pitch *= multiplier;
 
-            const row_pitch_for_vectors_remainder = row_pitch_for_vectors % (multiplier * 2);
-            if (row_pitch_for_vectors_remainder > 0) {
-                const diff = multiplier * 2 - row_pitch_for_vectors_remainder;
-                row_pitch_for_vectors += diff;
-                row_pitch += vector_width * diff;
-            }
+            const row_pitch_for_vectors_remainder = row_pitch_for_vectors % 2;
+            row_pitch_for_vectors += row_pitch_for_vectors_remainder;
+            row_pitch += vector_width * row_pitch_for_vectors_remainder;
 
             tensor.memory_layout.row_pitch = row_pitch;
             tensor.memory_layout.row_pitch_for_vectors = row_pitch_for_vectors;
@@ -381,7 +374,7 @@ pub fn Tensor(comptime T: type) type {
                 pitches[penultimate_element_index] = row_pitch;
             }
 
-            pitches[last_element_index] = multiplier;
+            pitches[last_element_index] = 1;
 
             try tensor.work_configuration.init(
                 T,
@@ -396,7 +389,7 @@ pub fn Tensor(comptime T: type) type {
                 vl_shape,
             );
 
-            const size = number_of_elements * core.types.getTypeSize(T);
+            const size = number_of_elements * @sizeOf(T);
             tensor.memory_layout.size = size;
 
             tensor.buffer = try cl.buffer.create(
@@ -443,7 +436,7 @@ pub fn Tensor(comptime T: type) type {
                 cmd,
                 tensor.buffer,
                 &zero,
-                core.types.getTypeSize(T),
+                @sizeOf(T),
                 0,
                 tensor.memory_layout.size,
                 prev_events,
@@ -512,10 +505,8 @@ test "Tensor.empty - 1D tensor" {
             try testing.expectEqual(@as(usize, 1), tensor.dimensions.shape.len);
             try testing.expectEqual(@as(u64, 10), tensor.dimensions.shape[0]);
 
-            const multiplier = if (comptime core.types.isComplex(T)) 2 else 1;
-
-            try testing.expectEqual(tensor.dimensions.number_of_elements_without_padding, multiplier * 10);
-            try testing.expect(tensor.dimensions.number_of_elements >= multiplier * 10);
+            try testing.expectEqual(tensor.dimensions.number_of_elements_without_padding, 10);
+            try testing.expect(tensor.dimensions.number_of_elements >= 10);
         }
     }
 }
@@ -693,11 +684,7 @@ test "Tensor - dimensions calculated correctly" {
             defer tensor.release(pipeline);
 
             // Number of elements without padding should be 2*3*4 = 24
-            if (comptime core.types.isComplex(T)) {
-                try testing.expectEqual(@as(u64, 48), tensor.dimensions.number_of_elements_without_padding);
-            }else{
-                try testing.expectEqual(@as(u64, 24), tensor.dimensions.number_of_elements_without_padding);
-            }
+            try testing.expectEqual(@as(u64, 24), tensor.dimensions.number_of_elements_without_padding);
 
             // Total elements should be >= elements without padding (due to padding)
             try testing.expect(tensor.dimensions.number_of_elements >= tensor.dimensions.number_of_elements_without_padding);
@@ -727,11 +714,7 @@ test "Tensor - pitches calculated correctly" {
             try testing.expectEqual(shape.len, tensor.dimensions.pitches.len);
 
             // Last pitch should equal multiplier (1 for non-complex)
-            if (comptime core.types.isComplex(T)) {
-                try testing.expectEqual(@as(u64, 2), tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
-            }else{
-                try testing.expectEqual(@as(u64, 1), tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
-            }
+            try testing.expectEqual(@as(u64, 1), tensor.dimensions.pitches[tensor.dimensions.pitches.len - 1]);
         }
     }
 }
@@ -755,7 +738,7 @@ test "Tensor - memory layout" {
             defer tensor.release(pipeline);
 
             // Size should be at least the minimum required
-            const min_size = tensor.dimensions.number_of_elements_without_padding * core.types.getTypeSize(T);
+            const min_size = tensor.dimensions.number_of_elements_without_padding * @sizeOf(T);
             try testing.expect(tensor.memory_layout.size >= min_size);
 
             // Row pitch should be >= last dimension

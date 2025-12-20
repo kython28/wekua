@@ -26,7 +26,7 @@ pub fn putValue(
 
         offset += c * p;
     }
-    offset *= core.types.getTypeSize(T);
+    offset *= @sizeOf(T);
 
     const prev_events = pipeline.prevEvents();
     var new_event: cl.event.Event = undefined;

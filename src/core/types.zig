@@ -49,10 +49,6 @@ pub fn isComplex(comptime T: type) bool {
     return getTypeIndex(T) >= 10;
 }
 
-pub fn getTypeSize(comptime T: type) comptime_int {
-    return @sizeOf(SupportedTypes[getTypeId(T)]);
-}
-
 pub fn getType(comptime T: type) type {
     return SupportedTypes[getTypeId(T)];
 }
