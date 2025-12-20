@@ -50,12 +50,6 @@ pub fn releaseEvent(event: cl.event.Event) void {
     cl.event.release(event);
 }
 
-pub inline fn eqlNumberSpace(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) Errors!void {
-    if (tensor_a.flags.is_complex != tensor_b.flags.is_complex) {
-        return Errors.TensorDoesNotSupportComplexNumbers;
-    }
-}
-
 pub inline fn eqlTensorsDimensions(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) Errors!void {
     if (!std.mem.eql(u64, tensor_a.dimensions.shape, tensor_b.dimensions.shape)) {
         return Errors.UnqualTensorsShape;
@@ -64,7 +58,6 @@ pub inline fn eqlTensorsDimensions(comptime T: type, tensor_a: *Tensor(T), tenso
 
 pub inline fn eqlTensors(comptime T: type, tensor_a: *Tensor(T), tensor_b: *Tensor(T)) Errors!void {
     try eqlTensorsDimensions(T, tensor_a, tensor_b);
-    try eqlNumberSpace(T, tensor_a, tensor_b);
 
     if (tensor_a.flags.vectors_enabled != tensor_b.flags.vectors_enabled) {
         return Errors.UnqualTensorsAttribute;
