@@ -2,7 +2,7 @@ pub const getValue = @import("get_value.zig").getValue;
 pub const putValue = @import("put_value.zig").putValue;
 pub const readFromBuffer = @import("read_from_buffer.zig").readFromBuffer;
 pub const writeToBuffer = @import("write_to_buffer.zig").writeToBuffer;
-// pub const copy = @import("copy.zig").copy;
+pub const copy = @import("copy.zig").copy;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -525,7 +525,6 @@ test "readFromBuffer and writeToBuffer - 2D tensor for all types" {
 
             // Write to tensor
             try readFromBuffer(T, pipeline, tensor, input_buffer);
-            pipeline.waitAndCleanup();
 
             // Read from tensor
             const output_buffer = try allocator.alloc(T, buffer_size);
@@ -589,7 +588,6 @@ test "readFromBuffer and writeToBuffer - 3D tensor for all types" {
 
             // Write to tensor
             try readFromBuffer(T, pipeline, tensor, input_buffer);
-            pipeline.waitAndCleanup();
 
             // Read from tensor
             const output_buffer = try allocator.alloc(T, buffer_size);
@@ -706,14 +704,11 @@ test "readFromBuffer and writeToBuffer - round trip preserves data" {
 
             // First round trip: buffer1 -> tensor -> buffer2
             try readFromBuffer(T, pipeline, tensor, buffer1);
-            pipeline.waitAndCleanup();
 
             try writeToBuffer(T, pipeline, tensor, buffer2);
-            pipeline.waitAndCleanup();
 
             // Second round trip: buffer2 -> tensor -> buffer3
             try readFromBuffer(T, pipeline, tensor, buffer2);
-            pipeline.waitAndCleanup();
 
             try writeToBuffer(T, pipeline, tensor, buffer3);
             pipeline.waitAndCleanup();
@@ -728,6 +723,274 @@ test "readFromBuffer and writeToBuffer - round trip preserves data" {
                 } else {
                     try testing.expectEqual(val1, val2);
                     try testing.expectEqual(val2, val3);
+                }
+            }
+        }
+    }
+}
+
+test "copy - same row_pitch for all types" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 3, 4 };
+    const config = tensor_module.CreateConfig{};
+
+    inline for (core.types.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            // Create two tensors with same configuration (same row_pitch)
+            const src = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer src.release(pipeline);
+
+            const dst = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer dst.release(pipeline);
+
+            // Verify they have the same row_pitch
+            try testing.expectEqual(src.memory_layout.row_pitch, dst.memory_layout.row_pitch);
+
+            const buffer_size = shape[0] * shape[1];
+
+            // Fill source tensor with data
+            const src_buffer = try allocator.alloc(T, buffer_size);
+            defer allocator.free(src_buffer);
+
+            for (src_buffer, 0..) |*val, i| {
+                if (comptime core.types.isComplex(T)) {
+                    val.* = switch (@typeInfo(core.types.getType(T))) {
+                        .float => .{ .real = @floatFromInt(i * 3), .imag = @floatFromInt(i * 5) },
+                        .int => .{ .real = @intCast(i * 3), .imag = @intCast(i * 5) },
+                        else => unreachable,
+                    };
+                } else {
+                    val.* = switch (@typeInfo(T)) {
+                        .float => @floatFromInt(i * 3),
+                        .int => @intCast(i * 3),
+                        else => unreachable,
+                    };
+                }
+            }
+
+            try readFromBuffer(T, pipeline, src, src_buffer);
+
+            // Copy from src to dst
+            try copy(T, pipeline, src, dst);
+
+            // Read dst back and verify
+            const dst_buffer = try allocator.alloc(T, buffer_size);
+            defer allocator.free(dst_buffer);
+
+            try writeToBuffer(T, pipeline, dst, dst_buffer);
+            pipeline.waitAndCleanup();
+
+            // Verify both buffers are equal
+            for (src_buffer, dst_buffer) |expected, result_val| {
+                if (comptime core.types.isComplex(T)) {
+                    try testing.expectEqual(expected.real, result_val.real);
+                    try testing.expectEqual(expected.imag, result_val.imag);
+                } else {
+                    try testing.expectEqual(expected, result_val);
+                }
+            }
+        }
+    }
+}
+
+test "copy - different row_pitch for all types" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 3, 4 };
+
+    inline for (core.types.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T) and !core.types.isComplex(T)) {
+            // Create source tensor with vectors enabled
+            const config_with_vectors = tensor_module.CreateConfig{ .vectors_enabled = true };
+            const src = try Tensor(T).empty(context, pipeline, &shape, config_with_vectors);
+            defer src.release(pipeline);
+
+            // Create destination tensor with vectors disabled
+            const config_without_vectors = tensor_module.CreateConfig{ .vectors_enabled = false };
+            const dst = try Tensor(T).empty(context, pipeline, &shape, config_without_vectors);
+            defer dst.release(pipeline);
+
+            // Verify they have different row_pitch (if vectors are actually used)
+            if (src.flags.vectors_enabled and !dst.flags.vectors_enabled) {
+                // Only test if vectors are actually different
+                const buffer_size = shape[0] * shape[1];
+
+                // Fill source tensor with data
+                const src_buffer = try allocator.alloc(T, buffer_size);
+                defer allocator.free(src_buffer);
+
+                for (src_buffer, 0..) |*val, i| {
+                    val.* = switch (@typeInfo(T)) {
+                        .float => @floatFromInt(i * 7),
+                        .int => @intCast(i * 7),
+                        else => unreachable,
+                    };
+                }
+
+                try readFromBuffer(T, pipeline, src, src_buffer);
+
+                // Copy from src to dst (different row_pitch)
+                try copy(T, pipeline, src, dst);
+
+                // Read dst back and verify
+                const dst_buffer = try allocator.alloc(T, buffer_size);
+                defer allocator.free(dst_buffer);
+
+                try writeToBuffer(T, pipeline, dst, dst_buffer);
+                pipeline.waitAndCleanup();
+
+                // Verify both buffers are equal
+                for (src_buffer, dst_buffer) |expected, result_val| {
+                    try testing.expectEqual(expected, result_val);
+                }
+            }
+        }
+    }
+}
+
+test "copy - 1D tensor for all types" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{10};
+    const config = tensor_module.CreateConfig{};
+
+    inline for (core.types.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const src = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer src.release(pipeline);
+
+            const dst = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer dst.release(pipeline);
+
+            const buffer_size = shape[0];
+
+            // Fill source
+            const src_buffer = try allocator.alloc(T, buffer_size);
+            defer allocator.free(src_buffer);
+
+            for (src_buffer, 0..) |*val, i| {
+                if (comptime core.types.isComplex(T)) {
+                    val.* = switch (@typeInfo(core.types.getType(T))) {
+                        .float => .{ .real = @floatFromInt(i), .imag = @floatFromInt(i + 50) },
+                        .int => .{ .real = @intCast(i), .imag = @intCast(i + 50) },
+                        else => unreachable,
+                    };
+                } else {
+                    val.* = switch (@typeInfo(T)) {
+                        .float => @floatFromInt(i),
+                        .int => @intCast(i),
+                        else => unreachable,
+                    };
+                }
+            }
+
+            try readFromBuffer(T, pipeline, src, src_buffer);
+
+            // Copy
+            try copy(T, pipeline, src, dst);
+
+            // Verify
+            const dst_buffer = try allocator.alloc(T, buffer_size);
+            defer allocator.free(dst_buffer);
+
+            try writeToBuffer(T, pipeline, dst, dst_buffer);
+            pipeline.waitAndCleanup();
+
+            for (src_buffer, dst_buffer) |expected, result_val| {
+                if (comptime core.types.isComplex(T)) {
+                    try testing.expectEqual(expected.real, result_val.real);
+                    try testing.expectEqual(expected.imag, result_val.imag);
+                } else {
+                    try testing.expectEqual(expected, result_val);
+                }
+            }
+        }
+    }
+}
+
+test "copy - 3D tensor for all types" {
+    const allocator = testing.allocator;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3, 4 };
+    const config = tensor_module.CreateConfig{};
+
+    inline for (core.types.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const src = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer src.release(pipeline);
+
+            const dst = try Tensor(T).empty(context, pipeline, &shape, config);
+            defer dst.release(pipeline);
+
+            const buffer_size = shape[0] * shape[1] * shape[2];
+
+            // Fill source
+            const src_buffer = try allocator.alloc(T, buffer_size);
+            defer allocator.free(src_buffer);
+
+            for (src_buffer, 0..) |*val, i| {
+                if (comptime core.types.isComplex(T)) {
+                    val.* = switch (@typeInfo(core.types.getType(T))) {
+                        .float => .{ .real = @floatFromInt(i * 2), .imag = @floatFromInt(buffer_size - i) },
+                        .int => .{ .real = @intCast(i * 2), .imag = @intCast(buffer_size - @as(usize, @intCast(i))) },
+                        else => unreachable,
+                    };
+                } else {
+                    val.* = switch (@typeInfo(T)) {
+                        .float => @floatFromInt(i * 2),
+                        .int => @intCast(i * 2),
+                        else => unreachable,
+                    };
+                }
+            }
+
+            try readFromBuffer(T, pipeline, src, src_buffer);
+
+            // Copy
+            try copy(T, pipeline, src, dst);
+
+            // Verify
+            const dst_buffer = try allocator.alloc(T, buffer_size);
+            defer allocator.free(dst_buffer);
+
+            try writeToBuffer(T, pipeline, dst, dst_buffer);
+            pipeline.waitAndCleanup();
+
+            for (src_buffer, dst_buffer) |expected, result_val| {
+                if (comptime core.types.isComplex(T)) {
+                    try testing.expectEqual(expected.real, result_val.real);
+                    try testing.expectEqual(expected.imag, result_val.imag);
+                } else {
+                    try testing.expectEqual(expected, result_val);
                 }
             }
         }
