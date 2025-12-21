@@ -319,9 +319,8 @@ pub fn printZ(
     writer: std.Io.Writer,
     tensor: *Tensor(T),
 ) Errors!void {
-    try tensor.wait();
-
     const command_queue = pipeline.command_queue;
+    const prev_events = pipeline.prevEvents();
 
     var mapping_event: cl.event.cl_event = undefined;
     const memory_map = try cl.buffer.map(
@@ -332,7 +331,7 @@ pub fn printZ(
         cl.buffer.MapFlag.read,
         0,
         tensor.memory_layout.size,
-        null,
+        prev_events,
         &mapping_event,
     );
     try cl.event.wait(mapping_event);
@@ -354,7 +353,8 @@ pub fn printZ(
     try writer.writeByte(')');
 
     if (is_complex) {
-        try writer.print(", dtype=complex_{s})\n", .{@typeName(T)});
+        const child_type = core.types.getType(T);
+        try writer.print(", dtype=complex_{s})\n", .{@typeName(child_type)});
     } else {
         try writer.print(", dtype={s})\n", .{@typeName(T)});
     }
@@ -368,7 +368,7 @@ pub fn print(
     var array: std.ArrayList(u8) = .empty;
     defer array.deinit();
 
-    const writer = array.writer();
+    const writer = array.writer(pipeline.command_queue.context.allocator);
     try printZ(T, writer, pipeline, tensor);
     if (builtin.is_test) {
         std.log.warn("{s}", .{array.items});
