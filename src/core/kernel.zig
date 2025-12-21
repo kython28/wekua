@@ -6,6 +6,7 @@ const core = @import("main.zig");
 const CommandQueue = core.CommandQueue;
 
 pub const wekua_header: []const u8 = @embedFile("wekua_cl_lib.cl");
+pub const Errors = error{TypeNotSupported} || cl.errors.OpenCLError || std.mem.Allocator.Error;
 
 pub const KernelsID = enum(u16) {
     Fill,
@@ -50,14 +51,13 @@ pub const KernelsID = enum(u16) {
 };
 
 pub const TOTAL_NUMBER_OF_KERNELS = @typeInfo(KernelsID).@"enum".fields.len;
-pub const TOTAL_NUMBER_OF_HEADERS = core.types.SupportedTypes.len * 2 * 2;
+pub const TOTAL_NUMBER_OF_HEADERS = core.types.SupportedTypes.len * 2;
 
 kernels: ?[]?cl.kernel.Kernel = null,
 programs: ?[]?cl.program.Program = null,
 initialized: bool = false,
 
 pub const CompileOptions = struct {
-    is_complex: bool = false,
     vectors_enabled: bool = true,
     kernel_name: []const u8,
     extra_args: ?[]const u8 = null,
@@ -67,10 +67,9 @@ fn compileHeader(
     comptime T: type,
     command_queue: *const CommandQueue,
     vectors_enabled: bool,
-    is_complex: bool,
-) !cl.program.Program {
+) Errors!cl.program.Program {
     const type_index: u16 = core.types.getTypeId(T);
-    const index: u16 = type_index * 4 + @as(u16, @intFromBool(vectors_enabled)) * 2 + @intFromBool(is_complex);
+    const index: u16 = type_index * 2 + @as(u16, @intFromBool(vectors_enabled));
 
     const headers = &command_queue.headers;
     const programs = headers.programs;
@@ -88,7 +87,7 @@ fn compileHeader(
     return new_header_prg;
 }
 
-fn showBuildLog(program: cl.program.Program, command_queue: *const CommandQueue) !void {
+fn showBuildLog(program: cl.program.Program, command_queue: *const CommandQueue) Errors!void {
     var msg_len: usize = undefined;
     try cl.program.get_build_info(
         program,
@@ -127,7 +126,7 @@ pub fn compileCustomKernel(
     headers: []const cl.program.Program,
     header_names: []const []const u8,
     source_codes: []const []const u8,
-) !cl.kernel.Kernel {
+) Errors!cl.kernel.Kernel {
     const context = command_queue.context;
     const cl_ctx = context.cl_context;
     const allocator = context.allocator;
@@ -138,9 +137,10 @@ pub fn compileCustomKernel(
     );
     defer cl.program.release(new_program);
 
-    const type_index = core.types.getTypeId(T);
+    const is_complex = comptime core.types.isComplex(T);
+    const type_index = core.types.getTypeIndex(T);
     const vector_width = blk: {
-        if (options.vectors_enabled and !options.is_complex) {
+        if (!is_complex and options.vectors_enabled) {
             break :blk command_queue.vector_widths[type_index];
         }
         break :blk 1;
@@ -148,7 +148,11 @@ pub fn compileCustomKernel(
 
     if (vector_width == 0) return error.TypeNotSupported;
 
-    comptime var default_arguments: []const u8 = "-DWK_VECTOR_WIDTH={d} -DWK_DTYPE={d} -DWK_MEM_TYPE={d} -DWK_COMPLEX={d} -DWK_CACHE_LINE_SIZE={d}";
+
+    comptime var default_arguments: []const u8 = std.fmt.comptimePrint("-DWK_VECTOR_WIDTH={{d}} -DWK_DTYPE={d} -DWK_MEM_TYPE={{d}} -DWK_COMPLEX={d} -DWK_CACHE_LINE_SIZE={{d}}", .{
+        type_index,
+        @intFromBool(is_complex)
+    });
     switch (builtin.mode) {
         .Debug => default_arguments = default_arguments ++ " -cl-opt-disable -g",
         .ReleaseFast, .ReleaseSmall => default_arguments = default_arguments ++ " -cl-fast-relaxed-math",
@@ -162,9 +166,7 @@ pub fn compileCustomKernel(
             default_arguments ++ " {s}\x00",
             .{
                 vector_width,
-                type_index,
                 @intFromEnum(command_queue.local_mem_type),
-                @intFromBool(options.is_complex),
                 command_queue.cache_line_size,
                 v,
             },
@@ -175,9 +177,7 @@ pub fn compileCustomKernel(
             default_arguments ++ "\x00",
             .{
                 vector_width,
-                type_index,
                 @intFromEnum(command_queue.local_mem_type),
-                @intFromBool(options.is_complex),
                 command_queue.cache_line_size,
             },
         );
@@ -245,12 +245,11 @@ pub fn compileKernel(
     kernel: *cl.kernel.Kernel,
     program: *cl.program.Program,
     source_code: []const u8,
-) !void {
+) Errors!void {
     const header_prg = try compileHeader(
         T,
         command_queue,
         options.vectors_enabled,
-        options.is_complex,
     );
     const header_name: []const u8 = "wekua.h";
 
@@ -269,7 +268,7 @@ pub fn getKernelSet(
     command_queue: *const CommandQueue,
     kernel_id: KernelsID,
     number_of_cl_kernels: usize,
-) !*const KernelSet {
+) Errors!*const KernelSet {
     const kernels_set = &command_queue.kernels[@intFromEnum(kernel_id)];
     if (kernels_set.initialized) {
         return kernels_set;
@@ -305,10 +304,12 @@ pub fn createAndGetKernel(
     comptime can_use_vectors: bool,
     number_of_cl_kernels: usize,
     kernel_index: usize,
-) !cl.kernel.Kernel {
-    if (!can_use_complex and options.is_complex) {
-        @panic("Kernels with complex numbers are not allowed");
+) Errors!cl.kernel.Kernel {
+    const is_complex = comptime core.types.isComplex(T);
+    if (!can_use_complex and is_complex) {
+        @compileError("Kernels with complex numbers are not allowed");
     }
+
     if (!can_use_vectors and options.vectors_enabled) {
         @panic("Kernels with vectors are not allowed");
     }
@@ -332,15 +333,14 @@ pub fn createAndGetKernel(
 pub fn getClKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
-    is_complex: bool,
     vectors_enabled: bool,
     kernel_id: KernelsID,
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
-) !cl.kernel.Kernel {
-    const kernel_index = (@intFromBool(vectors_enabled) * (2 * core.types.SupportedTypes.len) +
-        @intFromBool(is_complex) * core.types.SupportedTypes.len + @as(usize, core.types.getTypeId(T)));
+) Errors!cl.kernel.Kernel {
+    const kernel_index = (@intFromBool(vectors_enabled) * core.types.SupportedTypes.len +
+        @as(usize, core.types.getTypeIndex(T)));
 
     return createAndGetKernel(
         T,
@@ -348,14 +348,13 @@ pub fn getClKernel(
         kernel_id,
         kernel_source,
         CompileOptions{
-            .is_complex = is_complex,
             .vectors_enabled = vectors_enabled,
             .kernel_name = kernel_name,
             .extra_args = extra_args,
         },
         true,
         true,
-        core.types.SupportedTypes.len * 2 * 2,
+        core.types.SupportedTypes.len * 2,
         kernel_index,
     );
 }
@@ -363,14 +362,12 @@ pub fn getClKernel(
 pub fn getClNoVectorKernel(
     comptime T: type,
     command_queue: *const CommandQueue,
-    is_complex: bool,
     kernel_id: KernelsID,
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
-) !cl.kernel.Kernel {
-    const type_index: usize = core.types.getTypeId(T);
-    const kernel_index = @intFromBool(is_complex) * core.types.SupportedTypes.len + type_index;
+) Errors!cl.kernel.Kernel {
+    const type_index: usize = core.types.getTypeIndex(T);
 
     return createAndGetKernel(
         T,
@@ -378,15 +375,14 @@ pub fn getClNoVectorKernel(
         kernel_id,
         kernel_source,
         .{
-            .is_complex = is_complex,
             .vectors_enabled = false,
             .kernel_name = kernel_name,
             .extra_args = extra_args,
         },
         true,
         false,
-        core.types.SupportedTypes.len * 2,
-        kernel_index,
+        core.types.SupportedTypes.len,
+        type_index,
     );
 }
 
@@ -397,22 +393,21 @@ pub fn getClNoVectorNoComplexSingleKernel(
     kernel_name: []const u8,
     kernel_source: []const u8,
     extra_args: ?[]const u8,
-) !cl.kernel.Kernel {
+) Errors!cl.kernel.Kernel {
     return createAndGetKernel(
         T,
         command_queue,
         kernel_id,
         kernel_source,
         .{
-            .is_complex = false,
             .vectors_enabled = false,
             .kernel_name = kernel_name,
             .extra_args = extra_args,
         },
         false,
         false,
-        core.types.SupportedTypes.len,
-        core.types.getTypeId(T),
+        core.types.SupportedTypes.len / 2,
+        core.types.getTypeIndex(T),
     );
 }
 
@@ -430,10 +425,10 @@ test "compileHeader - basic functionality" {
     const command_queue = &context.command_queues[0];
 
     // Test compiling header for f32 type
-    const header_program = try compileHeader(f32, command_queue, true, false);
+    const header_program = try compileHeader(f32, command_queue, true);
 
     // Test that subsequent calls return the same program (cached)
-    const header_program2 = try compileHeader(f32, command_queue, true, false);
+    const header_program2 = try compileHeader(f32, command_queue, true);
     try testing.expectEqual(header_program, header_program2);
 }
 
@@ -446,10 +441,10 @@ test "compileHeader - different type combinations" {
     const command_queue = &context.command_queues[0];
 
     // Test different combinations should produce different programs
-    const header1 = try compileHeader(f32, command_queue, true, false);
-    const header2 = try compileHeader(f32, command_queue, true, true); // complex
-    const header3 = try compileHeader(f32, command_queue, false, false); // no vectors
-    const header4 = try compileHeader(i32, command_queue, true, false); // different type
+    const header1 = try compileHeader(f32, command_queue, true);
+    const header2 = try compileHeader(f32, command_queue, true); // complex
+    const header3 = try compileHeader(f32, command_queue, false); // no vectors
+    const header4 = try compileHeader(i32, command_queue, true); // different type
 
     // All should be different programs
     try testing.expect(header1 != header2);
@@ -512,7 +507,6 @@ test "compileKernel - basic compilation" {
     ;
 
     const options = CompileOptions{
-        .is_complex = false,
         .vectors_enabled = false,
         .kernel_name = "test_kernel",
     };
@@ -536,7 +530,7 @@ test "compileCustomKernel - with headers" {
     const command_queue = &context.command_queues[0];
 
     // Get a header program
-    const header_program = try compileHeader(f32, command_queue, false, false);
+    const header_program = try compileHeader(f32, command_queue, false);
 
     const test_kernel_source =
         \\#include "wekua.h"
@@ -547,7 +541,6 @@ test "compileCustomKernel - with headers" {
     ;
 
     const options = CompileOptions{
-        .is_complex = false,
         .vectors_enabled = false,
         .kernel_name = "test_custom_kernel",
     };
@@ -585,7 +578,6 @@ test "createAndGetKernel - caching behavior" {
     ;
 
     const options = CompileOptions{
-        .is_complex = false,
         .vectors_enabled = false,
         .kernel_name = "cache_test_kernel",
     };
@@ -640,7 +632,6 @@ test "getClKernel - index calculation" {
     _ = try getClKernel(
         f32,
         command_queue,
-        false, // is_complex
         true, // vectors_enabled
         KernelsID.Fill,
         "index_test_kernel",
@@ -667,7 +658,6 @@ test "getClNoVectorKernel - no vector support" {
     _ = try getClNoVectorKernel(
         f32,
         command_queue,
-        false, // is_complex
         KernelsID.AXPY,
         "no_vector_test_kernel",
         test_kernel_source,

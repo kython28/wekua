@@ -346,6 +346,156 @@ typedef double16 wk;
 
 #define convert_T convert_double
 
+#elif WK_DTYPE == 10
+
+typedef __attribute__((packed)) struct {
+    uchar real;
+    uchar imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    char real;
+    char imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    char real;
+    char imag;
+} wk;
+
+#elif WK_DTYPE == 11
+
+typedef __attribute__((packed)) struct {
+    uchar real;
+    uchar imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    uchar real;
+    uchar imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    uchar real;
+    uchar imag;
+} wk;
+
+#elif WK_DTYPE == 12
+
+typedef __attribute__((packed)) struct {
+    ushort real;
+    ushort imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    short real;
+    short imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    short real;
+    short imag;
+} wk;
+
+#elif WK_DTYPE == 13
+
+typedef __attribute__((packed)) struct {
+    ushort real;
+    ushort imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    ushort real;
+    ushort imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    ushort real;
+    ushort imag;
+} wk;
+
+#elif WK_DTYPE == 14
+
+typedef __attribute__((packed)) struct {
+    uint real;
+    uint imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    int real;
+    int imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    int real;
+    int imag;
+} wk;
+
+#elif WK_DTYPE == 15
+
+typedef __attribute__((packed)) struct {
+    uint real;
+    uint imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    uint real;
+    uint imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    uint real;
+    uint imag;
+} wk;
+
+#elif WK_DTYPE == 16
+
+typedef __attribute__((packed)) struct {
+    ulong real;
+    ulong imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    long real;
+    long imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    long real;
+    long imag;
+} wk;
+
+#elif WK_DTYPE == 17
+
+typedef __attribute__((packed)) struct {
+    ulong real;
+    ulong imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    ulong real;
+    ulong imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    ulong real;
+    ulong imag;
+} wk;
+
+#elif WK_DTYPE == 18
+
+typedef __attribute__((packed)) struct {
+    float real;
+    float imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    float real;
+    float imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    float real;
+    float imag;
+} wk;
+
+#elif WK_DTYPE == 19
+
+typedef __attribute__((packed)) struct {
+    double real;
+    double imag;
+} uwks;
+typedef __attribute__((packed)) struct {
+    double real;
+    double imag;
+} wks;
+typedef __attribute__((packed)) struct {
+    double real;
+    double imag;
+} wk;
+
 #endif
 
 #if WK_VECTOR_WIDTH > 1
@@ -373,22 +523,24 @@ inline wks sum(wk a) {
 #endif
 
 
+#if WK_COMPLEX == 1
 #define COMPLEX_MUL_K(T) \
 	T k1, k2, k3;
 
-#define COMPLEX_MUL(a, b, c, d) \
-	k1 = c*(a + b); \
-	k2 = a*(d - c); \
-	k3 = b*(c + d); \
-	a = k1 - k3; \
-	b = k1 + k2; \
+#define COMPLEX_MUL(a, b, res) \
+	k1 = b.real*(a.real + a.imag); \
+	k2 = a.real*(b.imag - b.real); \
+	k3 = a.imag*(b.real + b.imag); \
+	res.real = k1 - k3; \
+	res.imag = k1 + k2; \
+#endif
 
-#define COMPLEX_S_MUL_K(T) \
-	T k1_s, k2_s, k3_s;
+/* #define COMPLEX_S_MUL_K(T) \ */
+/* 	T k1_s, k2_s, k3_s; */
 
-#define COMPLEX_S_MUL(a, b, c, d) \
-	k1_s = c*(a + b); \
-	k2_s = a*(d - c); \
-	k3_s = b*(c + d); \
-	a = k1_s - k3_s; \
-	b = k1_s + k2_s; \
+/* #define COMPLEX_S_MUL(a, b, c, d) \ */
+/* 	k1_s = c*(a + b); \ */
+/* 	k2_s = a*(d - c); \ */
+/* 	k3_s = b*(c + d); \ */
+/* 	a = k1_s - k3_s; \ */
+/* 	b = k1_s + k2_s; \ */

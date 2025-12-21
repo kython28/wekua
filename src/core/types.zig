@@ -30,7 +30,7 @@ pub const SupportedTypes: [20]type = .{
     Complex(f64),
 };
 
-fn getTypeIndex(comptime T: type) comptime_int {
+pub fn getTypeIndex(comptime T: type) comptime_int {
     @setEvalBranchQuota(4000);
     inline for (SupportedTypes, 0..) |t, i| {
         if (T == t) {
