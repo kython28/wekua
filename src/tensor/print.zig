@@ -2,34 +2,37 @@ const builtin = @import("builtin");
 const std = @import("std");
 const cl = @import("opencl");
 
-const core = @import("../core/main.zig");
+const core = @import("core");
+const Pipeline = core.Pipeline;
 const CommandQueue = core.CommandQueue;
 
 const w_tensor = @import("main.zig");
 const Tensor = w_tensor.Tensor;
+
+pub const Errors = std.Io.Writer.Error || cl.errors.OpenCLError;
 
 fn unmap_tensor_buffer(
     comptime T: type,
     command_queue: *const CommandQueue,
     buffer: cl.buffer.cl_mem,
     map: []T,
-) !void {
+) Errors!void {
     var unmap_event: cl.event.cl_event = undefined;
-    try cl.buffer.unmap([]T, command_queue.cmd, buffer, map, null, &unmap_event);
+    try cl.buffer.unmap([]T, command_queue.cl_command_queue, buffer, map, null, &unmap_event);
 
     try cl.event.wait(unmap_event);
 }
 
-inline fn printPadding(writer: anytype, padding: usize) !void {
+inline fn printPadding(writer: std.Io.Writer, padding: usize) Errors!void {
     try writer.writeByteNTimes(' ', padding);
 }
 
-inline fn openBracket(writer: anytype, padding: usize) !void {
+inline fn openBracket(writer: std.Io.Writer, padding: usize) Errors!void {
     try printPadding(writer, padding);
     try writer.writeByte('[');
 }
 
-inline fn closeBracket(writer: anytype, padding: usize) !void {
+inline fn closeBracket(writer: std.Io.Writer, padding: usize) Errors!void {
     try printPadding(writer, padding);
     try writer.writeAll("],");
 }
@@ -37,14 +40,15 @@ inline fn closeBracket(writer: anytype, padding: usize) !void {
 inline fn printComplexIntegerValue(
     comptime T: type,
     comptime max_value_str_len: []const u8,
-    writer: anytype,
+    writer: std.Io.Writer,
     index: usize,
     tmp_buffer: []u8,
     buf: []const T,
-) !void {
+) Errors!void {
     var formatted_buf: []u8 = undefined;
-    const real_value = buf[index * 2];
-    const imag_value = buf[index * 2 + 1];
+    const value = buf[index];
+    const real_value = value.real;
+    const imag_value = value.imag;
 
     const real_is_zero = (real_value == 0);
     const imag_is_zero = (imag_value == 0);
@@ -68,14 +72,15 @@ inline fn printComplexIntegerValue(
 
 inline fn printComplexFloatValue(
     comptime T: type,
-    writer: anytype,
+    writer: std.Io.Writer,
     index: usize,
     tmp_buffer: []u8,
     buf: []const T,
-) !void {
+) Errors!void {
     var formatted_buf: []u8 = undefined;
-    const real_value = buf[index * 2];
-    const imag_value = buf[index * 2 + 1];
+    const value = buf[index];
+    const real_value = value.real;
+    const imag_value = value.imag;
 
     const real_is_zero = (@abs(real_value) < 1e-8);
     const imag_is_zero = (@abs(imag_value) < 1e-8);
@@ -99,13 +104,13 @@ inline fn printComplexFloatValue(
 
 fn printVector(
     comptime T: type,
-    comptime is_complex: bool,
-    writer: anytype,
+    writer: std.Io.Writer,
     padding: usize,
     buf: []const T,
     cols: u64,
-) !void {
+) Errors!void {
     try printPadding(writer, padding);
+    const is_complex = comptime core.types.isComplex(T);
     switch (@typeInfo(T)) {
         .int => |int_info| {
             const max_value = switch (int_info.signedness) {
@@ -213,15 +218,14 @@ fn printVector(
 
 inline fn printVectorOrMatrix(
     comptime T: type,
-    comptime is_complex: bool,
-    writer: anytype,
+    writer: std.Io.Writer,
     padding: usize,
     buf: []const T,
     pitches: []const u64,
     shape: []const u64,
-) !void {
+) Errors!void {
     if (pitches.len == 1) {
-        try printVector(T, false, writer, padding, buf[0..shape[0]], shape[0]);
+        try printVector(T, writer, padding, buf[0..shape[0]], shape[0]);
     } else {
         const pitch = pitches[0];
         const rows = shape[0];
@@ -230,7 +234,6 @@ inline fn printVectorOrMatrix(
             try writer.writeByte('\n');
             try printVector(
                 T,
-                is_complex,
                 writer,
                 padding + 2,
                 buf[(i * pitch)..((i + 1) * pitch)],
@@ -249,7 +252,6 @@ inline fn printVectorOrMatrix(
                 try writer.writeByte('\n');
                 try printVector(
                     T,
-                    is_complex,
                     writer,
                     padding + 2,
                     buf[(i * pitch)..((i + 1) * pitch)],
@@ -263,13 +265,12 @@ inline fn printVectorOrMatrix(
 
 fn printDim(
     comptime T: type,
-    writer: anytype,
+    writer: std.Io.Writer,
     padding: usize,
     buf: []T,
     shape: []const u64,
     pitches: []const u64,
-    is_complex: bool,
-) !void {
+) Errors!void {
     try openBracket(writer, padding);
     if (pitches.len > 2) {
         try writer.writeByte('\n');
@@ -283,7 +284,6 @@ fn printDim(
                 buf[(i * pitch)..((i + 1) * pitch)],
                 shape[1..],
                 pitches[1..],
-                is_complex,
             );
         }
 
@@ -302,16 +302,12 @@ fn printDim(
                     buf[(i * pitch)..((i + 1) * pitch)],
                     shape[1..],
                     pitches[1..],
-                    is_complex,
                 );
             }
         }
         try writer.writeByte('\n');
     } else {
-        switch (is_complex) {
-            true => try printVectorOrMatrix(T, true, writer, padding, buf, pitches, shape),
-            false => try printVectorOrMatrix(T, false, writer, padding, buf, pitches, shape),
-        }
+        try printVectorOrMatrix(T, writer, padding, buf, pitches, shape);
     }
     try closeBracket(writer, padding);
     if (padding > 0) try writer.writeByte('\n');
@@ -319,19 +315,21 @@ fn printDim(
 
 pub fn printZ(
     comptime T: type,
-    writer: anytype,
-    command_queue: *const CommandQueue,
+    pipeline: *Pipeline,
+    writer: std.Io.Writer,
     tensor: *Tensor(T),
-) !void {
+) Errors!void {
     try tensor.wait();
+
+    const command_queue = pipeline.command_queue;
 
     var mapping_event: cl.event.cl_event = undefined;
     const memory_map = try cl.buffer.map(
         []T,
-        command_queue.cmd,
+        command_queue.cl_command_queue,
         tensor.buffer,
         false,
-        @intFromEnum(cl.buffer.enums.map_flags.read),
+        cl.buffer.MapFlag.read,
         0,
         tensor.memory_layout.size,
         null,
@@ -339,15 +337,15 @@ pub fn printZ(
     );
     try cl.event.wait(mapping_event);
     defer unmap_tensor_buffer(T, command_queue, tensor.buffer, memory_map) catch |err| {
-        std.debug.print("Error unmapping tensor buffer: {s}\n", .{@errorName(err)});
+        std.debug.panic("Error unmapping tensor buffer: {s}\n", .{@errorName(err)});
     };
 
     const pitches = tensor.dimensions.pitches;
     const shape = tensor.dimensions.shape;
     try writer.writeAll("Tensor(");
 
-    const is_complex = tensor.flags.is_complex;
-    try printDim(T, writer, 0, memory_map, shape, pitches, tensor.flags.is_complex);
+    const is_complex = comptime core.types.isComplex(T);
+    try printDim(T, writer, 0, memory_map, shape, pitches);
 
     try writer.print(" shape=({d}", .{shape[0]});
     for (shape[1..]) |s| {
@@ -364,16 +362,14 @@ pub fn printZ(
 
 pub fn print(
     comptime T: type,
-    command_queue: *const CommandQueue,
+    pipeline: *Pipeline,
     tensor: *Tensor(T),
-) !void {
-    const allocator = tensor.context.allocator;
-
-    var array = std.ArrayList(u8).init(allocator);
+) Errors!void {
+    var array: std.ArrayList(u8) = .empty;
     defer array.deinit();
 
     const writer = array.writer();
-    try printZ(T, writer, command_queue, tensor);
+    try printZ(T, writer, pipeline, tensor);
     if (builtin.is_test) {
         std.log.warn("{s}", .{array.items});
     }else{
