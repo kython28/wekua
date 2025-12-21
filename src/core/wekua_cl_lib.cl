@@ -524,6 +524,7 @@ inline wks sum(wk a) {
 
 
 #if WK_COMPLEX == 1
+
 #define COMPLEX_MUL_K(T) \
 	T k1, k2, k3;
 
@@ -532,7 +533,8 @@ inline wks sum(wk a) {
 	k2 = a.real*(b.imag - b.real); \
 	k3 = a.imag*(b.real + b.imag); \
 	res.real = k1 - k3; \
-	res.imag = k1 + k2; \
+	res.imag = k1 + k2;
+
 #endif
 
 /* #define COMPLEX_S_MUL_K(T) \ */

@@ -68,7 +68,7 @@ fn compileHeader(
     command_queue: *const CommandQueue,
     vectors_enabled: bool,
 ) Errors!cl.program.Program {
-    const type_index: u16 = core.types.getTypeId(T);
+    const type_index: u16 = core.types.getTypeIndex(T);
     const index: u16 = type_index * 2 + @as(u16, @intFromBool(vectors_enabled));
 
     const headers = &command_queue.headers;
@@ -442,7 +442,7 @@ test "compileHeader - different type combinations" {
 
     // Test different combinations should produce different programs
     const header1 = try compileHeader(f32, command_queue, true);
-    const header2 = try compileHeader(f32, command_queue, true); // complex
+    const header2 = try compileHeader(core.types.Complex(f32), command_queue, true); // complex
     const header3 = try compileHeader(f32, command_queue, false); // no vectors
     const header4 = try compileHeader(i32, command_queue, true); // different type
 
@@ -592,7 +592,7 @@ test "createAndGetKernel - caching behavior" {
         false, // can_use_complex
         false, // can_use_vectors
         core.types.SupportedTypes.len,
-        core.types.getTypeId(f32),
+        core.types.getTypeIndex(f32),
     );
 
     // Second call should return the cached kernel
@@ -605,7 +605,7 @@ test "createAndGetKernel - caching behavior" {
         false,
         false,
         core.types.SupportedTypes.len,
-        core.types.getTypeId(f32),
+        core.types.getTypeIndex(f32),
     );
 
     try testing.expectEqual(kernel1, kernel2);
