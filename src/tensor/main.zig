@@ -10,7 +10,7 @@ const utils = @import("utils");
 
 pub const helpers = @import("helpers.zig");
 
-// pub const fill = @import("fill.zig");
+pub const fill = @import("fill.zig");
 pub const memory = @import("memory/main.zig");
 // pub const random = @import("random/main.zig");
 // pub const transpose = @import("transpose.zig").transpose;
@@ -27,7 +27,7 @@ pub const Errors = error{
     UnqualTensorsAttribute,
     UnqualTensorsShape,
     UnqualTensorsDimension,
-} || std.mem.Allocator.Error || cl.errors.OpenCLError;
+} || std.mem.Allocator.Error || cl.errors.OpenCLError || core.KernelsSet.Errors;
 
 pub const CreateConfig = struct {
     cl_mem_flags: cl.buffer.MemFlags = cl.buffer.MemFlag.read_write,
@@ -425,26 +425,8 @@ pub fn Tensor(comptime T: type) type {
             const tensor = try empty(context, pipeline, shape, config);
             errdefer tensor.release(pipeline);
 
-            const prev_events = pipeline.prevEvents();
+            try fill.zeroes(T, pipeline, tensor);
 
-            const zero: T = std.mem.zeroes(T);
-            const command_queue = context.command_queues[0];
-            const cmd = command_queue.cl_command_queue;
-
-            var new_event: cl.event.Event = undefined;
-            try cl.buffer.fill(
-                cmd,
-                tensor.buffer,
-                &zero,
-                @sizeOf(T),
-                0,
-                tensor.memory_layout.size,
-                prev_events,
-                &new_event,
-            );
-            errdefer helpers.releaseEvent(new_event);
-
-            try pipeline.append(&.{new_event});
             return tensor;
         }
     };
