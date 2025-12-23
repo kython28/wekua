@@ -149,8 +149,9 @@ pub fn compileCustomKernel(
     if (vector_width == 0) return error.TypeNotSupported;
 
 
-    comptime var default_arguments: []const u8 = std.fmt.comptimePrint("-DWK_VECTOR_WIDTH={{d}} -DWK_DTYPE={d} -DWK_MEM_TYPE={{d}} -DWK_COMPLEX={d} -DWK_CACHE_LINE_SIZE={{d}}", .{
+    comptime var default_arguments: []const u8 = std.fmt.comptimePrint("-DWK_VECTOR_WIDTH={{d}} -DWK_DTYPE={d} -DWK_DTYPE_ID={d} -DWK_MEM_TYPE={{d}} -DWK_COMPLEX={d} -DWK_CACHE_LINE_SIZE={{d}}", .{
         type_index,
+        core.types.getTypeId(T),
         @intFromBool(is_complex)
     });
     switch (builtin.mode) {

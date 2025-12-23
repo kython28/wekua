@@ -62,67 +62,77 @@ __kernel void uniform(
     const ulong global_seed
 
 #if RANGE_DEFINED
-    , const wks min_value,
-    const wks max_value
+    , const T min_value,
+    const T max_value
 #endif
 ) {
 	const ulong i = get_global_id(0);
 	const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-#if WK_COMPLEX
-    const ulong index = i*slice_pitch + j*row_pitch + (k << 1);
-#else
     const ulong index = i*slice_pitch + j*row_pitch + k;
-#endif
 
 #if RANGE_DEFINED
 
     // TODO: Find a way without using floating point
 #ifdef cl_khr_fp64
-    const double normalized = (double) xxhash64(index, global_seed) / ULONG_MAX;
 
 #if WK_COMPLEX
-    const double inormalized = (double) xxhash64(index + 1, global_seed) / ULONG_MAX;
+    const double normalized = (double) xxhash64((index << 1), global_seed) / ULONG_MAX;
+    const double inormalized = (double) xxhash64((index << 1) + 1, global_seed) / ULONG_MAX;
+#else
+    const double normalized = (double) xxhash64(index, global_seed) / ULONG_MAX;
 #endif
 
+#else
+
+#if WK_COMPLEX
+    const float normalized = (float) xxhash64(index << 1, global_seed) / ULONG_MAX;
+    const float inormalized = (float) xxhash64((index << 1) + 1, global_seed) / ULONG_MAX;
 #else
     const float normalized = (float) xxhash64(index, global_seed) / ULONG_MAX;
+#endif
+
+#endif
 
 #if WK_COMPLEX
-    const float inormalized = (float) xxhash64(index + 1, global_seed) / ULONG_MAX;
-#endif
-
-#endif
-
+    numbers[index] = wks{
+        .real = min_value + (wks)(normalized * (max_value - min_value + 1)),
+        .imag = min_value + (wks)(inormalized * (max_value - min_value + 1)),
+    };
+#else
     numbers[index] = min_value + (wks)(normalized * (max_value - min_value + 1));
-#if WK_COMPLEX
-    numbers[index + 1] = min_value + (wks)(inormalized * (max_value - min_value + 1));
 #endif
 
 #else
 
-#if WK_DTYPE >= 8
+#if WK_DTYPE_ID >= 8
 
 #if WK_COMPLEX
+    numbers[index] = wks{
+        .real = xxhash64(index << 1, global_seed)/((wks)ULONG_MAX);
+        .imag = xxhash64((index << 1) + 1, global_seed)/((wks)ULONG_MAX);
+    };
+#else
     numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
-    numbers[index + 1] = xxhash64(index + 1, global_seed)/((wks)ULONG_MAX);
-#else
-    numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
 #endif
 
-#elif WK_DTYPE >= 6
+#elif WK_DTYPE_ID >= 6
 
 #if WK_COMPLEX
-    const uwks real_value = (uwks) xxhash64(index, global_seed);
-    const uwks imag_value = (uwks) xxhash64(index + 1, global_seed);
+    const uwks real_value = (uwks) xxhash64(index << 1, global_seed);
+    const uwks imag_value = (uwks) xxhash64((index << 1) + 1, global_seed);
 
 #if WKS_IS_UNSIGNED
-    numbers[index] = real_value;
-    numbers[index + 1] = imag_value;
+    numbers[index] = wks{
+        .real = real_value,
+        .imag = imag_value,
+    };
 #else
-    numbers[index] =  *((wks*)&real_value);
-    numbers[index + 1] =  *((wks*)&imag_value);
+    numbers[index] =  wks{
+        .real = *((wks*)&real_value),
+        .imag = *((wks*)&imag_value),
+    };
 #endif
 
 #else
@@ -138,16 +148,20 @@ __kernel void uniform(
 
 #else
 
-#if WK_COMPLEX == 1
-    const uwks real_value = (uwks) (xxhash64(index, global_seed) & WK_UINT_MAX);
-    const uwks imag_value = (uwks) (xxhash64(index + 1, global_seed) & WK_UINT_MAX);
+#if WK_COMPLEX
+    const uwks real_value = (uwks) (xxhash64(index << 1, global_seed) & WK_UINT_MAX);
+    const uwks imag_value = (uwks) (xxhash64((index << 1) + 1, global_seed) & WK_UINT_MAX);
 
 #if WKS_IS_UNSIGNED
-    numbers[index] = real_value;
-    numbers[index + 1] = imag_value;
+    numbers[index] = wks{
+        .real = real_value,
+        .imag = imag_value,
+    };
 #else
-    numbers[index] =  *((wks*)&real_value);
-    numbers[index + 1] =  *((wks*)&imag_value);
+    numbers[index] = wks{
+        .real = *((wks*)&real_value),
+        .imag = *((wks*)&imag_value),
+    };
 #endif
 
 #else
@@ -156,7 +170,7 @@ __kernel void uniform(
 #if WKS_IS_UNSIGNED
     numbers[index] = real_value;
 #else
-    numbers[index] =  *((wks*)&real_value);
+    numbers[index] = *((wks*)&real_value);
 #endif
 
 #endif

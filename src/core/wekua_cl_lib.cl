@@ -3,6 +3,7 @@
 #define WK_INT_MAX CHAR_MAX
 #define WK_UINT_MAX UCHAR_MAX
 
+typedef char T;
 typedef uchar uwks;
 typedef char wks;
 
@@ -39,6 +40,7 @@ typedef char16 wk;
 #define WK_INT_MAX UCHAR_MAX
 #define WK_UINT_MAX UCHAR_MAX
 
+typedef uchar T;
 typedef uchar uwks;
 typedef uchar wks;
 
@@ -75,6 +77,7 @@ typedef uchar16 wk;
 #define WK_INT_MAX SHRT_MAX
 #define WK_UINT_MAX USHRT_MAX
 
+typedef short T;
 typedef ushort uwks;
 typedef short wks;
 
@@ -111,6 +114,7 @@ typedef short16 wk;
 #define WK_INT_MAX USHRT_MAX
 #define WK_UINT_MAX USHRT_MAX
 
+typedef ushort T;
 typedef ushort uwks;
 typedef ushort wks;
 
@@ -147,6 +151,7 @@ typedef ushort16 wk;
 #define WK_INT_MAX INT_MAX
 #define WK_UINT_MAX UINT_MAX
 
+typedef int T;
 typedef uint uwks;
 typedef int wks;
 
@@ -183,6 +188,7 @@ typedef int16 wk;
 #define WK_INT_MAX UINT_MAX
 #define WK_UINT_MAX UINT_MAX
 
+typedef uint T;
 typedef uint uwks;
 typedef uint wks;
 
@@ -219,6 +225,7 @@ typedef uint16 wk;
 #define WK_INT_MAX LONG_MAX
 #define WK_UINT_MAX ULONG_MAX
 
+typedef long T;
 typedef ulong uwks;
 typedef long wks;
 
@@ -255,6 +262,7 @@ typedef long16 wk;
 #define WK_INT_MAX ULONG_MAX
 #define WK_UINT_MAX ULONG_MAX
 
+typedef ulong T;
 typedef ulong uwks;
 typedef ulong wks;
 
@@ -288,6 +296,7 @@ typedef ulong16 wk;
 
 #elif WK_DTYPE == 8
 
+typedef float T;
 typedef float wks;
 
 #if WK_VECTOR_WIDTH >= 2
@@ -318,6 +327,7 @@ typedef float16 wk;
 
 #elif WK_DTYPE == 9
 
+typedef double T;
 typedef double wks;
 
 #if WK_VECTOR_WIDTH >= 2
@@ -348,6 +358,7 @@ typedef double16 wk;
 
 #elif WK_DTYPE == 10
 
+typedef char T;
 typedef __attribute__((packed)) struct {
     uchar real;
     uchar imag;
@@ -363,6 +374,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 11
 
+typedef char T;
 typedef __attribute__((packed)) struct {
     uchar real;
     uchar imag;
@@ -378,6 +390,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 12
 
+typedef short T;
 typedef __attribute__((packed)) struct {
     ushort real;
     ushort imag;
@@ -393,6 +406,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 13
 
+typedef ushort T;
 typedef __attribute__((packed)) struct {
     ushort real;
     ushort imag;
@@ -408,6 +422,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 14
 
+typedef int T;
 typedef __attribute__((packed)) struct {
     uint real;
     uint imag;
@@ -423,6 +438,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 15
 
+typedef uint T;
 typedef __attribute__((packed)) struct {
     uint real;
     uint imag;
@@ -438,6 +454,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 16
 
+typedef long T;
 typedef __attribute__((packed)) struct {
     ulong real;
     ulong imag;
@@ -453,6 +470,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 17
 
+typedef ulong T;
 typedef __attribute__((packed)) struct {
     ulong real;
     ulong imag;
@@ -468,6 +486,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 18
 
+typedef float T;
 typedef __attribute__((packed)) struct {
     float real;
     float imag;
@@ -483,6 +502,7 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 19
 
+typedef double T;
 typedef __attribute__((packed)) struct {
     double real;
     double imag;
