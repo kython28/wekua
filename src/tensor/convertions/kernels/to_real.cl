@@ -14,5 +14,5 @@ __kernel void to_real(
 	const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-	dst[i * dst_slice_pitch + j * dst_row_pitch + k] = src[i * src_slice_pitch + j * src_row_pitch + (k << 1) + OFFSET];
+	dst[i * dst_slice_pitch + j * dst_row_pitch + k] = src[((i * src_slice_pitch + j * src_row_pitch + k) << 1) + OFFSET];
 }

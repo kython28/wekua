@@ -14,7 +14,6 @@ __kernel void to_complex(
 	const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-	const ulong dst_index = i * dst_slice_pitch + j * dst_row_pitch + (k << 1);
+	const ulong dst_index = ( i * dst_slice_pitch + j * dst_row_pitch + k ) << 1;
 	dst[dst_index + OFFSET] = src[i * src_slice_pitch + j * src_row_pitch + k];
-	dst[dst_index + (1 - OFFSET)] = 0;
 }
