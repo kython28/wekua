@@ -1,5 +1,9 @@
+pub const Space = enum(u8) {
+    real,
+    imag,
+};
 
-fn Complex(comptime T: type) type {
+pub fn Complex(comptime T: type) type {
     return packed struct {
         real: T,
         imag: T,
