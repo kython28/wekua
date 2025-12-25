@@ -358,7 +358,11 @@ typedef double16 wk;
 
 #elif WK_DTYPE == 10
 
+#define WK_INT_MAX CHAR_MAX
+#define WK_UINT_MAX UCHAR_MAX
+#define WKS_IS_UNSIGNED 0
 typedef char T;
+typedef uchar UT;
 typedef __attribute__((packed)) struct {
     uchar real;
     uchar imag;
@@ -374,7 +378,11 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 11
 
-typedef char T;
+#define WK_INT_MAX UCHAR_MAX
+#define WK_UINT_MAX UCHAR_MAX
+#define WKS_IS_UNSIGNED 1
+typedef uchar T;
+typedef uchar UT;
 typedef __attribute__((packed)) struct {
     uchar real;
     uchar imag;
@@ -390,7 +398,11 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 12
 
+#define WK_INT_MAX SHRT_MAX
+#define WK_UINT_MAX USHRT_MAX
+#define WKS_IS_UNSIGNED 0
 typedef short T;
+typedef ushort UT;
 typedef __attribute__((packed)) struct {
     ushort real;
     ushort imag;
@@ -406,7 +418,11 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 13
 
+#define WK_INT_MAX USHRT_MAX
+#define WK_UINT_MAX USHRT_MAX
+#define WKS_IS_UNSIGNED 1
 typedef ushort T;
+typedef ushort UT;
 typedef __attribute__((packed)) struct {
     ushort real;
     ushort imag;
@@ -422,7 +438,11 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 14
 
+#define WK_INT_MAX INT_MAX
+#define WK_UINT_MAX UINT_MAX
+#define WKS_IS_UNSIGNED 0
 typedef int T;
+typedef uint UT;
 typedef __attribute__((packed)) struct {
     uint real;
     uint imag;
@@ -438,7 +458,11 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 15
 
+#define WK_INT_MAX UINT_MAX
+#define WK_UINT_MAX UINT_MAX
+#define WKS_IS_UNSIGNED 1
 typedef uint T;
+typedef uint UT;
 typedef __attribute__((packed)) struct {
     uint real;
     uint imag;
@@ -454,7 +478,11 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 16
 
+#define WK_INT_MAX LONG_MAX
+#define WK_UINT_MAX ULONG_MAX
+#define WKS_IS_UNSIGNED 0
 typedef long T;
+typedef ulong UT;
 typedef __attribute__((packed)) struct {
     ulong real;
     ulong imag;
@@ -470,7 +498,11 @@ typedef __attribute__((packed)) struct {
 
 #elif WK_DTYPE == 17
 
+#define WK_INT_MAX ULONG_MAX
+#define WK_UINT_MAX ULONG_MAX
+#define WKS_IS_UNSIGNED 1
 typedef ulong T;
+typedef ulong UT;
 typedef __attribute__((packed)) struct {
     ulong real;
     ulong imag;

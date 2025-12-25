@@ -443,7 +443,7 @@ test "compileHeader - different type combinations" {
 
     // Test different combinations should produce different programs
     const header1 = try compileHeader(f32, command_queue, true);
-    const header2 = try compileHeader(core.types.Complex(f32), command_queue, true); // complex
+    const header2 = try compileHeader(core.types.ComplexF32, command_queue, true); // complex
     const header3 = try compileHeader(f32, command_queue, false); // no vectors
     const header4 = try compileHeader(i32, command_queue, true); // different type
 

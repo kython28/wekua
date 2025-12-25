@@ -9,30 +9,30 @@ const CommandQueue = core.CommandQueue;
 const w_tensor = @import("main.zig");
 const Tensor = w_tensor.Tensor;
 
-pub const Errors = std.Io.Writer.Error || cl.errors.OpenCLError;
+pub const Errors = std.Io.Writer.Error || cl.errors.OpenCLError || std.fmt.BufPrintError;
 
 fn unmap_tensor_buffer(
     comptime T: type,
     command_queue: *const CommandQueue,
-    buffer: cl.buffer.cl_mem,
+    buffer: cl.buffer.Mem,
     map: []T,
 ) Errors!void {
-    var unmap_event: cl.event.cl_event = undefined;
+    var unmap_event: cl.event.Event = undefined;
     try cl.buffer.unmap([]T, command_queue.cl_command_queue, buffer, map, null, &unmap_event);
 
     try cl.event.wait(unmap_event);
 }
 
-inline fn printPadding(writer: std.Io.Writer, padding: usize) Errors!void {
-    try writer.writeByteNTimes(' ', padding);
+inline fn printPadding(writer: *std.Io.Writer, padding: usize) Errors!void {
+    for (0..padding) |_| try writer.writeByte(' ');
 }
 
-inline fn openBracket(writer: std.Io.Writer, padding: usize) Errors!void {
+inline fn openBracket(writer: *std.Io.Writer, padding: usize) Errors!void {
     try printPadding(writer, padding);
     try writer.writeByte('[');
 }
 
-inline fn closeBracket(writer: std.Io.Writer, padding: usize) Errors!void {
+inline fn closeBracket(writer: *std.Io.Writer, padding: usize) Errors!void {
     try printPadding(writer, padding);
     try writer.writeAll("],");
 }
@@ -40,7 +40,7 @@ inline fn closeBracket(writer: std.Io.Writer, padding: usize) Errors!void {
 inline fn printComplexIntegerValue(
     comptime T: type,
     comptime max_value_str_len: []const u8,
-    writer: std.Io.Writer,
+    writer: *std.Io.Writer,
     index: usize,
     tmp_buffer: []u8,
     buf: []const T,
@@ -72,7 +72,7 @@ inline fn printComplexIntegerValue(
 
 inline fn printComplexFloatValue(
     comptime T: type,
-    writer: std.Io.Writer,
+    writer: *std.Io.Writer,
     index: usize,
     tmp_buffer: []u8,
     buf: []const T,
@@ -104,18 +104,19 @@ inline fn printComplexFloatValue(
 
 fn printVector(
     comptime T: type,
-    writer: std.Io.Writer,
+    writer: *std.Io.Writer,
     padding: usize,
     buf: []const T,
     cols: u64,
 ) Errors!void {
     try printPadding(writer, padding);
     const is_complex = comptime core.types.isComplex(T);
-    switch (@typeInfo(T)) {
+    const SubType = core.types.getType(T);
+    switch (@typeInfo(SubType)) {
         .int => |int_info| {
             const max_value = switch (int_info.signedness) {
-                .signed => comptime std.math.minInt(T),
-                .unsigned => comptime std.math.maxInt(T),
+                .signed => comptime std.math.minInt(SubType),
+                .unsigned => comptime std.math.maxInt(SubType),
             };
             const max_value_str = switch (is_complex) {
                 true => switch (int_info.signedness) {
@@ -218,7 +219,7 @@ fn printVector(
 
 inline fn printVectorOrMatrix(
     comptime T: type,
-    writer: std.Io.Writer,
+    writer: *std.Io.Writer,
     padding: usize,
     buf: []const T,
     pitches: []const u64,
@@ -265,7 +266,7 @@ inline fn printVectorOrMatrix(
 
 fn printDim(
     comptime T: type,
-    writer: std.Io.Writer,
+    writer: *std.Io.Writer,
     padding: usize,
     buf: []T,
     shape: []const u64,
@@ -316,13 +317,13 @@ fn printDim(
 pub fn printZ(
     comptime T: type,
     pipeline: *Pipeline,
-    writer: std.Io.Writer,
+    writer: *std.Io.Writer,
     tensor: *Tensor(T),
 ) Errors!void {
     const command_queue = pipeline.command_queue;
     const prev_events = pipeline.prevEvents();
 
-    var mapping_event: cl.event.cl_event = undefined;
+    var mapping_event: cl.event.Event = undefined;
     const memory_map = try cl.buffer.map(
         []T,
         command_queue.cl_command_queue,
@@ -365,11 +366,14 @@ pub fn print(
     pipeline: *Pipeline,
     tensor: *Tensor(T),
 ) Errors!void {
-    var array: std.ArrayList(u8) = .empty;
-    defer array.deinit();
+    const allocator = pipeline.command_queue.context.allocator;
 
-    const writer = array.writer(pipeline.command_queue.context.allocator);
-    try printZ(T, writer, pipeline, tensor);
+    var array: std.ArrayList(u8) = .empty;
+    defer array.deinit(allocator);
+
+    const array_writer = array.writer(allocator);
+    var writer = array_writer.adaptToNewApi(&.{}).new_interface;
+    try printZ(T, pipeline, &writer, tensor);
     if (builtin.is_test) {
         std.log.warn("{s}", .{array.items});
     }else{
