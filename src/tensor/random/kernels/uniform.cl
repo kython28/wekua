@@ -63,7 +63,7 @@ __kernel void uniform(
 
 #if RANGE_DEFINED
     , const T min_value,
-    const T max_value
+    const T range
 #endif
 ) {
 	const ulong i = get_global_id(0);
@@ -78,30 +78,31 @@ __kernel void uniform(
 #ifdef cl_khr_fp64
 
 #if WK_COMPLEX
-    const double normalized = (double) xxhash64((index << 1), global_seed) / ULONG_MAX;
-    const double inormalized = (double) xxhash64((index << 1) + 1, global_seed) / ULONG_MAX;
+    const double normalized = ((double)xxhash64((index << 1), global_seed)) / ULONG_MAX;
+    const double inormalized = ((double)xxhash64((index << 1) + 1, global_seed)) / ULONG_MAX;
 #else
-    const double normalized = (double) xxhash64(index, global_seed) / ULONG_MAX;
+    const double normalized = ((double)xxhash64(index, global_seed)) / ULONG_MAX ;
 #endif
 
 #else
 
 #if WK_COMPLEX
-    const float normalized = (float) xxhash64(index << 1, global_seed) / ULONG_MAX;
-    const float inormalized = (float) xxhash64((index << 1) + 1, global_seed) / ULONG_MAX;
+    const float normalized = ((float)xxhash64(index << 1, global_seed)) / ULONG_MAX;
+    const float inormalized = ((float)xxhash64((index << 1) + 1, global_seed)) / ULONG_MAX;
 #else
-    const float normalized = (float) xxhash64(index, global_seed) / ULONG_MAX;
+    const float normalized = ((float)xxhash64(index, global_seed)) / ULONG_MAX;
 #endif
 
 #endif
 
 #if WK_COMPLEX
-    numbers[index] = wks{
-        .real = min_value + (wks)(normalized * (max_value - min_value + 1)),
-        .imag = min_value + (wks)(inormalized * (max_value - min_value + 1)),
+    const wks complex_value = {
+        (T)(min_value + normalized * range),
+        (T)(min_value + inormalized * range),
     };
+    numbers[index] = complex_value;
 #else
-    numbers[index] = min_value + (wks)(normalized * (max_value - min_value + 1));
+    numbers[index] = (wks)(min_value + normalized * range);
 #endif
 
 #else
@@ -109,10 +110,11 @@ __kernel void uniform(
 #if WK_DTYPE_ID >= 8
 
 #if WK_COMPLEX
-    numbers[index] = wks{
-        .real = xxhash64(index << 1, global_seed)/((wks)ULONG_MAX);
-        .imag = xxhash64((index << 1) + 1, global_seed)/((wks)ULONG_MAX);
+    const wks complex_value = {
+        xxhash64(index << 1, global_seed)/((T)ULONG_MAX),
+        xxhash64((index << 1) + 1, global_seed)/((T)ULONG_MAX),
     };
+    numbers[index] = complex_value;
 #else
     numbers[index] = xxhash64(index, global_seed)/((wks)ULONG_MAX);
 #endif
@@ -120,20 +122,21 @@ __kernel void uniform(
 #elif WK_DTYPE_ID >= 6
 
 #if WK_COMPLEX
-    const uwks real_value = (uwks) xxhash64(index << 1, global_seed);
-    const uwks imag_value = (uwks) xxhash64((index << 1) + 1, global_seed);
+    const UT real_value = (UT) xxhash64(index << 1, global_seed);
+    const UT imag_value = (UT) xxhash64((index << 1) + 1, global_seed);
 
 #if WKS_IS_UNSIGNED
-    numbers[index] = wks{
-        .real = real_value,
-        .imag = imag_value,
+    const wks complex_value = {
+        real_value,
+        imag_value,
     };
 #else
-    numbers[index] =  wks{
-        .real = *((wks*)&real_value),
-        .imag = *((wks*)&imag_value),
+    const wks complex_value = {
+        *((T*)&real_value),
+        *((T*)&imag_value),
     };
 #endif
+    numbers[index] = complex_value;
 
 #else
     const uwks real_value = (uwks) xxhash64(index, global_seed);
@@ -149,20 +152,21 @@ __kernel void uniform(
 #else
 
 #if WK_COMPLEX
-    const uwks real_value = (uwks) (xxhash64(index << 1, global_seed) & WK_UINT_MAX);
-    const uwks imag_value = (uwks) (xxhash64((index << 1) + 1, global_seed) & WK_UINT_MAX);
+    const UT real_value = (UT) (xxhash64(index << 1, global_seed) & WK_UINT_MAX);
+    const UT imag_value = (UT) (xxhash64((index << 1) + 1, global_seed) & WK_UINT_MAX);
 
 #if WKS_IS_UNSIGNED
-    numbers[index] = wks{
-        .real = real_value,
-        .imag = imag_value,
+    const wks complex_value = {
+        real_value,
+        imag_value,
     };
 #else
-    numbers[index] = wks{
-        .real = *((wks*)&real_value),
-        .imag = *((wks*)&imag_value),
+    const wks complex_value = {
+        *((T*)&real_value),
+        *((T*)&imag_value),
     };
 #endif
+    numbers[index] = complex_value;
 
 #else
     const uwks real_value = (uwks) (xxhash64(index, global_seed) & WK_UINT_MAX);

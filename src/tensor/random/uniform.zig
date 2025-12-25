@@ -100,8 +100,9 @@ pub fn uniform(
             else => @compileError("Unsupported type"),
         };
 
+        const range = max - min;
         try setArg(kernel, 4, @sizeOf(SubType), @ptrCast(&min));
-        try setArg(kernel, 5, @sizeOf(SubType), @ptrCast(&max));
+        try setArg(kernel, 5, @sizeOf(SubType), @ptrCast(&range));
     }
 
     // TODO: Adapt code to use views
@@ -240,8 +241,8 @@ test "uniform - 1D tensor without range for all types" {
             try memory.writeToBuffer(T, pipeline, tensor, output_buffer);
             pipeline.waitAndCleanup();
 
-            // For floating point types, verify values are in [0, 1]
             const SubType = core.types.getType(T);
+            // For floating point types, verify values are in [0, 1]
             if (@typeInfo(SubType) == .float) {
                 for (output_buffer) |val| {
                     if (comptime core.types.isComplex(T)) {
@@ -249,6 +250,19 @@ test "uniform - 1D tensor without range for all types" {
                         try testing.expect(val.imag >= 0.0 and val.imag <= 1.0);
                     } else {
                         try testing.expect(val >= 0.0 and val <= 1.0);
+                    }
+                }
+            }
+            // For integer types, verify values are in full range [min, max]
+            else if (@typeInfo(SubType) == .int) {
+                const min_val = std.math.minInt(SubType);
+                const max_val = std.math.maxInt(SubType);
+                for (output_buffer) |val| {
+                    if (comptime core.types.isComplex(T)) {
+                        try testing.expect(val.real >= min_val and val.real <= max_val);
+                        try testing.expect(val.imag >= min_val and val.imag <= max_val);
+                    } else {
+                        try testing.expect(val >= min_val and val <= max_val);
                     }
                 }
             }
@@ -285,8 +299,8 @@ test "uniform - 2D tensor without range for all types" {
             try memory.writeToBuffer(T, pipeline, tensor, output_buffer);
             pipeline.waitAndCleanup();
 
-            // For floating point types, verify values are in [0, 1]
             const SubType = core.types.getType(T);
+            // For floating point types, verify values are in [0, 1]
             if (@typeInfo(SubType) == .float) {
                 for (output_buffer) |val| {
                     if (comptime core.types.isComplex(T)) {
@@ -294,6 +308,19 @@ test "uniform - 2D tensor without range for all types" {
                         try testing.expect(val.imag >= 0.0 and val.imag <= 1.0);
                     } else {
                         try testing.expect(val >= 0.0 and val <= 1.0);
+                    }
+                }
+            }
+            // For integer types, verify values are in full range [min, max]
+            else if (@typeInfo(SubType) == .int) {
+                const min_val = std.math.minInt(SubType);
+                const max_val = std.math.maxInt(SubType);
+                for (output_buffer) |val| {
+                    if (comptime core.types.isComplex(T)) {
+                        try testing.expect(val.real >= min_val and val.real <= max_val);
+                        try testing.expect(val.imag >= min_val and val.imag <= max_val);
+                    } else {
+                        try testing.expect(val >= min_val and val <= max_val);
                     }
                 }
             }
@@ -330,8 +357,8 @@ test "uniform - 3D tensor without range for all types" {
             try memory.writeToBuffer(T, pipeline, tensor, output_buffer);
             pipeline.waitAndCleanup();
 
-            // For floating point types, verify values are in [0, 1]
             const SubType = core.types.getType(T);
+            // For floating point types, verify values are in [0, 1]
             if (@typeInfo(SubType) == .float) {
                 for (output_buffer) |val| {
                     if (comptime core.types.isComplex(T)) {
@@ -339,6 +366,19 @@ test "uniform - 3D tensor without range for all types" {
                         try testing.expect(val.imag >= 0.0 and val.imag <= 1.0);
                     } else {
                         try testing.expect(val >= 0.0 and val <= 1.0);
+                    }
+                }
+            }
+            // For integer types, verify values are in full range [min, max]
+            else if (@typeInfo(SubType) == .int) {
+                const min_val = std.math.minInt(SubType);
+                const max_val = std.math.maxInt(SubType);
+                for (output_buffer) |val| {
+                    if (comptime core.types.isComplex(T)) {
+                        try testing.expect(val.real >= min_val and val.real <= max_val);
+                        try testing.expect(val.imag >= min_val and val.imag <= max_val);
+                    } else {
+                        try testing.expect(val >= min_val and val <= max_val);
                     }
                 }
             }
@@ -660,6 +700,67 @@ test "uniform - statistical properties for integer with range" {
     }
 }
 
+test "uniform - statistical properties for integer without range" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{10000};
+    const config = tensor_module.CreateConfig{};
+
+    inline for (core.types.SupportedTypes) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const SubType = core.types.getType(T);
+            if (@typeInfo(SubType) == .int) {
+                const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
+                defer tensor.release(pipeline);
+
+                // Generate uniform random values without range
+                try uniform(T, pipeline, tensor, 12345, null, null);
+
+                // Read back
+                const buffer_size = shape[0];
+                const output_buffer = try allocator.alloc(T, buffer_size);
+                defer allocator.free(output_buffer);
+
+                try memory.writeToBuffer(T, pipeline, tensor, output_buffer);
+                pipeline.waitAndCleanup();
+
+                // Calculate statistics
+                const stats = calculateStatistics(T, output_buffer);
+
+                // Expected mean for full integer range:
+                // For signed: (min + max) / 2 ≈ 0
+                // For unsigned: max / 2
+                const type_info = @typeInfo(SubType).int;
+                const expected_mean: f64 = if (type_info.signedness == .signed)
+                    0.0
+                else
+                    @as(f64, @floatFromInt(std.math.maxInt(SubType))) / 2.0;
+
+                // Use relative tolerance for large integer types
+                const mean_tolerance = if (type_info.signedness == .signed)
+                    @as(f64, @floatFromInt(std.math.maxInt(SubType))) * 0.05
+                else
+                    expected_mean * 0.05;
+
+                // Verify real part
+                try testing.expect(@abs(stats.real_mean - expected_mean) < mean_tolerance);
+
+                // For complex types, verify imaginary part
+                if (comptime core.types.isComplex(T)) {
+                    try testing.expect(@abs(stats.imag_mean - expected_mean) < mean_tolerance);
+                }
+            }
+        }
+    }
+}
+
 test "uniform - complex types with custom range" {
     const allocator = testing.allocator;
 
@@ -718,13 +819,13 @@ test "uniform - complex types with custom range" {
                 const stats = calculateStatistics(T, output_buffer);
 
                 if (@typeInfo(SubType) == .int) {
-                    // Range [-50, 50] -> mean ≈ 0 for both parts
-                    try testing.expect(@abs(stats.real_mean - 0.0) < 5.0);
-                    try testing.expect(@abs(stats.imag_mean - 0.0) < 5.0);
+                    // Range [50, 100] -> mean ≈ 75 for both parts
+                    try testing.expect(@abs(stats.real_mean - 75.0) < 5.0);
+                    try testing.expect(@abs(stats.imag_mean - 75.0) < 5.0);
                 } else {
-                    // Range [-10.0, 10.0] -> mean ≈ 0.0 for both parts
-                    try testing.expect(@abs(stats.real_mean - 0.0) < 1.0);
-                    try testing.expect(@abs(stats.imag_mean - 0.0) < 1.0);
+                    // Range [10.0, 100.0] -> mean ≈ 0.0 for both parts
+                    try testing.expect(@abs(stats.real_mean - 55.0) < 1.0);
+                    try testing.expect(@abs(stats.imag_mean - 55.0) < 1.0);
                 }
             }
         }
