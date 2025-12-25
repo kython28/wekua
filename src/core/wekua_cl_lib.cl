@@ -1,3 +1,60 @@
+/**
+ * =============================================================================
+ * WEKUA OpenCL Type System Library
+ * =============================================================================
+ *
+ * This library provides a unified type system for OpenCL kernels that supports
+ * scalar, vector, and complex number operations across all numeric types.
+ *
+ * COMPILE-TIME PARAMETERS
+ * -----------------------
+ * WK_DTYPE        - Data type identifier (0-19), set during kernel compilation
+ * WK_VECTOR_WIDTH - Vector width (1, 2, 4, 8, 16), determines SIMD operations
+ * WK_COMPLEX      - Complex number flag (0 or 1), enables complex arithmetic
+ * WK_DTYPE_ID     - Type family identifier (0-9), groups scalar/complex pairs
+ *
+ * TYPE DEFINITIONS
+ * ----------------
+ * T               - Base scalar type (char, short, int, long, float, double)
+ * UT              - Unsigned variant of T (only for integer types)
+ * wks             - Work scalar type (scalar or complex struct)
+ * uwks            - Unsigned work scalar (for integer types)
+ * wk              - Work vector type (matches WK_VECTOR_WIDTH)
+ * wk2, wk4, wk8   - Fixed-width vector types (when supported by WK_VECTOR_WIDTH)
+ *
+ * MACROS
+ * ------
+ * WK_INT_MAX      - Maximum value for signed integer types
+ * WK_UINT_MAX     - Maximum value for unsigned integer types
+ * WKS_IS_UNSIGNED - Flag (0 or 1) indicating if wks is unsigned
+ * convert_T       - Type conversion macro with saturation and rounding
+ * COMPLEX_MUL_K   - Declares temporaries for complex multiplication
+ * COMPLEX_MUL     - Performs complex multiplication using Karatsuba algorithm
+ *
+ * WK_DTYPE MAPPING
+ * ----------------
+ *  0: i8          10: Complex<i8>
+ *  1: u8          11: Complex<u8>
+ *  2: i16         12: Complex<i16>
+ *  3: u16         13: Complex<u16>
+ *  4: i32         14: Complex<i32>
+ *  5: u32         15: Complex<u32>
+ *  6: i64         16: Complex<i64>
+ *  7: u64         17: Complex<u64>
+ *  8: f32         18: Complex<f32>
+ *  9: f64         19: Complex<f64>
+ *
+ * USAGE EXAMPLES
+ * --------------
+ * Scalar operation:     wks value = input[i];
+ * Vector operation:     wk vec_data = vload(0, input);
+ * Complex arithmetic:   COMPLEX_MUL(a, b, result);
+ * Type conversion:      wks result = convert_T(input_value);
+ * Range checking:       if (value > WK_INT_MAX) { ... }
+ *
+ * =============================================================================
+ */
+
 #if WK_DTYPE == 0
 
 #define WK_INT_MAX CHAR_MAX
@@ -552,6 +609,15 @@ typedef __attribute__((packed)) struct {
 
 #if WK_VECTOR_WIDTH > 1
 
+/**
+ * sum - Reduces a vector to a scalar by summing all elements
+ * @a: Input vector of type wk
+ *
+ * Performs a tree-based reduction to sum all vector elements efficiently.
+ * The reduction depth depends on WK_VECTOR_WIDTH (2->1 level, 4->2 levels, etc.)
+ *
+ * Returns: Scalar sum of all vector elements (type wks)
+ */
 inline wks sum(wk a) {
 #if WK_VECTOR_WIDTH == 1
 	return a;
@@ -577,9 +643,38 @@ inline wks sum(wk a) {
 
 #if WK_COMPLEX == 1
 
+/**
+ * COMPLEX_MUL_K - Declares temporary variables for complex multiplication
+ * @T: Base scalar type for temporary variables
+ *
+ * Use this macro at the beginning of a function that performs complex multiplication
+ * to declare the three temporary variables (k1, k2, k3) needed by COMPLEX_MUL.
+ *
+ * Example:
+ *   COMPLEX_MUL_K(float)
+ *   wks a, b, result;
+ *   COMPLEX_MUL(a, b, result);
+ */
 #define COMPLEX_MUL_K(T) \
 	T k1, k2, k3;
 
+/**
+ * COMPLEX_MUL - Multiplies two complex numbers using Karatsuba algorithm
+ * @a: First complex number (has .real and .imag fields)
+ * @b: Second complex number (has .real and .imag fields)
+ * @res: Output complex number where result is stored
+ *
+ * Performs complex multiplication (a * b) using only 3 multiplications instead of 4
+ * via the Karatsuba algorithm. Requires COMPLEX_MUL_K(T) to be called first to
+ * declare temporary variables k1, k2, k3.
+ *
+ * Formula: (a.real + i*a.imag) * (b.real + i*b.imag)
+ *   k1 = b.real * (a.real + a.imag)
+ *   k2 = a.real * (b.imag - b.real)
+ *   k3 = a.imag * (b.real + b.imag)
+ *   res.real = k1 - k3
+ *   res.imag = k1 + k2
+ */
 #define COMPLEX_MUL(a, b, res) \
 	k1 = b.real*(a.real + a.imag); \
 	k2 = a.real*(b.imag - b.real); \
