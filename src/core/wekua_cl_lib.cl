@@ -286,7 +286,7 @@ typedef long T;
 typedef ulong uwks;
 typedef long wks;
 
-#define WKS_IS_UNSIGNED 1
+#define WKS_IS_UNSIGNED 0
 
 #if WK_VECTOR_WIDTH >= 2
 typedef long2 wk2;
