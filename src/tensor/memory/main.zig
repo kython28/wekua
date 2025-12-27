@@ -30,7 +30,7 @@ test "putValue and getValue - 1D tensor for all types" {
     const shape = [_]u64{10};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -77,7 +77,7 @@ test "putValue and getValue - 2D tensor for all types" {
     const shape = [_]u64{ 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -132,7 +132,7 @@ test "putValue and getValue - 3D tensor for all types" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -176,7 +176,7 @@ test "putValue and getValue - multiple values same tensor for all types" {
     const shape = [_]u64{ 5, 5 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -255,7 +255,7 @@ test "getValue - read zeroed tensor for all types" {
     const shape = [_]u64{ 2, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -291,7 +291,7 @@ test "putValue and getValue - overwrite values for all types" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -433,7 +433,7 @@ test "readFromBuffer and writeToBuffer - 1D tensor for all types" {
     const shape = [_]u64{10};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -496,7 +496,7 @@ test "readFromBuffer and writeToBuffer - 2D tensor for all types" {
     const shape = [_]u64{ 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -559,7 +559,7 @@ test "readFromBuffer and writeToBuffer - 3D tensor for all types" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -670,7 +670,7 @@ test "readFromBuffer and writeToBuffer - round trip preserves data" {
     const shape = [_]u64{ 4, 5 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -742,7 +742,7 @@ test "copy - same row_pitch for all types" {
     const shape = [_]u64{ 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             // Create two tensors with same configuration (same row_pitch)
             const src = try Tensor(T).empty(context, pipeline, &shape, config);
@@ -813,7 +813,7 @@ test "copy - different row_pitch for all types" {
 
     const shape = [_]u64{ 3, 4 };
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and !core.types.isComplex(T)) {
             // Create source tensor with vectors enabled
             const config_with_vectors = tensor_module.CreateConfig{ .vectors_enabled = true };
@@ -876,7 +876,7 @@ test "copy - 1D tensor for all types" {
     const shape = [_]u64{10};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const src = try Tensor(T).empty(context, pipeline, &shape, config);
             defer src.release(pipeline);
@@ -943,7 +943,7 @@ test "copy - 3D tensor for all types" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const src = try Tensor(T).empty(context, pipeline, &shape, config);
             defer src.release(pipeline);

@@ -295,16 +295,17 @@ pub fn Tensor(comptime T: type) type {
                 d.* = s;
             }
 
-            const vectors_enabled = (!is_complex and config.vectors_enabled);
-            tensor.flags.vectors_enabled = vectors_enabled;
-
+            var vectors_enabled = (!is_complex and config.vectors_enabled);
             var vector_width: u64 = 1;
             if (vectors_enabled) {
                 for (command_queues) |cmd| {
                     const cw: u64 = @intCast(cmd.vector_widths[type_id]);
                     vector_width = @max(cw, vector_width);
                 }
+                vectors_enabled &= vector_width > 1;
             }
+
+            tensor.flags.vectors_enabled = vectors_enabled;
 
             const vl_shape = try arena_allocator.dupe(u64, shape);
             tensor.dimensions.vl_shape = vl_shape;
@@ -452,7 +453,7 @@ test "Tensor.empty - basic initialization for all types" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -479,7 +480,7 @@ test "Tensor.empty - 1D tensor" {
     const shape = [_]u64{10};
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -506,7 +507,7 @@ test "Tensor.empty - 2D tensor" {
     const shape = [_]u64{ 5, 7 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -531,7 +532,7 @@ test "Tensor.empty - 4D tensor" {
     const shape = [_]u64{ 2, 3, 4, 5 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -590,7 +591,7 @@ test "Tensor.empty - complex flag disables vectors" {
     const shape = [_]u64{ 2, 3 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (core.types.isComplex(T) and command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -613,7 +614,7 @@ test "Tensor.empty - vectors can be disabled" {
     const shape = [_]u64{ 2, 3 };
     const config = CreateConfig{ .vectors_enabled = false };
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -636,7 +637,7 @@ test "Tensor.alloc - creates zeroed tensor" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -660,7 +661,7 @@ test "Tensor - dimensions calculated correctly" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -687,7 +688,7 @@ test "Tensor - pitches calculated correctly" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -714,7 +715,7 @@ test "Tensor - memory layout" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -742,7 +743,7 @@ test "Tensor.release - proper cleanup" {
     const shape = [_]u64{ 2, 3 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             tensor.release(pipeline);
@@ -764,7 +765,7 @@ test "Tensor - multiple tensors on same context" {
     const shape2 = [_]u64{ 4, 5, 6 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor1 = try Tensor(T).alloc(context, pipeline, &shape1, config);
             defer tensor1.release(pipeline);
@@ -794,7 +795,7 @@ test "Tensor - work configuration initialized" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -823,7 +824,7 @@ test "Tensor.empty - custom memory flags" {
         .cl_mem_flags = cl.buffer.MemFlag.read_only,
     };
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -846,7 +847,7 @@ test "Tensor - vl_shape calculated" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).empty(context, pipeline, &shape, config);
             defer tensor.release(pipeline);

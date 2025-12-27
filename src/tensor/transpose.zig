@@ -126,7 +126,7 @@ test "transpose - 2D tensor for all types" {
     const transposed_shape = [_]u64{ 4, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -179,7 +179,7 @@ test "transpose - 3D tensor transpose dims 0 and 1 for all types" {
     const transposed_shape = [_]u64{ 3, 2, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -234,7 +234,7 @@ test "transpose - 3D tensor transpose dims 0 and 2 for all types" {
     const transposed_shape = [_]u64{ 4, 3, 2 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -289,7 +289,7 @@ test "transpose - 3D tensor transpose dims 1 and 2 for all types" {
     const transposed_shape = [_]u64{ 2, 4, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -344,7 +344,7 @@ test "transpose - 4D tensor for all types" {
     const transposed_shape = [_]u64{ 2, 5, 4, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -400,7 +400,7 @@ test "transpose - same dimension copies tensor for all types" {
     const shape = [_]u64{ 3, 4, 5 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -452,7 +452,7 @@ test "transpose - dimension order does not matter" {
     const transposed_shape = [_]u64{ 4, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -626,7 +626,7 @@ test "transpose - double transpose returns original" {
     const transposed_shape = [_]u64{ 4, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);

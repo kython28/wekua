@@ -19,7 +19,7 @@ fn getKernel(
     command_queue: *const CommandQueue,
     space: core.types.Space,
 ) TensorErrors!cl.kernel.Kernel {
-    const kernels_set = try KernelsSet.getKernelSet(command_queue, .ToComplex, core.types.SupportedTypes.len * 2);
+    const kernels_set = try KernelsSet.getKernelSet(command_queue, .ToComplex, core.types.SUPPORTED_TYPES.len * 2);
     const index: usize = 2 * @as(usize, core.types.getTypeId(T)) + @intFromEnum(space);
     if (kernels_set.kernels.?[index]) |v| return v;
 
@@ -110,7 +110,7 @@ test "toComplex - real space for all real types" {
     const shape = [_]u64{ 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and command_queue.isTypeSupported(T)) {
             const src = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer src.release(pipeline);
@@ -160,7 +160,7 @@ test "toComplex - imag space for all real types" {
     const shape = [_]u64{ 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and command_queue.isTypeSupported(T)) {
             const src = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer src.release(pipeline);
@@ -210,7 +210,7 @@ test "toComplex - 1D tensor to real space for all real types" {
     const shape = [_]u64{10};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and command_queue.isTypeSupported(T)) {
             const src = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer src.release(pipeline);
@@ -259,7 +259,7 @@ test "toComplex - 3D tensor to imag space for all real types" {
     const shape = [_]u64{ 2, 3, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and command_queue.isTypeSupported(T)) {
             const src = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer src.release(pipeline);
@@ -386,7 +386,7 @@ test "toComplex - combining real and imag conversions" {
     const shape = [_]u64{4};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and command_queue.isTypeSupported(T)) {
             const src_real = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer src_real.release(pipeline);

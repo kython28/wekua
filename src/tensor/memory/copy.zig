@@ -88,7 +88,7 @@ pub fn copy(
     src: *Tensor(T),
     dst: *Tensor(T),
 ) TensorErrors!void {
-    try helpers.eqlTensorsDimensions(T, src, dst);
+    try helpers.eqlTensorsShape(T, src, dst);
 
     if (src.memory_layout.row_pitch == dst.memory_layout.row_pitch) {
         try copy_tensor_with_same_row_pitch(T, pipeline, src, dst);

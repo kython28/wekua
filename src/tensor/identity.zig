@@ -87,7 +87,7 @@ test "identity - 2D square matrix for all types" {
     const shape = [_]u64{ 3, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -140,7 +140,7 @@ test "identity - 3D cubic tensor for all types" {
     const shape = [_]u64{ 4, 4, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -195,7 +195,7 @@ test "identity - 4D hypercubic tensor for all types" {
     const shape = [_]u64{ 3, 3, 3, 3 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -250,7 +250,7 @@ test "identity - different sizes for all types" {
     const sizes = [_]u64{ 2, 5, 8 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             for (sizes) |size| {
                 const shape = [_]u64{ size, size };
@@ -353,7 +353,7 @@ test "identity - overwrites existing values for all types" {
     const shape = [_]u64{ 4, 4 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -427,7 +427,7 @@ test "identity - 1x1 matrix for all types" {
     const shape = [_]u64{ 1, 1 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -465,7 +465,7 @@ test "identity - using writeToBuffer verification for all types" {
     const shape = [_]u64{ 5, 5 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);

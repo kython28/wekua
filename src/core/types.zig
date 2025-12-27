@@ -21,7 +21,19 @@ pub const ComplexU64 = Complex(u64);
 pub const ComplexF32 = Complex(f32);
 pub const ComplexF64 = Complex(f64);
 
-pub const SupportedTypes: [20]type = .{
+pub inline fn getComplexOne(comptime T: type) T {
+    return T{ .real = 1, .imag = 0 };
+}
+
+pub inline fn getOne(comptime T: type) T {
+    if (isComplex(T)) {
+        return getComplexOne(T);
+    }
+
+    return @as(T, 1);
+}
+
+pub const SUPPORTED_TYPES: [20]type = .{
     i8,
     u8,
     i16,
@@ -99,5 +111,5 @@ pub fn isComplex(comptime T: type) bool {
 }
 
 pub fn getType(comptime T: type) type {
-    return SupportedTypes[getTypeId(T)];
+    return SUPPORTED_TYPES[getTypeId(T)];
 }

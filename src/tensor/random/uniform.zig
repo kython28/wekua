@@ -22,7 +22,7 @@ fn getKernel(
     const kernels_set = try KernelsSet.getKernelSet(
         command_queue,
         .RandomUniform,
-        core.types.SupportedTypes.len * 2,
+        core.types.SUPPORTED_TYPES.len * 2,
     );
     const index: usize = @as(usize, core.types.getTypeIndex(T)) * 2 + @intFromBool(range_defined);
     if (kernels_set.kernels.?[index]) |v| return v;
@@ -225,7 +225,7 @@ test "uniform - 1D tensor without range for all types" {
     const shape = [_]u64{100};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -283,7 +283,7 @@ test "uniform - 2D tensor without range for all types" {
     const shape = [_]u64{ 10, 10 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -341,7 +341,7 @@ test "uniform - 3D tensor without range for all types" {
     const shape = [_]u64{ 5, 4, 5 };
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor.release(pipeline);
@@ -399,7 +399,7 @@ test "uniform - with custom range for integer types" {
     const shape = [_]u64{100};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const SubType = core.types.getType(T);
             if (@typeInfo(SubType) == .int) {
@@ -447,7 +447,7 @@ test "uniform - with custom range for floating point types" {
     const shape = [_]u64{100};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const SubType = core.types.getType(T);
             if (@typeInfo(SubType) == .float) {
@@ -495,7 +495,7 @@ test "uniform - different seeds produce different values" {
     const shape = [_]u64{50};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor1 = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor1.release(pipeline);
@@ -552,7 +552,7 @@ test "uniform - same seed produces same values" {
     const shape = [_]u64{50};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const tensor1 = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer tensor1.release(pipeline);
@@ -602,7 +602,7 @@ test "uniform - statistical properties for floating point without range" {
     const shape = [_]u64{10000};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const SubType = core.types.getType(T);
             if (@typeInfo(SubType) == .float) {
@@ -660,7 +660,7 @@ test "uniform - statistical properties for integer with range" {
     const shape = [_]u64{10000};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const SubType = core.types.getType(T);
             if (@typeInfo(SubType) == .int) {
@@ -713,7 +713,7 @@ test "uniform - statistical properties for integer without range" {
     const shape = [_]u64{10000};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             const SubType = core.types.getType(T);
             if (@typeInfo(SubType) == .int) {
@@ -774,7 +774,7 @@ test "uniform - complex types with custom range" {
     const shape = [_]u64{5000};
     const config = tensor_module.CreateConfig{};
 
-    inline for (core.types.SupportedTypes) |T| {
+    inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
             if (comptime core.types.isComplex(T)) {
                 const SubType = core.types.getType(T);
