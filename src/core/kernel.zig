@@ -51,7 +51,7 @@ pub const KernelsID = enum(u16) {
 };
 
 pub const TOTAL_NUMBER_OF_KERNELS = @typeInfo(KernelsID).@"enum".fields.len;
-pub const TOTAL_NUMBER_OF_HEADERS = core.types.SupportedTypes.len * 2;
+pub const TOTAL_NUMBER_OF_HEADERS = core.types.SUPPORTED_TYPES.len * 2;
 
 kernels: ?[]?cl.kernel.Kernel = null,
 programs: ?[]?cl.program.Program = null,
@@ -340,7 +340,7 @@ pub fn getClKernel(
     kernel_source: []const u8,
     extra_args: ?[]const u8,
 ) Errors!cl.kernel.Kernel {
-    const kernel_index = (@intFromBool(vectors_enabled) * core.types.SupportedTypes.len +
+    const kernel_index = (@intFromBool(vectors_enabled) * core.types.SUPPORTED_TYPES.len +
         @as(usize, core.types.getTypeIndex(T)));
 
     return createAndGetKernel(
@@ -355,7 +355,7 @@ pub fn getClKernel(
         },
         true,
         true,
-        core.types.SupportedTypes.len * 2,
+        core.types.SUPPORTED_TYPES.len * 2,
         kernel_index,
     );
 }
@@ -382,7 +382,7 @@ pub fn getClNoVectorKernel(
         },
         true,
         false,
-        core.types.SupportedTypes.len,
+        core.types.SUPPORTED_TYPES.len,
         type_index,
     );
 }
@@ -407,7 +407,7 @@ pub fn getClNoVectorNoComplexSingleKernel(
         },
         false,
         false,
-        core.types.SupportedTypes.len / 2,
+        core.types.SUPPORTED_TYPES.len / 2,
         core.types.getTypeIndex(T),
     );
 }
@@ -592,7 +592,7 @@ test "createAndGetKernel - caching behavior" {
         options,
         false, // can_use_complex
         false, // can_use_vectors
-        core.types.SupportedTypes.len,
+        core.types.SUPPORTED_TYPES.len,
         core.types.getTypeIndex(f32),
     );
 
@@ -605,7 +605,7 @@ test "createAndGetKernel - caching behavior" {
         options,
         false,
         false,
-        core.types.SupportedTypes.len,
+        core.types.SUPPORTED_TYPES.len,
         core.types.getTypeIndex(f32),
     );
 

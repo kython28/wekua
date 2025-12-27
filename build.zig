@@ -14,14 +14,12 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/utils/utils.zig"),
         .target = target,
         .optimize = optimize,
-        .single_threaded = false,
     });
 
     const core_module = b.addModule("core", .{
         .root_source_file = b.path("src/core/main.zig"),
         .target = target,
         .optimize = optimize,
-        .single_threaded = false,
     });
     core_module.addImport("opencl", opencl_module);
 
@@ -29,41 +27,56 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/tensor/main.zig"),
         .target = target,
         .optimize = optimize,
-        .single_threaded = false,
     });
     tensor_module.addImport("opencl", opencl_module);
     tensor_module.addImport("core", core_module);
     tensor_module.addImport("utils", utils_module);
 
+    const blas_module = b.addModule("blas", .{
+        .root_source_file = b.path("src/blas/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    blas_module.addImport("opencl", opencl_module);
+    blas_module.addImport("core", core_module);
+    blas_module.addImport("utils", utils_module);
+    blas_module.addImport("tensor", tensor_module);
+
     const wekua_module = b.addModule("wekua", .{
         .root_source_file = b.path("src/wekua.zig"),
         .target = target,
         .optimize = optimize,
-        .single_threaded = false,
     });
     wekua_module.addImport("opencl", opencl_module);
     wekua_module.addImport("core", core_module);
     wekua_module.addImport("tensor", tensor_module);
     wekua_module.addImport("utils", utils_module);
-
-    const core_test = b.addTest(.{
-        .root_module = core_module,
-        .use_llvm = true,
-        .name = "core",
-    });
-
-    const tensor_test = b.addTest(.{
-        .root_module = tensor_module,
-        .use_llvm = true,
-        .name = "tensor",
-    });
-
-    const run_core_test = b.addRunArtifact(core_test);
-    const run_tensor_test = b.addRunArtifact(tensor_test);
+    wekua_module.addImport("blas", blas_module);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_core_test.step);
-    test_step.dependOn(&run_tensor_test.step);
+    const run_check_step = b.step("check", "ZLS");
+
+    const modules_to_test = .{
+        .{core_module, "core"},
+        .{tensor_module, "tensor"},
+        .{blas_module, "blas"},
+    };
+    inline for (modules_to_test) |module_to_test| {
+        const module = module_to_test[0];
+        const name = module_to_test[1];
+
+        const test_compilation_step = b.addTest(.{
+            .root_module = module,
+            .use_llvm = true,
+            .name = name,
+        });
+
+        const run = b.addRunArtifact(test_compilation_step);
+        run.has_side_effects = true;
+
+        test_step.dependOn(&run.step);
+        run_check_step.dependOn(&test_compilation_step.step);
+    }
 
     const benchmark_module = b.addModule("benchmark", .{
         .root_source_file = b.path("benchmark/main.zig"),
@@ -89,8 +102,4 @@ pub fn build(b: *std.Build) void {
     const run_benchmark_step = b.step("benchmark", "Run benchmark");
     run_benchmark_step.dependOn(&install_benchmark.step);
     run_benchmark_step.dependOn(&run_benchmark.step);
-
-    const run_check_step = b.step("check", "ZLS");
-    run_check_step.dependOn(&core_test.step);
-    run_check_step.dependOn(&tensor_test.step);
 }

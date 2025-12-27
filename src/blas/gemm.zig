@@ -2,17 +2,18 @@ const builtin = @import("builtin");
 const std = @import("std");
 const cl = @import("opencl");
 
-const core = @import("../core/main.zig");
+const core = @import("core");
 const CommandQueue = core.CommandQueue;
 const KernelsSet = core.KernelsSet;
 const Context = core.Context;
 
-const w_tensor = @import("../tensor/main.zig");
-const Tensor = w_tensor.Tensor;
+const tensor_module = @import("tensor");
+const Tensor = tensor_module.Tensor;
+const TensorErrors = tensor_module.Errors;
 
-const gemm_cl_kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
-const gemm_nxn_cl_kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
-const gemm_nxn_gpu_cl_kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
+const gemm_Kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
+const gemm_nxn_Kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
+const gemm_nxn_gpu_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
 
 pub const Algorithm = enum(u8) {
     generic = 0,
@@ -42,7 +43,7 @@ fn getKernel(
     k_size: u64,
 
     algorithm_ptr: *Algorithm,
-) !cl.kernel.cl_kernel {
+) !cl.kernel.Kernel {
     const kernels_set = try KernelsSet.getKernelSet(
         command_queue,
         .GEMM,
@@ -85,7 +86,7 @@ fn getKernel(
 
     if (kernels_set.kernels.?[kernel_index]) |v| return v;
 
-    var kernel: cl.kernel.cl_kernel = undefined;
+    var kernel: cl.kernel.Kernel = undefined;
     var program: cl.program.Program = undefined;
 
     const allocator = command_queue.allocator;
@@ -121,10 +122,10 @@ fn getKernel(
         &kernel,
         &program,
         switch (algorithm) {
-            .generic => gemm_cl_kernel,
+            .generic => gemm_Kernel,
             else => switch (command_queue.local_mem_type) {
-                .local => gemm_nxn_gpu_cl_kernel,
-                else => gemm_nxn_cl_kernel,
+                .local => gemm_nxn_gpu_Kernel,
+                else => gemm_nxn_Kernel,
             },
         },
     );
@@ -151,7 +152,7 @@ inline fn validateTensors(
         if (builtin.is_test) {
             std.log.err("An error while performing gemm: invalid shapes", .{});
         }
-        return w_tensor.Errors.InvalidValue;
+        return tensor_module.Errors.InvalidValue;
     }
 
     const a_m = a_shape[0];
@@ -189,7 +190,7 @@ inline fn validateTensors(
             }
             );
         }
-        return w_tensor.Errors.InvalidValue;
+        return tensor_module.Errors.InvalidValue;
     }
 }
 
@@ -241,7 +242,7 @@ pub fn gemm(
     const b_prev_events = b.event_manager.getPrevEvents(.read);
     const c_prev_events = c.event_manager.getPrevEvents(.write);
 
-    const events_set = try w_tensor.EventManager.EventsSet.init(
+    const events_set = try tensor_module.EventManager.EventsSet.init(
         allocator,
         &.{ a_prev_events, b_prev_events, c_prev_events },
         null,
@@ -341,7 +342,7 @@ pub fn gemm(
         }
     }
 
-    var new_event: cl.event.cl_event = undefined;
+    var new_event: cl.event.Event = undefined;
     try cl.kernel.enqueue_nd_range(
         cmd,
         kernel,
@@ -351,7 +352,7 @@ pub fn gemm(
         prev_events,
         &new_event,
     );
-    errdefer |err| w_tensor.helpers.releaseEvent(new_event, err);
+    errdefer |err| tensor_module.helpers.releaseEvent(new_event, err);
 
     try events_set.appendNewEvent(
         T,
