@@ -4,121 +4,65 @@ __kernel void axpy(
 	__global const wk *const restrict A,
     __global wk *const restrict B,
 
-    const ulong row_pitch,
-    const ulong slice_pitch
+    const ulong A_row_pitch,
+    const ulong A_slice_pitch
+#if WK_COMPLEX == 0 && WK_VECTOR_WIDTH == 1
+    , const ulong B_row_pitch,
+    const ulong B_slice_pitch
+#endif
 
 #if HAS_ALPHA
 	, const wks alpha
-#if WK_COMPLEX == 1
-	, const wks ialpha
-#endif
 #endif
 ) {
 	const ulong i = get_global_id(0);
     const ulong j = get_global_id(1);
     const ulong k = get_global_id(2);
 
-#if WK_COMPLEX == 1
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-#if HAS_ALPHA
-	wk real_value = A[index];
-	wk imag_value = A[index + 1];
-
-	COMPLEX_MUL_K(wk)
-	COMPLEX_MUL(real_value, imag_value, alpha, ialpha);
-
-	B[index] += real_value;
-	B[index + 1] += imag_value;
+#if WK_COMPLEX == 0 && WK_VECTOR_WIDTH == 1
+    const ulong A_index = i * A_slice_pitch + j * A_row_pitch + k;
+    const ulong B_index = i * B_slice_pitch + j * B_row_pitch + k;
 #else
-
-#if SUBSTRACT
-    B[index] -= A[index];
-    B[index + 1] -= A[index + 1];
-#else
-    B[index] += A[index];
-    B[index + 1] += A[index + 1];
+    const ulong A_index = i * A_slice_pitch + j * A_row_pitch + k;
+    const ulong B_index = A_index;
 #endif
-
-#endif
-
-#else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
-#if HAS_ALPHA
-	B[index] += alpha * A[index];
-#else
-
-#if SUBSTRACT
-    B[index] -= A[index];
-#else
-    B[index] += A[index];
-#endif
-
-#endif
-
-#endif
-}
-
-__kernel void axpy2(
-	__global const wks *restrict A,
-    __global wks *restrict B,
-
-    const ulong row_pitch_A,
-    const ulong slice_pitch_A,
-
-    const ulong row_pitch_B,
-    const ulong slice_pitch_B
-
-#if HAS_ALPHA
-	, const wks alpha
-#if WK_COMPLEX == 1
-	, const wks ialpha
-#endif
-#endif
-) {
-	const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
 
 #if WK_COMPLEX == 1
-    const ulong col = k << 1;
-    const ulong index_A = i * slice_pitch_A + j * row_pitch_A + col;
-    const ulong index_B = i * slice_pitch_B + j * row_pitch_B + col;
+    wk complex_a_value = A[A_index];
+    wk complex_b_value = B[B_index];
 
 #if HAS_ALPHA
-	wks real_value = A[index_A];
-	wks imag_value = A[index_A + 1];
+	COMPLEX_MUL_K(T)
+	COMPLEX_MUL(complex_a_value, alpha, complex_a_value);
 
-	COMPLEX_S_MUL_K(wks)
-	COMPLEX_S_MUL(real_value, imag_value, alpha, ialpha);
+    complex_b_value.real += complex_a_value.real;
+    complex_b_value.imag += complex_a_value.imag;
 
-	B[index_B] += real_value;
-	B[index_B + 1] += imag_value;
+	B[B_index] = complex_b_value;
 #else
 
 #if SUBSTRACT
-    B[index_B] -= A[index_A];
-    B[index_B + 1] -= A[index_A + 1];
+    complex_b_value.real -= complex_a_value.real;
+    complex_b_value.imag -= complex_a_value.imag;
+    B[B_index] = complex_b_value;
 #else
-    B[index_B] += A[index_A];
-    B[index_B + 1] += A[index_A + 1];
+    complex_b_value.real += complex_a_value.real;
+    complex_b_value.imag += complex_a_value.imag;
+    B[B_index] = complex_b_value;
 #endif
 
 #endif
 
 #else
-    const ulong index_A = i * slice_pitch_A + j * row_pitch_A + k;
-    const ulong index_B = i * slice_pitch_B + j * row_pitch_B + k;
 
 #if HAS_ALPHA
-	B[index_B] += alpha * A[index_A];
+	B[B_index] += alpha * A[A_index];
 #else
 
 #if SUBSTRACT
-    B[index_B] -= A[index_A];
+    B[B_index] -= A[A_index];
 #else
-    B[index_B] += A[index_A];
+    B[B_index] += A[A_index];
 #endif
 
 #endif
