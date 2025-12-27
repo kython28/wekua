@@ -11,5 +11,10 @@ __kernel void identity(
         pos += index * pitches_A[x];
     }
 
+#if WK_COMPLEX
+    const wks complex_value = {1, 0};
+    A[pos] = complex_value;
+#else
     A[pos] = 1;
+#endif
 }
