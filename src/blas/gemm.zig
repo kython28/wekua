@@ -3,6 +3,7 @@ const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("core");
+const Pipeline = core.Pipeline;
 const CommandQueue = core.CommandQueue;
 const KernelsSet = core.KernelsSet;
 const Context = core.Context;
@@ -43,11 +44,11 @@ fn getKernel(
     k_size: u64,
 
     algorithm_ptr: *Algorithm,
-) !cl.kernel.Kernel {
+) TensorErrors!cl.kernel.Kernel {
     const kernels_set = try KernelsSet.getKernelSet(
         command_queue,
         .GEMM,
-        @typeInfo(Algorithm).@"enum".fields.len * core.SupportedTypes.len * 2 * 2 * 2 * 2 * 2 * 2,
+        @typeInfo(Algorithm).@"enum".fields.len * core.SupportedTypes.len * 2 * 2 * 2 * 2 * 2,
     );
 
     const algorithm: Algorithm = blk: {
@@ -75,21 +76,21 @@ fn getKernel(
     };
     algorithm_ptr.* = algorithm;
 
-    var kernel_index: usize = @intFromEnum(algorithm) * (core.SupportedTypes.len * 2 * 2 * 2 * 2 * 2 * 2);
-    kernel_index += @intFromBool(vectors_enabled) * (2 * 2 * 2 * 2 * 2 * core.SupportedTypes.len);
-    kernel_index += @intFromBool(is_complex) * (2 * 2 * 2 * 2 * core.SupportedTypes.len);
-    kernel_index += @intFromBool(has_alpha) * (2 * 2 * 2 * core.SupportedTypes.len);
-    kernel_index += @intFromBool(has_beta) * (2 * 2 * core.SupportedTypes.len);
-    kernel_index += @intFromEnum(op_a) * (2 * core.SupportedTypes.len);
-    kernel_index += @intFromEnum(op_b) * core.SupportedTypes.len;
-    kernel_index += @as(usize, core.getTypeId(T));
+    const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
+    var kernel_index: usize = @intFromEnum(algorithm) * (SUPPORTED_TYPES * 2 * 2 * 2 * 2 * 2);
+    kernel_index += @intFromBool(vectors_enabled) * (2 * 2 * 2 * 2 * SUPPORTED_TYPES);
+    kernel_index += @intFromBool(has_alpha) * (2 * 2 * 2 * SUPPORTED_TYPES);
+    kernel_index += @intFromBool(has_beta) * (2 * 2 * SUPPORTED_TYPES);
+    kernel_index += @intFromEnum(op_a) * (2 * SUPPORTED_TYPES);
+    kernel_index += @intFromEnum(op_b) * SUPPORTED_TYPES;
+    kernel_index += @as(usize, core.types.getTypeIndex(T));
 
     if (kernels_set.kernels.?[kernel_index]) |v| return v;
 
     var kernel: cl.kernel.Kernel = undefined;
     var program: cl.program.Program = undefined;
 
-    const allocator = command_queue.allocator;
+    const allocator = command_queue.context.allocator;
     const extra_args: []u8 = try std.fmt.allocPrint(
         allocator,
         "-DHAS_ALPHA={d} -DHAS_BETA={d} -DA_TRANS={d} -DB_TRANS={d} -DSTRIDE={d} -DBLOCK_SIZE={d}",
@@ -114,7 +115,6 @@ fn getKernel(
         T,
         command_queue,
         .{
-            .is_complex = is_complex,
             .vectors_enabled = vectors_enabled,
             .kernel_name = "gemm",
             .extra_args = extra_args,
@@ -143,15 +143,12 @@ inline fn validateTensors(
     c: *Tensor(T),
     op_a: Operation,
     op_b: Operation,
-) !void {
+) TensorErrors!void {
     const a_shape = a.dimensions.shape;
     const b_shape = b.dimensions.shape;
     const c_shape = c.dimensions.shape;
 
     if (c_shape.len != 2 or a_shape.len != 2 or b_shape.len != 2) {
-        if (builtin.is_test) {
-            std.log.err("An error while performing gemm: invalid shapes", .{});
-        }
         return tensor_module.Errors.InvalidValue;
     }
 
@@ -176,37 +173,21 @@ inline fn validateTensors(
     };
 
     if (!match) {
-        if (builtin.is_test) {
-            std.log.err(
-                \\ An error while performing gemm: dimensions mismatch
-                \\ a: {any}, b: {any}, c: {any}
-                \\ op_a: {any}, op_b: {any}
-            , .{
-                a_shape,
-                b_shape,
-                c_shape,
-                op_a,
-                op_b,
-            }
-            );
-        }
         return tensor_module.Errors.InvalidValue;
     }
 }
 
 pub fn gemm(
     comptime T: type,
-    command_queue: *const CommandQueue,
+    pipeline: *Pipeline,
     alpha: ?T,
-    ialpha: ?T,
     a: *Tensor(T),
     op_a: Operation,
     b: *Tensor(T),
     op_b: Operation,
     beta: ?T,
-    ibeta: ?T,
     c: *Tensor(T),
-) !void {
+) TensorErrors!void {
     try validateTensors(T, a, b, c, op_a, op_b);
 
     var real_alpha_scalar: T = undefined;
@@ -238,18 +219,7 @@ pub fn gemm(
     const cmd = command_queue.cmd;
     const allocator = command_queue.allocator;
 
-    const a_prev_events = a.event_manager.getPrevEvents(.read);
-    const b_prev_events = b.event_manager.getPrevEvents(.read);
-    const c_prev_events = c.event_manager.getPrevEvents(.write);
-
-    const events_set = try tensor_module.EventManager.EventsSet.init(
-        allocator,
-        &.{ a_prev_events, b_prev_events, c_prev_events },
-        null,
-    );
-    errdefer events_set.release();
-
-    const prev_events = events_set.getPrevEvents();
+    const prev_events = pipeline.prevEvents();
 
     var a_row_pitch: u64 = undefined;
     var b_row_pitch: u64 = undefined;

@@ -155,9 +155,6 @@ pub fn axpy(
         try setArg(kernel, kernel_index, @sizeOf(T), &_alpha);
     }
 
-    // std.log.warn("{any} {any}", .{global_work_items, local_work_items});
-    // std.log.warn("{any} {any}", .{x.dimensions.vl_shape, y.dimensions.vl_shape});
-
     var new_event: cl.event.Event = undefined;
     try cl.kernel.enqueueNdRange(
         command_queue.cl_command_queue,
