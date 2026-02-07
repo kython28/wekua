@@ -11,7 +11,7 @@ pub const CreateTensorConfig = tensor_module.CreateConfig;
 pub const utils = @import("utils");
 
 pub const blas = @import("blas");
-// pub const math = @import("math/main.zig");
+pub const math = @import("math");
 
 // pub const nn = @import("nn/main.zig");
 //

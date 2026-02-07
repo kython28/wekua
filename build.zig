@@ -42,6 +42,16 @@ pub fn build(b: *std.Build) void {
     blas_module.addImport("utils", utils_module);
     blas_module.addImport("tensor", tensor_module);
 
+    const math_module = b.addModule("math", .{
+        .root_source_file = b.path("src/math/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    math_module.addImport("opencl", opencl_module);
+    math_module.addImport("core", core_module);
+    math_module.addImport("utils", utils_module);
+    math_module.addImport("tensor", tensor_module);
+
     const wekua_module = b.addModule("wekua", .{
         .root_source_file = b.path("src/wekua.zig"),
         .target = target,
@@ -52,6 +62,7 @@ pub fn build(b: *std.Build) void {
     wekua_module.addImport("tensor", tensor_module);
     wekua_module.addImport("utils", utils_module);
     wekua_module.addImport("blas", blas_module);
+    wekua_module.addImport("math", math_module);
 
     const test_step = b.step("test", "Run unit tests");
     const run_check_step = b.step("check", "ZLS");
@@ -60,6 +71,7 @@ pub fn build(b: *std.Build) void {
         .{core_module, "core"},
         .{tensor_module, "tensor"},
         .{blas_module, "blas"},
+        .{math_module, "math"},
     };
     inline for (modules_to_test) |module_to_test| {
         const module = module_to_test[0];

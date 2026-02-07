@@ -1,154 +1,67 @@
 #include "wekua.h"
 
-__kernel void sin_kernel(
-    __global wk *const restrict input,
-
-    const ulong row_pitch,
-    const ulong slice_pitch
-) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+__kernel void sin_kernel(__global wk *const restrict input) {
+    const ulong index = get_global_id(0);
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    const wk real_value = input[index];
-    const wk imag_value = input[index + 1];
-
-    input[index] = sin(real_value) * cosh(imag_value);
-    input[index + 1] = cos(real_value) * sinh(imag_value);
+    const wk val = input[index];
+    input[index] = (wk){ sin(val.real) * cosh(val.imag), cos(val.real) * sinh(val.imag) };
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
     input[index] = sin(input[index]);
 #endif
 }
 
-__kernel void cos_kernel(
-    __global wk *const restrict input,
-
-    const ulong row_pitch,
-    const ulong slice_pitch
-) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+__kernel void cos_kernel(__global wk *const restrict input) {
+    const ulong index = get_global_id(0);
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    const wk real_value = input[index];
-    const wk imag_value = input[index + 1];
-
-    input[index] = cos(real_value) * cosh(imag_value);
-    input[index + 1] = -sin(real_value) * sinh(imag_value);
+    const wk val = input[index];
+    input[index] = (wk){ cos(val.real) * cosh(val.imag), -sin(val.real) * sinh(val.imag) };
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
     input[index] = cos(input[index]);
 #endif
 }
 
-__kernel void tan_kernel(
-    __global wk *const restrict input,
-
-    const ulong row_pitch,
-    const ulong slice_pitch
-) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+__kernel void tan_kernel(__global wk *const restrict input) {
+    const ulong index = get_global_id(0);
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    const wk real_value = input[index];
-    const wk imag_value = input[index + 1];
-
-    input[index] = (sin(real_value) * cos(real_value) + sinh(imag_value) * cosh(imag_value)) / (cos(real_value) * cosh(imag_value));
-    input[index + 1] = (sinh(imag_value) * cos(real_value) - sin(real_value) * cosh(imag_value)) / (cos(real_value) * cosh(imag_value));
+    const wk val = input[index];
+    const T two_a = 2 * val.real;
+    const T two_b = 2 * val.imag;
+    const T denom = cos(two_a) + cosh(two_b);
+    input[index] = (wk){ sin(two_a) / denom, sinh(two_b) / denom };
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
     input[index] = tan(input[index]);
 #endif
 }
 
-__kernel void sinh_kernel(
-    __global wk *const restrict input,
-
-    const ulong row_pitch,
-    const ulong slice_pitch
-) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+__kernel void sinh_kernel(__global wk *const restrict input) {
+    const ulong index = get_global_id(0);
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    const wk real_value = input[index];
-    const wk imag_value = input[index + 1];
-
-    input[index] = sinh(real_value) * cos(imag_value);
-    input[index + 1] = cosh(real_value) * sin(imag_value);
+    const wk val = input[index];
+    input[index] = (wk){ sinh(val.real) * cos(val.imag), cosh(val.real) * sin(val.imag) };
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
     input[index] = sinh(input[index]);
 #endif
 }
 
-__kernel void cosh_kernel(
-    __global wk *const restrict input,
-
-    const ulong row_pitch,
-    const ulong slice_pitch
-) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+__kernel void cosh_kernel(__global wk *const restrict input) {
+    const ulong index = get_global_id(0);
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    const wk real_value = input[index];
-    const wk imag_value = input[index + 1];
-
-    input[index] = cosh(real_value) * cos(imag_value);
-    input[index + 1] = sinh(real_value) * sin(imag_value);
+    const wk val = input[index];
+    input[index] = (wk){ cosh(val.real) * cos(val.imag), sinh(val.real) * sin(val.imag) };
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
     input[index] = cosh(input[index]);
 #endif
 }
 
-__kernel void tanh_kernel(
-    __global wk *const restrict input,
-
-    const ulong row_pitch,
-    const ulong slice_pitch
-) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+__kernel void tanh_kernel(__global wk *const restrict input) {
+    const ulong index = get_global_id(0);
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    const wk real_value = input[index];
-    const wk imag_value = input[index + 1];
-
-    const wk denominator = cosh(real_value) * cos(imag_value);
-
-    input[index] = (sinh(real_value) * cosh(real_value) + sin(imag_value) * cos(imag_value)) / denominator;
-    input[index + 1] = (sin(imag_value) * cosh(real_value) - sinh(real_value) * cos(imag_value)) / denominator;
-    
+    const wk val = input[index];
+    const T two_a = 2 * val.real;
+    const T two_b = 2 * val.imag;
+    const T denom = cosh(two_a) + cos(two_b);
+    input[index] = (wk){ sinh(two_a) / denom, sin(two_b) / denom };
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
     input[index] = tanh(input[index]);
 #endif
 }

@@ -2,29 +2,15 @@
 
 __kernel void dot_kernel(
     __global wk *const restrict x,
-    __constant const wk *const restrict y,
-
-    const ulong row_pitch,
-    const ulong slice_pitch
+    __constant const wk *const restrict y
 ) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+    const ulong index = get_global_id(0);
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    wk real_value = x[index];
-    wk imag_value = x[index + 1];
-
-    COMPLEX_MUL_K(wk)
-    COMPLEX_MUL(real_value, imag_value, y[index], y[index + 1]);
-
-    x[index] = real_value;
-    x[index + 1] = imag_value;
+    const wk a = x[index];
+    const wk b = y[index];
+    COMPLEX_MUL_K(T)
+    COMPLEX_MUL(a, b, x[index]);
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
     x[index] *= y[index];
 #endif
 }
