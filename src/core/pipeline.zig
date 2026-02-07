@@ -3,64 +3,66 @@ const cl = @import("opencl");
 
 const CommandQueue = @import("command_queue.zig");
 
-const EventsArray = std.ArrayList([]const cl.event.Event);
-
 command_queue: *CommandQueue,
-events_batches: EventsArray,
-arena: std.heap.ArenaAllocator,
+allocator: std.mem.Allocator,
+events: std.ArrayList(cl.event.Event),
+prev_batch_start: usize,
 
 pub fn init(command_queue: *CommandQueue) error{OutOfMemory}!*Pipeline {
     const allocator = command_queue.context.allocator;
 
     const self = try allocator.create(Pipeline);
-    errdefer allocator.destroy(self);
-
-    self.arena = std.heap.ArenaAllocator.init(allocator);
-    self.command_queue = command_queue;
-    self.events_batches = .empty;
+    self.* = .{
+        .allocator = allocator,
+        .command_queue = command_queue,
+        .events = .empty,
+        .prev_batch_start = 0,
+    };
 
     return self;
 }
 
 pub fn deinit(self: *Pipeline) void {
-    self.arena.deinit();
-    self.command_queue.context.allocator.destroy(self);
+    const allocator = self.allocator;
+    self.events.deinit(allocator);
+    allocator.destroy(self);
+}
+
+pub fn prealloc(self: *Pipeline, capacity: usize) error{OutOfMemory}!void {
+    try self.events.ensureTotalCapacity(self.allocator, capacity);
 }
 
 pub fn prevEvents(self: *Pipeline) ?[]const cl.event.Event {
-    const events_batches = self.events_batches.items;
-    if (events_batches.len == 0) return null;
+    const items = self.events.items;
+    if (items.len == 0) return null;
 
-    return events_batches[events_batches.len - 1];
+    return items[self.prev_batch_start..];
 }
 
 pub fn append(self: *Pipeline, events: []const cl.event.Event) error{OutOfMemory}!void {
-    const allocator = self.arena.allocator();
-
-    const new_events = try allocator.dupe(cl.event.Event, events);
-    errdefer allocator.free(new_events);
-
-    try self.events_batches.append(allocator, new_events);
+    self.prev_batch_start = self.events.items.len;
+    try self.events.appendSlice(self.allocator, events);
 }
 
 pub fn waitAndCleanup(self: *Pipeline) void {
-    const events_batches = self.events_batches.items;
-    if (events_batches.len == 0) return;
+    const items = self.events.items;
+    if (items.len == 0) return;
 
-    for (events_batches) |events| {
-        cl.event.waitForMany(events) catch |err| {
-            std.debug.panic("Unexpected error ({s}) while waiting for events", .{@errorName(err)});
-        };
+    cl.event.waitForMany(items) catch |err| {
+        std.debug.panic("Unexpected error ({s}) while waiting for events", .{@errorName(err)});
+    };
+
+    for (items) |event| {
+        cl.event.release(event);
     }
 
-    for (events_batches) |events| {
-        for (events) |event| {
-            cl.event.release(event);
-        }
-    }
+    self.events.clearRetainingCapacity();
+    self.prev_batch_start = 0;
+}
 
-    _ = self.arena.reset(.free_all);
-    self.events_batches = .empty;
+pub fn clear(self: *Pipeline) void {
+    self.events.clearAndFree(self.allocator);
+    self.prev_batch_start = 0;
 }
 
 
@@ -82,7 +84,7 @@ test "Pipeline.init - basic initialization" {
     defer pipeline.deinit();
 
     try testing.expect(pipeline.command_queue == command_queue);
-    try testing.expectEqual(@as(usize, 0), pipeline.events_batches.items.len);
+    try testing.expectEqual(@as(usize, 0), pipeline.events.items.len);
 }
 
 test "Pipeline.prevEvents - returns null when empty" {
@@ -122,8 +124,7 @@ test "Pipeline.append - adds events to pipeline" {
     // Append events
     try pipeline.append(&events);
 
-    try testing.expectEqual(@as(usize, 1), pipeline.events_batches.items.len);
-    try testing.expectEqual(@as(usize, 2), pipeline.events_batches.items[0].len);
+    try testing.expectEqual(@as(usize, 2), pipeline.events.items.len);
 }
 
 test "Pipeline.prevEvents - returns last appended events" {
@@ -153,7 +154,7 @@ test "Pipeline.prevEvents - returns last appended events" {
     const events2 = [_]cl.event.Event{event3};
     try pipeline.append(&events2);
 
-    // prevEvents should return the last batch
+    // prevEvents should return only the last batch
     const prev_events = pipeline.prevEvents();
     try testing.expect(prev_events != null);
     try testing.expectEqual(@as(usize, 1), prev_events.?.len);
@@ -179,7 +180,7 @@ test "Pipeline.append - multiple batches" {
         const events = [_]cl.event.Event{event};
         try pipeline.append(&events);
 
-        try testing.expectEqual(i + 1, pipeline.events_batches.items.len);
+        try testing.expectEqual(i + 1, pipeline.events.items.len);
     }
 }
 
@@ -201,7 +202,7 @@ test "Pipeline.waitAndCleanup - clears all events" {
     const events = [_]cl.event.Event{ event1, event2 };
     try pipeline.append(&events);
 
-    try testing.expectEqual(@as(usize, 1), pipeline.events_batches.items.len);
+    try testing.expectEqual(@as(usize, 2), pipeline.events.items.len);
 
     // Mark events as complete
     try cl.event.setUserEventStatus(event1, .complete);
@@ -210,12 +211,44 @@ test "Pipeline.waitAndCleanup - clears all events" {
     // Wait and cleanup
     pipeline.waitAndCleanup();
 
-    // After cleanup, events_batches should be cleared
-    try testing.expectEqual(@as(usize, 0), pipeline.events_batches.items.len);
+    // After cleanup, events should be cleared but capacity retained
+    try testing.expectEqual(@as(usize, 0), pipeline.events.items.len);
+    try testing.expect(pipeline.events.capacity > 0);
 
     // prevEvents should return null after cleanup
     const prev_events = pipeline.prevEvents();
     try testing.expect(prev_events == null);
+}
+
+test "Pipeline.clear - frees all memory" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    // Create and append events
+    const event1 = try cl.event.createUserEvent(context.cl_context);
+    defer cl.event.release(event1);
+
+    const events = [_]cl.event.Event{event1};
+    try pipeline.append(&events);
+
+    try testing.expect(pipeline.events.capacity > 0);
+
+    // Clear should free all memory
+    pipeline.clear();
+
+    try testing.expectEqual(@as(usize, 0), pipeline.events.items.len);
+    try testing.expectEqual(@as(usize, 0), pipeline.events.capacity);
+    try testing.expectEqual(@as(usize, 0), pipeline.prev_batch_start);
+
+    // prevEvents should return null
+    try testing.expect(pipeline.prevEvents() == null);
 }
 
 test "Pipeline.deinit - proper cleanup" {
@@ -254,8 +287,9 @@ test "Pipeline.append - empty events array" {
     const empty_events: []const cl.event.Event = &.{};
     try pipeline.append(empty_events);
 
-    try testing.expectEqual(@as(usize, 1), pipeline.events_batches.items.len);
-    try testing.expectEqual(@as(usize, 0), pipeline.events_batches.items[0].len);
+    // Flat list has 0 items, but prev_batch_start was updated
+    try testing.expectEqual(@as(usize, 0), pipeline.events.items.len);
+    try testing.expectEqual(@as(usize, 0), pipeline.prev_batch_start);
 }
 
 test "Pipeline - multiple pipelines on same command queue" {
@@ -275,13 +309,13 @@ test "Pipeline - multiple pipelines on same command queue" {
     // Both should reference the same command queue
     try testing.expect(pipeline1.command_queue == pipeline2.command_queue);
 
-    // But should have independent event batches
+    // But should have independent events
     const event1 = try cl.event.createUserEvent(context.cl_context);
     defer cl.event.release(event1);
 
     const events1 = [_]cl.event.Event{event1};
     try pipeline1.append(&events1);
 
-    try testing.expectEqual(@as(usize, 1), pipeline1.events_batches.items.len);
-    try testing.expectEqual(@as(usize, 0), pipeline2.events_batches.items.len);
+    try testing.expectEqual(@as(usize, 1), pipeline1.events.items.len);
+    try testing.expectEqual(@as(usize, 0), pipeline2.events.items.len);
 }
