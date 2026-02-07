@@ -21,10 +21,9 @@ fn getKernel(
     substract: bool,
 ) TensorErrors!cl.kernel.Kernel {
     const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
-    const kernels_set = try KernelsSet.getKernelSet(command_queue, .AXPY, SUPPORTED_TYPES.len * 2 * 2 * 2);
+    const kernels_set = try KernelsSet.getKernelSet(command_queue, .AXPY, SUPPORTED_TYPES.len * 2 * 2);
 
-    var kernel_index: usize = @intFromBool(vectors_enabled) * (2 * 2 * SUPPORTED_TYPES.len);
-    kernel_index += @intFromBool(has_alpha) * (2 * SUPPORTED_TYPES.len);
+    var kernel_index: usize = @intFromBool(has_alpha) * (2 * SUPPORTED_TYPES.len);
     kernel_index += @intFromBool(substract) * SUPPORTED_TYPES.len;
     kernel_index += @as(usize, core.types.getTypeIndex(T));
 
@@ -128,31 +127,21 @@ pub fn axpy(
     try setArg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
     try setArg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
 
-    var global_work_items: []const u64 = undefined;
+    const wekua_id = command_queue.wekua_id;
+    var global_work_items: [1]u64 = undefined;
     var local_work_items: []const u64 = undefined;
-    var kernel_index: u32 = 4;
 
-    if (vectors_enabled or comptime core.types.isComplex(T)) {
-        global_work_items = &x.work_configuration.global_work_items;
-        local_work_items = &x.work_configuration.local_work_items[command_queue.wekua_id];
-
-        try setArg(kernel, 2, @sizeOf(u64), &x.memory_layout.row_pitch_for_vectors);
-        try setArg(kernel, 3, @sizeOf(u64), &x.memory_layout.slice_pitch_for_vectors);
-    }else{
-        global_work_items = &x.work_configuration.global_work_items_without_vectors;
-        local_work_items = &x.work_configuration.local_work_items_without_vectors[command_queue.wekua_id];
-
-        try setArg(kernel, 2, @sizeOf(u64), &x.memory_layout.row_pitch);
-        try setArg(kernel, 3, @sizeOf(u64), &x.memory_layout.slice_pitch);
-
-        try setArg(kernel, 4, @sizeOf(u64), &y.memory_layout.row_pitch);
-        try setArg(kernel, 5, @sizeOf(u64), &y.memory_layout.slice_pitch);
-        kernel_index = 6;
+    if (vectors_enabled) {
+        global_work_items = .{x.memory_layout.number_of_vectors};
+        local_work_items = x.work_configuration.local_work_items_for_vectors_1d[wekua_id .. wekua_id + 1];
+    } else {
+        global_work_items = .{x.dimensions.number_of_elements};
+        local_work_items = x.work_configuration.local_work_items_1d[wekua_id .. wekua_id + 1];
     }
 
     if (has_alpha) {
         const _alpha = alpha.?;
-        try setArg(kernel, kernel_index, @sizeOf(T), &_alpha);
+        try setArg(kernel, 2, @sizeOf(T), &_alpha);
     }
 
     var new_event: cl.event.Event = undefined;
@@ -160,7 +149,7 @@ pub fn axpy(
         command_queue.cl_command_queue,
         kernel,
         null,
-        global_work_items,
+        &global_work_items,
         local_work_items,
         prev_events,
         &new_event,
