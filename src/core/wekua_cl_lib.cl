@@ -428,10 +428,7 @@ typedef __attribute__((packed)) struct {
     char real;
     char imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    char real;
-    char imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 11
 
@@ -448,10 +445,7 @@ typedef __attribute__((packed)) struct {
     uchar real;
     uchar imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    uchar real;
-    uchar imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 12
 
@@ -468,10 +462,7 @@ typedef __attribute__((packed)) struct {
     short real;
     short imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    short real;
-    short imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 13
 
@@ -488,10 +479,7 @@ typedef __attribute__((packed)) struct {
     ushort real;
     ushort imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    ushort real;
-    ushort imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 14
 
@@ -508,10 +496,7 @@ typedef __attribute__((packed)) struct {
     int real;
     int imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    int real;
-    int imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 15
 
@@ -528,10 +513,7 @@ typedef __attribute__((packed)) struct {
     uint real;
     uint imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    uint real;
-    uint imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 16
 
@@ -548,10 +530,7 @@ typedef __attribute__((packed)) struct {
     long real;
     long imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    long real;
-    long imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 17
 
@@ -568,10 +547,7 @@ typedef __attribute__((packed)) struct {
     ulong real;
     ulong imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    ulong real;
-    ulong imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 18
 
@@ -584,10 +560,7 @@ typedef __attribute__((packed)) struct {
     float real;
     float imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    float real;
-    float imag;
-} wk;
+typedef wks wk;
 
 #elif WK_DTYPE == 19
 
@@ -600,10 +573,7 @@ typedef __attribute__((packed)) struct {
     double real;
     double imag;
 } wks;
-typedef __attribute__((packed)) struct {
-    double real;
-    double imag;
-} wk;
+typedef wks wk;
 
 #endif
 
