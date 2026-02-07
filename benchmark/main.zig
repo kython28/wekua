@@ -2,10 +2,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const axpy = @import("axpy.zig");
-// const gemm = @import("gemm.zig"); // WIP
+const gemm = @import("gemm.zig");
 
 const modules = .{
     axpy,
+    gemm,
 };
 
 const col_width = 12;

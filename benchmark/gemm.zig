@@ -6,17 +6,16 @@ const cl = wekua.opencl;
 const utils = @import("utils.zig");
 
 pub const name: []const u8 = "GEMM";
-pub const starting_point: u64 = 4;
+pub const dtype: []const u8 = "f32";
+pub const starting_point: u64 = 2;
 
-const niterations = switch (builtin.mode) {
+pub const niterations: u64 = switch (builtin.mode) {
     .Debug => 1,
     else => 10,
 };
 
 const PreferredType = f32;
-// const PreferredType = f64;
 const WekuaCPreferredType = utils.wekua_c.WEKUA_DTYPE_FLOAT;
-// const WekuaCPreferredType = utils.wekua_c.WEKUA_DTYPE_DOUBLE;
 
 fn run_openblas_test(
     allocator: std.mem.Allocator,
@@ -59,13 +58,13 @@ fn run_openblas_test(
         );
     }
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, niterations))) / 1000.0;
+    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, @as(i64, @intCast(niterations))))) / 1000.0;
 
     return total_diff;
 }
 
 fn run_old_wekua_test(
-    device_type: cl.device.enums.device_type,
+    device_type: cl.device.Type,
     allocator: std.mem.Allocator,
     size: usize,
     alphas: []PreferredType,
@@ -91,17 +90,17 @@ fn run_old_wekua_test(
     defer utils.wekua_c.wekuaFreeMatrix(c, 0, null);
 
     var ret = utils.wekua_c.wekuaMatrixCopyBuffer(a, buf1.ptr, null);
-    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
 
     ret = utils.wekua_c.wekuaMatrixCopyBuffer(b, buf2.ptr, null);
-    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
 
     ret = utils.wekua_c.wekuaMatrixCopyBuffer(c, buf3.ptr, null);
-    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
 
     _ = utils.wekua_c.compileKernel(ctx, utils.wekua_c.WEKUA_KERNEL_GEMM, WekuaCPreferredType, 0);
 
-    const events: []cl.event.cl_event = try allocator.alloc(cl.event.cl_event, niterations);
+    const events: []cl.event.Event = try allocator.alloc(cl.event.Event, niterations);
     defer allocator.free(events);
 
     var total_diff: f64 = 0.0;
@@ -120,10 +119,10 @@ fn run_old_wekua_test(
             0,
             null,
         );
-        if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+        if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
     }
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, niterations))) / 1000.0;
+    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, @as(i64, @intCast(niterations))))) / 1000.0;
 
     return total_diff;
 }
@@ -153,7 +152,7 @@ inline fn run_old_wekua_gpu_test(
 }
 
 fn run_wekua_test(
-    device_type: cl.device.enums.device_type,
+    device_type: cl.device.Type,
     allocator: std.mem.Allocator,
     size: usize,
     alphas: []PreferredType,
@@ -162,67 +161,43 @@ fn run_wekua_test(
     buf2: []PreferredType,
     buf3: []PreferredType,
 ) !f64 {
-    const ctx = try wekua.core.Context.create_from_best_device(allocator, null, device_type);
-    defer ctx.release();
+    const context = try wekua.core.Context.initFromBestDevice(allocator, null, device_type);
+    defer context.deinit();
 
-    const cmd = &ctx.command_queues[0];
+    const command_queue = &context.command_queues[0];
+    const pipeline = try wekua.core.Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    try pipeline.prealloc(alphas.len);
 
     const FloatTensor = wekua.Tensor(PreferredType);
 
-    const a = try FloatTensor.alloc(ctx, &.{ size, size }, .{});
-    defer a.release();
+    const a = try FloatTensor.alloc(context, pipeline, &.{ size, size }, .{});
+    defer a.release(pipeline);
 
-    const b = try FloatTensor.alloc(ctx, &.{ size, size }, .{});
-    defer b.release();
+    const b = try FloatTensor.alloc(context, pipeline, &.{ size, size }, .{});
+    defer b.release(pipeline);
 
-    const c = try FloatTensor.alloc(ctx, &.{ size, size }, .{});
-    defer c.release();
+    const c = try FloatTensor.alloc(context, pipeline, &.{ size, size }, .{});
+    defer c.release(pipeline);
 
-    // At the first time, we need to compile the kernels
-    try wekua.blas.gemm.perform(
-        PreferredType,
-        cmd,
-        1.0,
-        null,
-        a,
-        .no_transpose,
-        b,
-        .transpose,
-        0.0,
-        null,
-        c,
-    );
+    try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, a, buf1);
+    try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, b, buf2);
+    try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, c, buf3);
 
-    try wekua.tensor.memory.readFromBuffer(PreferredType, a, cmd, buf1);
-    try wekua.tensor.memory.readFromBuffer(PreferredType, b, cmd, buf2);
-    try wekua.tensor.memory.readFromBuffer(PreferredType, c, cmd, buf3);
-
-    try a.wait();
-    try b.wait();
-    try c.wait();
+    // Warmup: compile kernels
+    try wekua.blas.gemm(PreferredType, pipeline, 1.0, a, .no_transpose, b, .transpose, 0.0, c);
+    pipeline.waitAndCleanup();
 
     var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
     for (alphas, betas) |alpha, beta| {
-        try wekua.blas.gemm.perform(
-            PreferredType,
-            cmd,
-            alpha,
-            null,
-            a,
-            .no_transpose,
-            b,
-            .transpose,
-            beta,
-            null,
-            c,
-        );
+        try wekua.blas.gemm(PreferredType, pipeline, alpha, a, .no_transpose, b, .transpose, beta, c);
     }
-
-    try c.wait();
+    pipeline.waitAndCleanup();
 
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, niterations))) / 1000.0;
+    total_diff += @as(f64, @floatFromInt(@divTrunc(end_ts - start_ts, @as(i64, @intCast(niterations))))) / 1000.0;
 
     return total_diff;
 }
@@ -253,8 +228,8 @@ inline fn run_wekua_gpu_test(
 
 const tests = .{
     .{ "OpenBLAS", run_openblas_test },
-    .{ "Wekua (C)", run_old_wekua_cpu_test },
-    .{ "Wekua (C) GPU", run_old_wekua_gpu_test },
+    // .{ "Wekua (C)", run_old_wekua_cpu_test },
+    // .{ "Wekua (C) GPU", run_old_wekua_gpu_test },
     .{ "wekua (Zig)", run_wekua_cpu_test },
     .{ "wekua (Zig) GPU", run_wekua_gpu_test },
 };

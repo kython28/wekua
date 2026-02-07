@@ -56,7 +56,7 @@ fn run_old_wekua_test(
     y_buf: []PreferredType,
 ) !f64 {
     const ctx: utils.wekua_c.wekuaContext = utils.wekua_c.createSomeWekuaContext(
-        @intFromEnum(cl.device.Type.all),
+        @intFromEnum(cl.device.Type.cpu),
         1,
         0,
     ) orelse return error.OutOfMemory;
@@ -123,7 +123,7 @@ fn run_wekua_test(
     x_buf: []PreferredType,
     y_buf: []PreferredType,
 ) !f64 {
-    const context = try wekua.core.Context.initFromBestDevice(allocator, null, cl.device.Type.all);
+    const context = try wekua.core.Context.initFromBestDevice(allocator, null, cl.device.Type.cpu);
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
