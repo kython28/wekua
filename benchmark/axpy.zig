@@ -6,12 +6,13 @@ const cl = wekua.opencl;
 const utils = @import("utils.zig");
 
 pub const name: []const u8 = "AXPY";
+pub const dtype: []const u8 = "f32";
 pub const starting_point: u64 = switch (builtin.mode) {
     .Debug => 4,
     else => 4096,
 };
 
-const niterations = switch (builtin.mode) {
+pub const niterations: u64 = switch (builtin.mode) {
     .Debug => 100,
     else => 1000,
 };
@@ -34,7 +35,6 @@ fn run_openblas_test(
     const y = try allocator.dupe(PreferredType, buf2);
     defer allocator.free(y);
 
-    var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
     for (0..niterations, alphas) |i, alpha| {
         if (i % 2 == 0) {
@@ -44,9 +44,8 @@ fn run_openblas_test(
         }
     }
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
 
-    return total_diff;
+    return @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
 }
 
 fn run_old_wekua_test(
@@ -57,7 +56,7 @@ fn run_old_wekua_test(
     y_buf: []PreferredType,
 ) !f64 {
     const ctx: utils.wekua_c.wekuaContext = utils.wekua_c.createSomeWekuaContext(
-        @intFromEnum(cl.device.enums.device_type.all),
+        @intFromEnum(cl.device.Type.all),
         1,
         0,
     ) orelse return error.OutOfMemory;
@@ -70,20 +69,19 @@ fn run_old_wekua_test(
     defer utils.wekua_c.wekuaFreeMatrix(y, 0, null);
 
     var ret = utils.wekua_c.wekuaMatrixCopyBuffer(x, x_buf.ptr, null);
-    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
 
     ret = utils.wekua_c.wekuaMatrixCopyBuffer(y, y_buf.ptr, null);
-    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+    if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
 
     _ = utils.wekua_c.compileKernel(ctx, utils.wekua_c.WEKUA_KERNEL_AXPY, WekuaCPreferredType, 0);
 
-    const events: []cl.event.cl_event = try allocator.alloc(cl.event.cl_event, niterations);
+    const events = try allocator.alloc(cl.event.Event, niterations);
     defer allocator.free(events);
 
-    var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
     for (0..niterations, alphas) |i, alpha| {
-        const prev_event: ?*cl.event.cl_event = if (i > 0) &events[i - 1] else null;
+        const prev_event: ?*cl.event.Event = if (i > 0) &events[i - 1] else null;
 
         if (i % 2 == 0) {
             ret = utils.wekua_c.wekuaBlasAxpy(
@@ -95,7 +93,7 @@ fn run_old_wekua_test(
                 @ptrCast(prev_event),
                 @ptrCast(&events[i]),
             );
-            if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+            if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
         } else {
             ret = utils.wekua_c.wekuaBlasAxpy(
                 y,
@@ -106,7 +104,7 @@ fn run_old_wekua_test(
                 @ptrCast(prev_event),
                 @ptrCast(&events[i]),
             );
-            if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translate_opencl_error_for_all_fields(ret);
+            if (ret != utils.wekua_c.CL_SUCCESS) return cl.errors.translateOpenCLError(ret);
         }
     }
     try cl.event.wait(events[niterations - 1]);
@@ -114,9 +112,8 @@ fn run_old_wekua_test(
         cl.event.release(event);
     }
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
 
-    return total_diff;
+    return @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
 }
 
 fn run_wekua_test(
@@ -126,45 +123,42 @@ fn run_wekua_test(
     x_buf: []PreferredType,
     y_buf: []PreferredType,
 ) !f64 {
-    const ctx = try wekua.core.Context.create_from_best_device(allocator, null, cl.device.enums.device_type.all);
-    defer ctx.release();
+    const context = try wekua.core.Context.initFromBestDevice(allocator, null, cl.device.Type.all);
+    defer context.deinit();
 
-    const cmd = &ctx.command_queues[0];
+    const command_queue = &context.command_queues[0];
+    const pipeline = try wekua.core.Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    try pipeline.prealloc(niterations);
 
     const FloatTensor = wekua.Tensor(PreferredType);
 
-    const x = try FloatTensor.alloc(ctx, &.{size}, .{});
-    defer x.release();
+    const x = try FloatTensor.alloc(context, pipeline, &.{size}, .{});
+    defer x.release(pipeline);
 
-    const y = try FloatTensor.alloc(ctx, &.{size}, .{});
-    defer y.release();
+    const y = try FloatTensor.alloc(context, pipeline, &.{size}, .{});
+    defer y.release(pipeline);
 
-    // At the first time, we need to compile the kernels
-    try wekua.blas.axpy(PreferredType, cmd, x, 0, null, y);
+    // Warmup: compile kernels
+    try wekua.blas.axpy(PreferredType, pipeline, x, 0, y);
 
-    try wekua.tensor.memory.readFromBuffer(PreferredType, x, cmd, x_buf);
-    try wekua.tensor.memory.readFromBuffer(PreferredType, y, cmd, y_buf);
+    try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, x, x_buf);
+    try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, y, y_buf);
+    pipeline.waitAndCleanup();
 
-    try x.wait();
-    try y.wait();
-
-    var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
     for (0..niterations, alphas) |i, alpha| {
         if (i % 2 == 0) {
-            try wekua.blas.axpy(PreferredType, cmd, x, alpha, null, y);
+            try wekua.blas.axpy(PreferredType, pipeline, x, alpha, y);
         } else {
-            try wekua.blas.axpy(PreferredType, cmd, y, alpha, null, x);
+            try wekua.blas.axpy(PreferredType, pipeline, y, alpha, x);
         }
     }
-
-    try x.wait();
-    try y.wait();
-
+    pipeline.waitAndCleanup();
     const end_ts = std.time.microTimestamp();
-    total_diff += @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
 
-    return total_diff;
+    return @as(f64, @floatFromInt(end_ts - start_ts)) / 1000.0;
 }
 
 const tests = .{
@@ -184,7 +178,7 @@ pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
         var report = utils.report{ .name = test_name };
 
         var size: u64 = starting_point;
-        for (&report.avg_times_per_bactch) |*t| {
+        for (&report.avg_times_per_batch) |*t| {
             const x = try allocator.alloc(PreferredType, size);
             defer allocator.free(x);
 

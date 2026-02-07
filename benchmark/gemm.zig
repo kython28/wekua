@@ -270,7 +270,7 @@ pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
         var report = utils.report{ .name = test_name };
 
         var size: u64 = starting_point;
-        for (&report.avg_times_per_bactch) |*t| {
+        for (&report.avg_times_per_batch) |*t| {
             const a = try allocator.alloc(PreferredType, size * size);
             defer allocator.free(a);
 

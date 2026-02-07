@@ -1,6 +1,6 @@
 pub const report = struct {
-    avg_times_per_bactch: [12]f64 = .{0} ** 12,
-    name: []const u8
+    avg_times_per_batch: [12]f64 = .{0} ** 12,
+    name: []const u8,
 };
 
 pub const wekua_c = @cImport({
