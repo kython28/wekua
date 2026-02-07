@@ -21,16 +21,6 @@ __kernel void gemm(
     , const wks beta
 #endif
 #endif
-
-#if WK_COMPLEX
-#if HAS_ALPHA
-    , const wks ialpha
-#if HAS_BETA
-    , const wks ibeta
-#endif
-#endif
-
-#endif
 ) {
     const ulong i = get_global_id(0) << 1;
     const ulong j = get_global_id(1) << 1;
@@ -45,6 +35,140 @@ __kernel void gemm(
     const ulong next_row_B = row_B + B_row_pitch;
 #endif
 
+#if WK_COMPLEX
+
+    wk C11 = {0, 0};
+    wk C12 = {0, 0};
+    wk C21 = {0, 0};
+    wk C22 = {0, 0};
+
+    COMPLEX_MUL_K(T)
+
+    for (ulong k=0; k<cols; k += 2) {
+#if A_TRANS
+        const ulong A_index = k*A_row_pitch + i;
+        const ulong A_index2 = A_index + A_row_pitch;
+
+        const wk A11 = A[A_index];
+        const wk A21 = A[A_index + 1];
+        const wk A12 = A[A_index2];
+        const wk A22 = A[A_index2 + 1];
+#else
+        const wk A11 = A[row_A + k];
+        const wk A12 = A[row_A + k + 1];
+        const wk A21 = A[next_row_A + k];
+        const wk A22 = A[next_row_A + k + 1];
+#endif
+
+#if B_TRANS
+        const wk B11 = B[row_B + k];
+        const wk B21 = B[row_B + k + 1];
+        const wk B12 = B[next_row_B + k];
+        const wk B22 = B[next_row_B + k + 1];
+#else
+        const ulong B_index = k*B_row_pitch + j;
+        const ulong B_index2 = B_index + B_row_pitch;
+
+        const wk B11 = B[B_index];
+        const wk B12 = B[B_index + 1];
+        const wk B21 = B[B_index2];
+        const wk B22 = B[B_index2 + 1];
+#endif
+
+        // Strassen temporaries (component-wise add/sub on .real/.imag)
+        wk t0 = { B22.real - B12.real, B22.imag - B12.imag };
+        wk t1 = { B11.real + t0.real,  B11.imag + t0.imag  };
+        wk t2 = { A11.real - A21.real, A11.imag - A21.imag };
+        wk t3 = { t2.real - A22.real,  t2.imag - A22.imag  };
+
+        wk m0, m1, m2, m3, m4, m5, m6;
+
+        COMPLEX_MUL(A11, B11, m0);
+
+        COMPLEX_MUL(A12, B21, m1);
+
+        wk diff1 = { t1.real - B21.real, t1.imag - B21.imag };
+        COMPLEX_MUL(A22, diff1, m2);
+
+        COMPLEX_MUL(t2, t0, m3);
+
+        wk sum_a = { A21.real + A22.real, A21.imag + A22.imag };
+        wk diff2 = { B12.real - B11.real, B12.imag - B11.imag };
+        COMPLEX_MUL(sum_a, diff2, m4);
+
+        wk t3_a12 = { t3.real + A12.real, t3.imag + A12.imag };
+        COMPLEX_MUL(t3_a12, B22, m5);
+
+        COMPLEX_MUL(t3, t1, m6);
+
+        // p0 = m0 - m6, p1 = p0 + m3
+        wk p0 = { m0.real - m6.real, m0.imag - m6.imag };
+        wk p1 = { p0.real + m3.real, p0.imag + m3.imag };
+
+        C11.real += m0.real + m1.real;
+        C11.imag += m0.imag + m1.imag;
+
+        C12.real += p0.real + m4.real + m5.real;
+        C12.imag += p0.imag + m4.imag + m5.imag;
+
+        C21.real += p1.real - m2.real;
+        C21.imag += p1.imag - m2.imag;
+
+        C22.real += p1.real + m4.real;
+        C22.imag += p1.imag + m4.imag;
+    }
+
+    const ulong C_index = i*C_row_pitch + j;
+    const ulong C_index2 = C_index + C_row_pitch;
+
+#if HAS_ALPHA
+#if HAS_BETA
+    wks scaled;
+    wks beta_scaled;
+    wks c_old;
+
+    COMPLEX_MUL(C11, alpha, scaled);
+    c_old = C[C_index];
+    COMPLEX_MUL(c_old, beta, beta_scaled);
+    C[C_index] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+
+    COMPLEX_MUL(C12, alpha, scaled);
+    c_old = C[C_index + 1];
+    COMPLEX_MUL(c_old, beta, beta_scaled);
+    C[C_index + 1] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+
+    COMPLEX_MUL(C21, alpha, scaled);
+    c_old = C[C_index2];
+    COMPLEX_MUL(c_old, beta, beta_scaled);
+    C[C_index2] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+
+    COMPLEX_MUL(C22, alpha, scaled);
+    c_old = C[C_index2 + 1];
+    COMPLEX_MUL(c_old, beta, beta_scaled);
+    C[C_index2 + 1] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+#else
+    wk scaled;
+
+    COMPLEX_MUL(C11, alpha, scaled);
+    C[C_index] = (wks){ scaled.real, scaled.imag };
+
+    COMPLEX_MUL(C12, alpha, scaled);
+    C[C_index + 1] = (wks){ scaled.real, scaled.imag };
+
+    COMPLEX_MUL(C21, alpha, scaled);
+    C[C_index2] = (wks){ scaled.real, scaled.imag };
+
+    COMPLEX_MUL(C22, alpha, scaled);
+    C[C_index2 + 1] = (wks){ scaled.real, scaled.imag };
+#endif
+#else
+    C[C_index] = (wks){ C11.real, C11.imag };
+    C[C_index + 1] = (wks){ C12.real, C12.imag };
+    C[C_index2] = (wks){ C21.real, C21.imag };
+    C[C_index2 + 1] = (wks){ C22.real, C22.imag };
+#endif
+
+#else
     #if WK_VECTOR_WIDTH == 1
     wk C11 = 0;
     wk C12 = 0;
@@ -57,306 +181,6 @@ __kernel void gemm(
     wk C22 = (wk)(0);
     #endif
 
-#if WK_COMPLEX
-    #if WK_VECTOR_WIDTH == 1
-    wk C11_i = 0;
-    wk C12_i = 0;
-    wk C21_i = 0;
-    wk C22_i = 0;
-    #else
-    wk C11_i = (wk)(0);
-    wk C12_i = (wk)(0);
-    wk C21_i = (wk)(0);
-    wk C22_i = (wk)(0);
-    #endif
-
-    COMPLEX_MUL_K(wk)
-    COMPLEX_S_MUL_K(wk)
-
-    for (ulong k=0; k<cols; k += 4) {
-#if A_TRANS
-        const ulong A_index = (k >> 1)*A_row_pitch + (i << 1);
-        const ulong A_index2 = A_index + A_row_pitch;
-
-        const wk A11 = A[A_index];
-        const wk A11_i = A[A_index + 1];
-
-        const wk A21 = A[A_index + 2];
-        const wk A21_i = A[A_index + 3];
-
-        const wk A12 = A[A_index2];
-        const wk A12_i = A[A_index2 + 1];
-
-        const wk A22 = A[A_index2 + 2];
-        const wk A22_i = A[A_index2 + 3];
-#else
-        const wk A11 = A[row_A + k];
-        const wk A11_i = A[row_A + k + 1];
-
-        const wk A12 = A[row_A + k + 2];
-        const wk A12_i = A[row_A + k + 3];
-
-        const wk A21 = A[next_row_A + k];
-        const wk A21_i = A[next_row_A + k + 1];
-
-        const wk A22 = A[next_row_A + k + 2];
-        const wk A22_i = A[next_row_A + k + 3];
-#endif
-
-#if B_TRANS
-        const wk B11 = B[row_B + k];
-        const wk B11_i = B[row_B + k + 1];
-
-        const wk B21 = B[row_B + k + 2];
-        const wk B21_i = B[row_B + k + 3];
-
-        const wk B12 = B[next_row_B + k];
-        const wk B12_i = B[next_row_B + k + 1];
-
-        const wk B22 = B[next_row_B + k + 2];
-        const wk B22_i = B[next_row_B + k + 3];
-#else
-        const ulong B_index = (k >> 1)*B_row_pitch + (j << 1);
-        const ulong B_index2 = B_index + B_row_pitch;
-
-        const wk B11 = B[B_index];
-        const wk B11_i = B[B_index + 1];
-
-        const wk B12 = B[B_index + 2];
-        const wk B12_i = B[B_index + 3];
-
-        const wk B21 = B[B_index2];
-        const wk B21_i = B[B_index2 + 1];
-
-        const wk B22 = B[B_index2 + 2];
-        const wk B22_i = B[B_index2 + 3];
-#endif
-
-        const wk t0 = B22 - B12;
-        const wk t0_i = B22_i - B12_i;
-
-        const wk t1 = B11 + t0;
-        const wk t1_i = B11_i + t0_i;
-
-        const wk t2 = A11 - A21;
-        const wk t2_i = A11_i - A21_i;
-
-        const wk t3 = t2 - A22;
-        const wk t3_i = t2_i - A22_i;
-
-        wk m0 = A11, m0_i = A11_i;
-        COMPLEX_MUL(m0, m0_i, B11, B11_i);
-
-        wk m1 = A12, m1_i = A12_i;
-        COMPLEX_MUL(m1, m1_i, B21, B21_i);
-
-        const wk diff1 = t1 - B21;
-        const wk diff1_i = t1_i - B21_i;
-        wk m2 = A22, m2_i = A22_i;
-        COMPLEX_MUL(m2, m2_i, diff1, diff1_i);
-
-        wk m3 = t2, m3_i = t2_i;
-        COMPLEX_MUL(m3, m3_i, t0, t0_i);
-
-        const wk diff2 = B12 - B11;
-        const wk diff2_i = B12_i - B11_i;
-        wk m4 = A21 + A22, m4_i = A21_i + A22_i;
-        COMPLEX_MUL(m4, m4_i, diff2, diff2_i);
-
-        wk m5 = t3 + A12, m5_i = t3_i + A12_i;
-        COMPLEX_MUL(m5, m5_i, B22, B22_i);
-
-        wk m6 = t3, m6_i = t3_i;
-        COMPLEX_MUL(m6, m6_i, t1, t1_i);
-
-        const wk p0 = m0 - m6;
-        const wk p0_i = m0_i - m6_i;
-
-        const wk p1 = p0 + m3;
-        const wk p1_i = p0_i + m3_i;
-
-        C11 += m0 + m1;
-        C11_i += m0_i + m1_i;
-
-        C12 += p0 + m4 + m5;
-        C12_i += p0_i + m4_i + m5_i;
-
-        C21 += p1 - m2;
-        C21_i += p1_i - m2_i;
-
-        C22 += p1 + m4;
-        C22_i += p1_i + m4_i;
-    }
-
-    const ulong C_index = i*C_row_pitch + (j << 1);
-    const ulong C_index2 = C_index + C_row_pitch;
-
-#if WK_VECTOR_WIDTH == 1
-
-#if HAS_ALPHA
-#if HAS_BETA
-    wks br_value = beta;
-    wks bi_value = ibeta;
-
-    wks cr_value = C[C_index];
-    wks ci_value = C[C_index + 1];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C11, C11_i, alpha, ialpha);
-
-    C[C_index] = C11 + br_value;
-    C[C_index + 1] = C11_i + bi_value;
-
-    br_value = beta;
-    bi_value = ibeta;
-
-    cr_value = C[C_index + 2];
-    ci_value = C[C_index + 3];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C12, C12_i, alpha, ialpha);
-
-    C[C_index + 2] = C12 + br_value;
-    C[C_index + 3] = C12_i + bi_value;
-
-    br_value = beta;
-    bi_value = ibeta;
-
-    cr_value = C[C_index2];
-    ci_value = C[C_index2 + 1];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C21, C21_i, alpha, ialpha);
-
-    C[C_index2] = C21 + br_value;
-    C[C_index2 + 1] = C21_i + bi_value;
-
-    br_value = beta;
-    bi_value = ibeta;
-
-    cr_value = C[C_index2 + 2];
-    ci_value = C[C_index2 + 3];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C22, C22_i, alpha, ialpha);
-
-    C[C_index2 + 2] = C22 + br_value;
-    C[C_index2 + 3] = C22_i + bi_value;
-#else
-    COMPLEX_MUL(C11, C11_i, alpha, ialpha);
-    C[C_index] = C11;
-    C[C_index + 1] = C11_i;
-
-    COMPLEX_MUL(C12, C12_i, alpha, ialpha);
-    C[C_index + 2] = C12;
-    C[C_index + 3] = C12_i;
-
-    COMPLEX_MUL(C21, C21_i, alpha, ialpha);
-    C[C_index2] = C21;
-    C[C_index2 + 1] = C21_i;
-
-    COMPLEX_MUL(C22, C22_i, alpha, ialpha);
-    C[C_index2 + 2] = C22;
-    C[C_index2 + 3] = C22_i;
-#endif
-#else
-    C[C_index] = C11;
-    C[C_index + 1] = C11_i;
-
-    C[C_index + 2] = C12;
-    C[C_index + 3] = C12_i;
-
-    C[C_index2] = C21;
-    C[C_index2 + 1] = C21_i;
-
-    C[C_index2 + 2] = C22;
-    C[C_index2 + 3] = C22_i;
-#endif
-
-#else
-
-#if HAS_ALPHA
-#if HAS_BETA
-    wks br_value = beta;
-    wks bi_value = ibeta;
-
-    wks cr_value = C[C_index];
-    wks ci_value = C[C_index + 1];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C11, C11_i, alpha, ialpha);
-
-    C[C_index] = sum(C11) + br_value;
-    C[C_index + 1] = sum(C11_i) + bi_value;
-
-    br_value = beta;
-    bi_value = ibeta;
-
-    cr_value = C[C_index + 2];
-    ci_value = C[C_index + 3];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C12, C12_i, alpha, ialpha);
-
-    C[C_index + 2] = sum(C12) + br_value;
-    C[C_index + 3] = sum(C12_i) + bi_value;
-
-    br_value = beta;
-    bi_value = ibeta;
-
-    cr_value = C[C_index2];
-    ci_value = C[C_index2 + 1];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C21, C21_i, alpha, ialpha);
-
-    C[C_index2] = sum(C21) + br_value;
-    C[C_index2 + 1] = sum(C21_i) + bi_value;
-
-    br_value = beta;
-    bi_value = ibeta;
-
-    cr_value = C[C_index2 + 2];
-    ci_value = C[C_index2 + 3];
-
-    COMPLEX_S_MUL(br_value, bi_value, cr_value, ci_value);
-    COMPLEX_MUL(C22, C22_i, alpha, ialpha);
-
-    C[C_index2 + 2] = sum(C22) + br_value;
-    C[C_index2 + 3] = sum(C22_i) + bi_value;
-#else
-    COMPLEX_MUL(C11, C11_i, alpha, ialpha);
-    C[C_index] = sum(C11);
-    C[C_index + 1] = sum(C11_i);
-
-    COMPLEX_MUL(C12, C12_i, alpha, ialpha);
-    C[C_index + 2] = sum(C12);
-    C[C_index + 3] = sum(C12_i);
-
-    COMPLEX_MUL(C21, C21_i, alpha, ialpha);
-    C[C_index2] = sum(C21);
-    C[C_index2 + 1] = sum(C21_i);
-
-    COMPLEX_MUL(C22, C22_i, alpha, ialpha);
-    C[C_index2 + 2] = sum(C22);
-    C[C_index2 + 3] = sum(C22_i);
-#endif
-#else
-    C[C_index] = sum(C11);
-    C[C_index + 1] = sum(C11_i);
-
-    C[C_index + 2] = sum(C12);
-    C[C_index + 3] = sum(C12_i);
-
-    C[C_index2] = sum(C21);
-    C[C_index2 + 1] = sum(C21_i);
-
-    C[C_index2 + 2] = sum(C22);
-    C[C_index2 + 3] = sum(C22_i);
-#endif
-#endif
-
-#else
     for (ulong k=0; k<cols; k += 2) {
 #if A_TRANS
         const ulong A_index = k*A_row_pitch + i;
