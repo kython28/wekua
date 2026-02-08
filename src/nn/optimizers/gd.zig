@@ -1,6 +1,9 @@
 const std = @import("std");
 
-const wekua = @import("../../wekua.zig");
+const core = @import("core");
+const Pipeline = core.Pipeline;
+
+const blas = @import("blas");
 
 const optimizer = @import("main.zig");
 const w_layer = @import("../layer/main.zig");
@@ -18,7 +21,6 @@ pub fn GD(comptime T: type) type {
     return struct {
         pub const Config = struct {
             lr: T,
-            lri: T = 0,
         };
 
         allocator: std.mem.Allocator,
@@ -34,7 +36,6 @@ pub fn GD(comptime T: type) type {
                 .allocator = allocator,
                 .config = .{
                     .lr = -config.lr,
-                    .lri = -config.lri,
                 },
             };
 
@@ -50,41 +51,38 @@ pub fn GD(comptime T: type) type {
 
         fn step(
             ptr: *anyopaque,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
             cache: *const Cache,
         ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const lr = self.config.lr;
-            const lri = self.config.lri;
 
             for (cache.slots) |*slot| {
-                const layer = slot.layer;
-                const gradients = layer.getGradients(slot.cache);
-                const weights = layer.getWeights();
+                const layer_ref = slot.layer;
+                const gradients = layer_ref.getGradients(slot.cache);
+                const weights = layer_ref.getWeights();
 
                 for (weights, gradients) |w, g| {
-                    try wekua.blas.axpy(
+                    try blas.axpy(
                         T,
-                        command_queue,
+                        pipeline,
                         g,
                         lr,
-                        lri,
                         w,
                     );
                 }
 
-                if (layer.getBiasGradients(slot.cache)) |bias_gradients| {
-                    const bias = layer.getBias();
-                    for (bias.?, bias_gradients) |b, maybe_bg| {
+                if (layer_ref.getBiasGradients(slot.cache)) |bias_gradients| {
+                    const bias_slice = layer_ref.getBias();
+                    for (bias_slice.?, bias_gradients) |b, maybe_bg| {
                         const bg = maybe_bg orelse continue;
 
-                        try wekua.blas.axpy(
+                        try blas.axpy(
                             T,
-                            command_queue,
+                            pipeline,
                             bg,
                             lr,
-                            lri,
                             b.?,
                         );
                     }
@@ -92,9 +90,9 @@ pub fn GD(comptime T: type) type {
             }
         }
 
-        fn zero(_: *anyopaque, _: *const wekua.core.CommandQueue) !void {}
+        fn zero(_: *anyopaque, _: *Pipeline) !void {}
 
-        fn deinit(ptr: *const anyopaque) void {
+        fn deinit(ptr: *anyopaque, _: *Pipeline) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
             self.allocator.destroy(self);
         }

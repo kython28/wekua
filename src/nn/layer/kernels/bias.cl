@@ -3,23 +3,19 @@
 __kernel void bias(
     __global wk *const restrict output,
     __constant const wk *const restrict bias,
-
     const ulong row_pitch,
-    const ulong slice_pitch
+    const ulong number_of_elements
 ) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
+    const ulong index = get_global_id(0);
+    if (index >= number_of_elements) return;
+
+    const ulong col = index % row_pitch;
 
 #if WK_COMPLEX
-    const ulong col = k << 1;
-    const ulong index = i * slice_pitch + j * row_pitch + col;
-
-    output[index] += bias[col];
-    output[index + 1] += bias[col + 1];
+    wk o = output[index];
+    wk b = bias[col];
+    output[index] = (wk){ o.real + b.real, o.imag + b.imag };
 #else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
-    output[index] += bias[k];
+    output[index] += bias[col];
 #endif
 }

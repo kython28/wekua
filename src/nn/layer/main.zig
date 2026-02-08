@@ -1,16 +1,18 @@
 pub const linear = @import("linear.zig");
 pub const sequential = @import("sequential.zig");
 
-const wekua = @import("../../wekua.zig");
+const core = @import("core");
+const Pipeline = core.Pipeline;
+
+const tensor_module = @import("tensor");
 pub const Cache = @import("cache.zig").Cache;
 
-
 pub fn Layer(comptime T: type) type {
-    const Tensor = wekua.Tensor(T);
+    const Tensor = tensor_module.Tensor(T);
 
     return struct {
         pub const VTable = struct {
-            deinit: *const fn (ptr: *const anyopaque) void,
+            deinit: *const fn (ptr: *const anyopaque, pipeline: *Pipeline) void,
 
             getCachedOutput: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *Tensor,
             getWeights: *const fn (ptr: *const anyopaque) []const *Tensor,
@@ -18,17 +20,19 @@ pub fn Layer(comptime T: type) type {
 
             prepareCache: *const fn (
                 ptr: *const anyopaque,
+                pipeline: *Pipeline,
                 number_of_elements: u64,
             ) anyerror!*anyopaque,
 
             releaseCache: *const fn (
                 ptr: *const anyopaque,
+                pipeline: *Pipeline,
                 cache: *const anyopaque,
             ) void,
 
             forward: *const fn (
                 ptr: *const anyopaque,
-                command_queue: *const wekua.core.CommandQueue,
+                pipeline: *Pipeline,
                 input: *Tensor,
                 cache: *anyopaque,
             ) anyerror!*Tensor,
@@ -37,10 +41,10 @@ pub fn Layer(comptime T: type) type {
 
             backward: *const fn (
                 ptr: *const anyopaque,
-                command_queue: *const wekua.core.CommandQueue,
+                pipeline: *Pipeline,
                 cache: *anyopaque,
                 input: *Tensor,
-                input_gradient: ?*Tensor
+                input_gradient: ?*Tensor,
             ) anyerror!void,
 
             getGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) []const *Tensor,
@@ -52,8 +56,8 @@ pub fn Layer(comptime T: type) type {
 
         const Self = @This();
 
-        pub inline fn deinit(self: *const Self) void {
-            self.vtable.deinit(@ptrCast(self.ptr));
+        pub inline fn deinit(self: *const Self, pipeline: *Pipeline) void {
+            self.vtable.deinit(@ptrCast(self.ptr), pipeline);
         }
 
         pub inline fn getCachedOutput(self: *const Self, cache: *anyopaque) *Tensor {
@@ -70,25 +74,27 @@ pub fn Layer(comptime T: type) type {
 
         pub inline fn prepareCache(
             self: *const Self,
+            pipeline: *Pipeline,
             number_of_elements: u64,
         ) !*anyopaque {
-            return self.vtable.prepareCache(@ptrCast(self.ptr), number_of_elements);
+            return self.vtable.prepareCache(@ptrCast(self.ptr), pipeline, number_of_elements);
         }
 
         pub inline fn releaseCache(
             self: *const Self,
+            pipeline: *Pipeline,
             cache: *anyopaque,
         ) void {
-            self.vtable.releaseCache(@ptrCast(self.ptr), cache);
+            self.vtable.releaseCache(@ptrCast(self.ptr), pipeline, cache);
         }
 
         pub inline fn forward(
             self: *const Self,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
             input: *Tensor,
             cache: *anyopaque,
         ) !*Tensor {
-            return self.vtable.forward(@ptrCast(self.ptr), command_queue, input, cache);
+            return self.vtable.forward(@ptrCast(self.ptr), pipeline, input, cache);
         }
 
         pub inline fn getSensitivity(
@@ -100,12 +106,12 @@ pub fn Layer(comptime T: type) type {
 
         pub inline fn backward(
             self: *const Self,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
             cache: *anyopaque,
             input: *Tensor,
             input_gradient: ?*Tensor,
         ) !void {
-            return self.vtable.backward(@ptrCast(self.ptr), command_queue, cache, input, input_gradient);
+            return self.vtable.backward(@ptrCast(self.ptr), pipeline, cache, input, input_gradient);
         }
 
         pub inline fn getGradients(
@@ -122,4 +128,10 @@ pub fn Layer(comptime T: type) type {
             return self.vtable.getBiasGradients(@ptrCast(self.ptr), cache);
         }
     };
+}
+
+test {
+    _ = linear;
+    _ = sequential;
+    _ = @import("cache.zig");
 }

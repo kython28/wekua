@@ -1,11 +1,14 @@
 const std = @import("std");
-
-const wekua = @import("../../wekua.zig");
 const cl = @import("opencl");
 
-const core = wekua.core;
+const core = @import("core");
+const Pipeline = core.Pipeline;
 const KernelsSet = core.KernelsSet;
-const CommandQueue = core.CommandQueue;
+
+const tensor_module = @import("tensor");
+const Tensor = tensor_module.Tensor;
+
+const math = @import("math");
 
 const w_cache = @import("../layer/cache.zig");
 
@@ -14,23 +17,22 @@ const mse_cl_kernel: []const u8 = @embedFile("kernels/mse.cl");
 fn getKernel(
     comptime T: type,
     comptime calculate_derivative: bool,
-    command_queue: *const CommandQueue,
+    command_queue: *const core.CommandQueue,
     vectors_enabled: bool,
-    is_complex: bool,
-) !cl.kernel.cl_kernel {
-    const kernels_set = try KernelsSet.getKernelSet(command_queue, .MSE, core.SupportedTypes.len * 2 * 2 * 2);
+) !cl.kernel.Kernel {
+    const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
+    const kernels_set = try KernelsSet.getKernelSet(command_queue, .MSE, SUPPORTED_TYPES.len * 2 * 2);
 
-    var kernel_index: usize = @intFromBool(vectors_enabled) * (2 * 2 * core.SupportedTypes.len);
-    kernel_index += @intFromBool(is_complex) * (2 * core.SupportedTypes.len);
-    kernel_index += @intFromBool(calculate_derivative) * core.SupportedTypes.len;
-    kernel_index += @as(usize, core.getTypeId(T));
+    var kernel_index: usize = @intFromBool(vectors_enabled) * (2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromBool(calculate_derivative) * SUPPORTED_TYPES.len;
+    kernel_index += @as(usize, core.types.getTypeIndex(T));
 
     if (kernels_set.kernels.?[kernel_index]) |v| return v;
 
-    var kernel: cl.kernel.cl_kernel = undefined;
+    var kernel: cl.kernel.Kernel = undefined;
     var program: cl.program.Program = undefined;
 
-    const allocator = command_queue.allocator;
+    const allocator = command_queue.context.allocator;
     const extra_args: []u8 = try std.fmt.allocPrint(
         allocator,
         "-DCALC_DEV={d}",
@@ -42,7 +44,6 @@ fn getKernel(
         T,
         command_queue,
         .{
-            .is_complex = is_complex,
             .vectors_enabled = vectors_enabled,
             .kernel_name = "mse_kernel",
             .extra_args = extra_args,
@@ -61,95 +62,73 @@ fn getKernel(
 pub fn mse(
     comptime T: type,
     comptime calculate_derivative: bool,
-    command_queue: *const wekua.core.CommandQueue,
-    output: *wekua.Tensor(T),
-    expected: *wekua.Tensor(T),
+    pipeline: *Pipeline,
+    output: *Tensor(T),
+    expected: *Tensor(T),
     cache: *const w_cache.Cache(T),
-    error_scal: ?*T,
-    errori_scal: ?*T,
+    error_result: ?*T,
 ) !void {
     const error_tensor = cache.error_tensor;
 
-    try wekua.tensor.helpers.eqlTensors(T, output, expected);
-    try wekua.tensor.helpers.eqlTensors(T, error_tensor, output);
+    try tensor_module.helpers.eqlTensors(T, output, expected);
+    try tensor_module.helpers.eqlTensors(T, error_tensor, output);
+
+    const command_queue = pipeline.command_queue;
+
+    const vectors_enabled = output.flags.vectors_enabled and expected.flags.vectors_enabled and error_tensor.flags.vectors_enabled;
 
     const kernel = try getKernel(
         T,
         calculate_derivative,
         command_queue,
-        output.flags.vectors_enabled,
-        output.flags.is_complex,
+        vectors_enabled,
     );
 
-    const output_prev_events = output.events_manager.getPrevEvents(.read);
-    const expected_prev_events = expected.events_manager.getPrevEvents(.read);
-    const error_tensor_prev_events = error_tensor.events_manager.getPrevEvents(.write);
+    const prev_events = pipeline.prevEvents();
 
-    const set_args = cl.kernel.set_arg;
+    const setArg = cl.kernel.setArg;
+    const cl_mem_size = @sizeOf(cl.buffer.Mem);
 
-    try set_args(kernel, 0, @sizeOf(cl.buffer.cl_mem), @ptrCast(&output.buffer));
-    try set_args(kernel, 1, @sizeOf(cl.buffer.cl_mem), @ptrCast(&expected.buffer));
-    try set_args(kernel, 2, @sizeOf(cl.buffer.cl_mem), @ptrCast(&error_tensor.buffer));
+    try setArg(kernel, 0, cl_mem_size, @ptrCast(&output.buffer));
+    try setArg(kernel, 1, cl_mem_size, @ptrCast(&expected.buffer));
+    try setArg(kernel, 2, cl_mem_size, @ptrCast(&error_tensor.buffer));
 
     comptime var arg_index: usize = 3;
-    var tensors: [4]*wekua.Tensor(T) = .{ output, expected, error_tensor, undefined };
-    var operations: [4]wekua.tensor.EventManager.Operation = .{ .read, .read, .write, undefined };
-    var prev_events_per_tensor: [4]?[]const cl.event.cl_event = .{
-        output_prev_events,
-        expected_prev_events,
-        error_tensor_prev_events,
-        null,
-    };
 
     if (calculate_derivative) {
         const last_slot = cache.slots[cache.slots.len - 1];
         const sensitivity = last_slot.layer.getSensitivity(last_slot.cache);
 
-        const gradient_prev_events = sensitivity.events_manager.getPrevEvents(.write);
-
-        tensors[3] = sensitivity;
-        operations[3] = .write;
-        prev_events_per_tensor[3] = gradient_prev_events;
-
-        try set_args(kernel, arg_index, @sizeOf(cl.buffer.cl_mem), @ptrCast(&sensitivity.buffer));
+        try setArg(kernel, arg_index, cl_mem_size, @ptrCast(&sensitivity.buffer));
         arg_index += 1;
     }
 
-    try set_args(kernel, arg_index, @sizeOf(u64), @ptrCast(&output.memory_layout.row_pitch_for_vectors));
-    try set_args(kernel, arg_index + 1, @sizeOf(u64), @ptrCast(&output.memory_layout.slice_pitch_for_vectors));
+    const num_elements = if (vectors_enabled)
+        output.dimensions.number_of_elements
+    else
+        output.dimensions.number_of_elements_without_padding;
 
-    {
-        const events_set = try wekua.tensor.EventManager.EventsSet.init(
-            command_queue.allocator,
-            prev_events_per_tensor[0..arg_index],
-            null,
-        );
-        errdefer events_set.release();
+    try setArg(kernel, arg_index, @sizeOf(u64), @ptrCast(&num_elements));
 
-        const prev_events = events_set.getPrevEvents();
+    var new_event: cl.event.Event = undefined;
+    try cl.kernel.enqueueNdRange(
+        command_queue.cl_command_queue,
+        kernel,
+        null,
+        @ptrCast(&num_elements),
+        if (vectors_enabled)
+            output.work_configuration.local_work_items_for_vectors_1d
+        else
+            output.work_configuration.local_work_items_1d,
+        prev_events,
+        &new_event,
+    );
+    errdefer tensor_module.helpers.releaseEvent(new_event);
 
-        var new_event: cl.event.cl_event = undefined;
-        try cl.kernel.enqueue_nd_range(
-            command_queue.cmd,
-            kernel,
-            null,
-            &output.work_configuration.global_work_items,
-            &output.work_configuration.local_work_items[command_queue.wekua_id],
-            prev_events,
-            &new_event,
-        );
-        errdefer |err| wekua.tensor.helpers.releaseEvent(new_event, err);
+    try pipeline.append(&.{new_event});
 
-        try events_set.appendNewEvent(
-            T,
-            true,
-            operations[0..arg_index],
-            tensors[0..arg_index],
-            new_event,
-        );
-    }
+    if (error_result == null) return;
 
-    if (error_scal == null and errori_scal == null) return;
-
-    try wekua.math.basic.mean(T, command_queue, error_tensor, error_scal, errori_scal);
+    const mean_result = try math.basic.mean(T, pipeline, error_tensor);
+    error_result.?.* = mean_result;
 }

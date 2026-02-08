@@ -13,5 +13,4 @@ pub const utils = @import("utils");
 pub const blas = @import("blas");
 pub const math = @import("math");
 
-// pub const nn = @import("nn/main.zig");
-//
+pub const nn = @import("nn");

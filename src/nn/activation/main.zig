@@ -1,8 +1,11 @@
 pub const Sigmoid = @import("sigmoid.zig").Sigmoid;
 pub const Tanh = @import("tanh.zig").Tanh;
 
-const wekua = @import("../../wekua.zig");
-const Tensor = wekua.Tensor;
+const core = @import("core");
+const Pipeline = core.Pipeline;
+
+const tensor_module = @import("tensor");
+const Tensor = tensor_module.Tensor;
 
 // TODO: Implement activations for integers
 
@@ -13,13 +16,13 @@ pub fn Activation(comptime T: type) type {
         pub const VTable = struct {
             run: *const fn (
                 ptr: *const anyopaque,
-                command_queue: *const wekua.core.CommandQueue,
+                pipeline: *Pipeline,
                 net_output: *ActivationTensor,
             ) anyerror!void,
 
             getDerivative: *const fn (
                 ptr: *const anyopaque,
-                command_queue: *const wekua.core.CommandQueue,
+                pipeline: *Pipeline,
                 input: *ActivationTensor,
                 derivative: *ActivationTensor,
             ) anyerror!void,
@@ -32,20 +35,25 @@ pub fn Activation(comptime T: type) type {
 
         pub inline fn run(
             self: *const Self,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
             net_output: *ActivationTensor,
         ) !void {
-            try self.vtable.run(@ptrCast(self.ptr), command_queue, net_output);
+            try self.vtable.run(@ptrCast(self.ptr), pipeline, net_output);
         }
 
         pub inline fn getDerivative(
             self: *const Self,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
             output: *ActivationTensor,
             derivative: *ActivationTensor,
         ) !void {
-            try wekua.tensor.helpers.eqlTensors(T, output, derivative);
-            try self.vtable.getDerivative(@ptrCast(self.ptr), command_queue, output, derivative);
+            try tensor_module.helpers.eqlTensors(T, output, derivative);
+            try self.vtable.getDerivative(@ptrCast(self.ptr), pipeline, output, derivative);
         }
     };
+}
+
+test {
+    _ = @import("sigmoid.zig");
+    _ = @import("tanh.zig");
 }

@@ -9,57 +9,30 @@ __kernel void mse_kernel(
     __global wk *const restrict dev_output,
 #endif
 
-    const ulong row_pitch,
-    const ulong slice_pitch
+    const ulong number_of_elements
 ) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
-
+    const ulong index = get_global_id(0);
+    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
-    const ulong index = i * slice_pitch + j * row_pitch + (k << 1);
-
-    wk error = expected[index] - output[index];
-    wk errori = expected[index + 1] - output[index + 1];
-#if CALC_DEV
-
-#if WK_DTYPE == 9
-    dev_output[index] = -2.0 * error;
-    dev_output[index + 1] = -2.0 * errori;
-#elif WK_DTYPE == 8
-    dev_output[index] = -2.0f * error;
-    dev_output[index + 1] = -2.0f * errori;
-#else
-    dev_output[index] = -2*error;
-    dev_output[index + 1] = -2*errori;
-#endif
-
-#endif
-
-    COMPLEX_MUL_K(wk)
-    COMPLEX_MUL(error, errori, error, errori);
-
-    error_tensor[index] = error;
-    error_tensor[index + 1] = errori;
-#else
-    const ulong index = i * slice_pitch + j * row_pitch + k;
-
-    wk error = expected[index] - output[index];
-    error_tensor[index] = error*error;
+    wk o = output[index];
+    wk e = expected[index];
+    wk err = (wk){ e.real - o.real, e.imag - o.imag };
 
 #if CALC_DEV
+    dev_output[index] = (wk){ -(wks)2 * err.real, -(wks)2 * err.imag };
+#endif
 
-#if WK_DTYPE == 9
-    dev_output[index] = -2.0 * error;
-#elif WK_DTYPE == 8
-    dev_output[index] = -2.0f * error;
+    wk squared;
+    COMPLEX_MUL(err, err, squared);
+    error_tensor[index] = squared;
 #else
-    dev_output[index] = -2 * error;
+    wk err = expected[index] - output[index];
+    error_tensor[index] = err*err;
+
+#if CALC_DEV
+    dev_output[index] = -(wks)2 * err;
 #endif
 
 #endif
-
-#endif
-
 }

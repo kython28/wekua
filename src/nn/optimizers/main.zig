@@ -1,4 +1,6 @@
-const wekua = @import("../../wekua.zig");
+const core = @import("core");
+const Pipeline = core.Pipeline;
+
 const layer = @import("../layer/main.zig");
 
 const w_gd = @import("gd.zig");
@@ -18,11 +20,11 @@ pub fn Optimizer(comptime T: type) type {
         pub const VTable = struct {
             step: *const fn (
                 ptr: *anyopaque,
-                command_queue: *const wekua.core.CommandQueue,
+                pipeline: *Pipeline,
                 cache: *const Cache,
             ) anyerror!void,
-            zero: *const fn (ptr: *anyopaque, command_queue: *const wekua.core.CommandQueue) anyerror!void,
-            deinit: *const fn (ptr: *anyopaque) void,
+            zero: *const fn (ptr: *anyopaque, pipeline: *Pipeline) anyerror!void,
+            deinit: *const fn (ptr: *anyopaque, pipeline: *Pipeline) void,
         };
 
         vtable: VTable,
@@ -32,21 +34,28 @@ pub fn Optimizer(comptime T: type) type {
 
         pub inline fn step(
             self: *const Self,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
             cache: *const Cache,
         ) !void {
-            try self.vtable.step(self.ptr, command_queue, cache);
+            try self.vtable.step(self.ptr, pipeline, cache);
         }
 
         pub inline fn zero(
             self: *const Self,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
         ) !void {
-            try self.vtable.zero(self.ptr, command_queue);
+            try self.vtable.zero(self.ptr, pipeline);
         }
 
-        pub inline fn deinit(self: *const Self) void {
-            self.vtable.deinit(self.ptr);
+        pub inline fn deinit(self: *const Self, pipeline: *Pipeline) void {
+            self.vtable.deinit(self.ptr, pipeline);
         }
     };
+}
+
+test {
+    _ = w_gd;
+    _ = w_gdm;
+    _ = w_adagrad;
+    _ = w_rmsprop;
 }

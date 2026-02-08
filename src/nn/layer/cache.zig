@@ -1,7 +1,10 @@
 const std = @import("std");
 const layer = @import("main.zig");
 
-const wekua = @import("../../wekua.zig");
+const core = @import("core");
+const Pipeline = core.Pipeline;
+
+const tensor_module = @import("tensor");
 
 pub fn Cache(comptime T: type) type {
     const CacheLayer = layer.Layer(T);
@@ -15,12 +18,13 @@ pub fn Cache(comptime T: type) type {
         allocator: std.mem.Allocator,
         slots: []CacheSlot,
 
-        error_tensor: *wekua.Tensor(T),
+        error_tensor: *tensor_module.Tensor(T),
 
         const Self = @This();
 
         pub fn init(
-            context: *const wekua.core.Context,
+            context: *const core.Context,
+            pipeline: *Pipeline,
             number_of_elements: u64,
             layers: []const *const CacheLayer,
         ) !Self {
@@ -29,14 +33,14 @@ pub fn Cache(comptime T: type) type {
             var slots_created: usize = 0;
             errdefer {
                 for (slots[0..slots_created]) |c| {
-                    c.layer.releaseCache(c.cache);
+                    c.layer.releaseCache(pipeline, c.cache);
                 }
                 allocator.free(slots);
             }
 
             for (layers, slots) |l, *slot| {
                 slot.* = .{
-                    .cache = try l.prepareCache(number_of_elements),
+                    .cache = try l.prepareCache(pipeline, number_of_elements),
                     .layer = l,
                 };
                 slots_created += 1;
@@ -45,8 +49,8 @@ pub fn Cache(comptime T: type) type {
             const last_slot = slots[slots_created - 1];
             const last_sensitivity = last_slot.layer.getSensitivity(last_slot.cache);
 
-            const error_tensor = try wekua.Tensor(T).alloc(context, last_sensitivity.dimensions.shape, .{});
-            errdefer error_tensor.release();
+            const error_tensor = try tensor_module.Tensor(T).alloc(context, pipeline, last_sensitivity.dimensions.shape, .{});
+            errdefer error_tensor.release(pipeline);
 
             return Self{
                 .allocator = allocator,
@@ -59,13 +63,13 @@ pub fn Cache(comptime T: type) type {
             return self.slots[index].cache;
         }
 
-        pub fn deinit(self: *const Self) void {
+        pub fn deinit(self: *const Self, pipeline: *Pipeline) void {
             const allocator = self.allocator;
             for (self.slots) |c| {
-                c.layer.releaseCache(c.cache);
+                c.layer.releaseCache(pipeline, c.cache);
             }
             allocator.free(self.slots);
-            self.error_tensor.release();
+            self.error_tensor.release(pipeline);
         }
     };
 }

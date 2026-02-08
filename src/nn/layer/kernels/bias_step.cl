@@ -3,10 +3,23 @@
 __kernel void bias_step(
     __constant const wk *const restrict derivative,
     __global wk *const restrict bias_gradients,
-
     const ulong dev_row_pitch,
     const ulong dev_rows
 ) {
+
+#if WK_COMPLEX
+    const ulong i = get_global_id(0);
+
+    wk res = (wk){ 0, 0 };
+
+    ulong base = i;
+    for (ulong r = 0; r < dev_rows; r++, base += dev_row_pitch) {
+        wk d = derivative[base];
+        res = (wk){ res.real + d.real, res.imag + d.imag };
+    }
+
+    bias_gradients[i] = res;
+#else
 
 #if WK_VECTOR_WIDTH == 1
     wk res = 0;
@@ -14,24 +27,6 @@ __kernel void bias_step(
     wk res = (wk)(0);
 #endif
 
-#if WK_COMPLEX
-    const ulong i = get_global_id(0) << 1;
-
-#if WK_VECTOR_WIDTH == 1
-    wk ires = 0;
-#else
-    wk ires = (wk)(0);
-#endif
-
-    ulong base = i;
-    for (ulong r = 0; r < dev_rows; r++, base += dev_row_pitch) {
-        res += derivative[base];
-        ires += derivative[base + 1];
-    }
-
-    bias_gradients[i] = res;
-    bias_gradients[i + 1] = ires;
-#else
     const ulong i = get_global_id(0);
 
     ulong base = i;
@@ -41,4 +36,4 @@ __kernel void bias_step(
 
     bias_gradients[i] = res;
 #endif
-} 
+}

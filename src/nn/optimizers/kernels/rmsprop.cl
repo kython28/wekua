@@ -4,71 +4,54 @@ __kernel void rmsprop_kernel(
     __global wk *const restrict x,
     __constant const wk *const restrict gradients,
     __global wk *const restrict gradients_history,
-
-    const ulong row_pitch,
-    const ulong slice_pitch,
-
-    const wks lr,
+    const ulong number_of_elements,
+    const wk lr,
     const wk gamma
-
-#if WK_COMPLEX
-    , const wks lri,
-    const wks gammai
-#endif
 ) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
-    const ulong k = get_global_id(2);
+    const ulong index = get_global_id(0);
+    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
-    const ulong index = i * row_pitch + j * slice_pitch + (k << 1);
-
     wk gradient = gradients[index];
-    wk gradient_i = gradients[index + 1];
+    wk gh = gradients_history[index];
 
-    wk gradient_history = gradients_history[index];
-    wk gradient_history_i = gradients_history[index + 1];
+    wk gradient_history;
+    COMPLEX_MUL(gh, gamma, gradient_history);
 
-    COMPLEX_MUL_K(wk)
-    COMPLEX_MUL(gradient_history, gradient_history_i, gamma, gamma_i)
+    wk gamma2 = (wk){ (wks)1 - gamma.real, -gamma.imag };
 
-    const wk gamma2 = 1 - gamma;
-    const wk gamma2_i = gammai;
+    wk squared_gradient;
+    COMPLEX_MUL(gradient, gradient, squared_gradient);
 
-    wk squared_gradient = gradient;
-    wk squared_gradient_i = gradient_i;
+    wk sg_scaled;
+    COMPLEX_MUL(squared_gradient, gamma2, sg_scaled);
 
-    COMPLEX_MUL(squared_gradient, squared_gradient_i, gradient, gradient_i)
-    COMPLEX_MUL(squared_gradient, squared_gradient_i, gamma2, gamma2_i)
+    gradient_history = (wk){ gradient_history.real + sg_scaled.real, gradient_history.imag + sg_scaled.imag };
 
-    gradient_history += squared_gradient;
-    gradient_history_i += squared_gradient_i;
+    const wks r2 = gradient_history.real * gradient_history.real + gradient_history.imag * gradient_history.imag;
+    const wks r = sqrt(r2);
+    const wks theta = atan2(gradient_history.imag, gradient_history.real);
 
-    const wk r2 = gradient_history * gradient_history + gradient_history_i * gradient_history_i;
-    const wk r = sqrt(r2);
-    const wk theta = atan2(gradient_history_i, gradient_history);
+    const wks root_r = sqrt(r);
 
-    const wk root_r = sqrt(r);
+    const wks root_real = root_r * cos(theta/(wks)2) + FLT_EPSILON;
+    const wks root_imag = root_r * sin(theta/(wks)2);
 
-    const wk root_real = root_r * cos(theta/2) + FLT_EPSILON;
-    const wk root_imag = root_r * sin(theta/2);
+    wk denominator = (wk){ root_real / r2, -root_imag / r2 };
 
-    const wk denominator = root_real / r2;
-    const wk denominator_i = -root_imag / r2;
+    wk tmp;
+    COMPLEX_MUL(gradient, denominator, tmp);
 
-    COMPLEX_MUL(gradient, gradient_i, denominator, denominator_i)
-    COMPLEX_MUL(gradient, gradient_i, lr, lri)
+    wk result;
+    COMPLEX_MUL(tmp, lr, result);
 
-    x[index] -= gradient;
-    x[index + 1] -= gradient_i;
+    wk xval = x[index];
+    x[index] = (wk){ xval.real - result.real, xval.imag - result.imag };
 
     gradients_history[index] = gradient_history;
-    gradients_history[index + 1] = gradient_history_i;
 #else
-    const ulong index = i * row_pitch + j * slice_pitch + k;
-
     const wk gradient = gradients[index];
-    const wk gradient_history = gamma * gradients_history[index] + (1 - gamma) * gradient * gradient;
+    const wk gradient_history = gamma * gradients_history[index] + ((wks)1 - gamma) * gradient * gradient;
 
     x[index] -= lr * gradient / (sqrt(gradient_history) + FLT_EPSILON);
     gradients_history[index] = gradient_history;

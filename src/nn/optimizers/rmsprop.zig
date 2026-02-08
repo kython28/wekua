@@ -1,9 +1,12 @@
 const std = @import("std");
 const cl = @import("opencl");
 
-const wekua = @import("../../wekua.zig");
+const core = @import("core");
+const Pipeline = core.Pipeline;
+const KernelsSet = core.KernelsSet;
 
-const KernelsSet = wekua.core.KernelsSet;
+const tensor_module = @import("tensor");
+const Tensor = tensor_module.Tensor;
 
 const optimizer = @import("main.zig");
 const w_layer = @import("../layer/main.zig");
@@ -18,33 +21,31 @@ pub fn RMSProp(comptime T: type) type {
     }
 
     const Cache = w_layer.Cache(T);
-    const Optimizer = optimizer.Optimizer(T);
-    const Tensor = wekua.Tensor(T);
+    const OptimizerT = optimizer.Optimizer(T);
+    const TensorT = Tensor(T);
 
     return struct {
         pub const Config = struct {
             lr: T = 0.001,
-            lri: T = 0,
             gamma: T = 0.9,
-            gammai: T = 0,
         };
 
         allocator: std.mem.Allocator,
-        gradient_histories: []*Tensor,
-        bias_gradient_histories: []*Tensor,
+        gradient_histories: []*TensorT,
+        bias_gradient_histories: []*TensorT,
         config: Config,
 
         const Self = @This();
 
-        pub fn init(context: *const wekua.core.Context, cache: *const Cache, config: Config) !Optimizer {
+        pub fn init(context: *const core.Context, pipeline: *Pipeline, cache: *const Cache, config: Config) !OptimizerT {
             const allocator = context.allocator;
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
-            var gradient_histories_array = std.ArrayList(*Tensor).init(allocator);
+            var gradient_histories_array = std.ArrayList(*TensorT).init(allocator);
             errdefer gradient_histories_array.deinit();
 
-            var bias_gradient_histories_array = std.ArrayList(*Tensor).init(allocator);
+            var bias_gradient_histories_array = std.ArrayList(*TensorT).init(allocator);
             errdefer bias_gradient_histories_array.deinit();
 
             var items_created: usize = 0;
@@ -53,27 +54,21 @@ pub fn RMSProp(comptime T: type) type {
                     gradient_histories_array.items[0..items_created],
                     bias_gradient_histories_array.items[0..items_created],
                 ) |v1, v2| {
-                    v1.release();
-                    v2.release();
+                    v1.release(pipeline);
+                    v2.release(pipeline);
                 }
             }
 
             for (cache.slots) |slot| {
-                const layer = slot.layer;
-                const weights = layer.getWeights();
+                const layer_ref = slot.layer;
+                const weights = layer_ref.getWeights();
 
                 for (weights) |w| {
-                    const v = try Tensor.alloc(context, w.dimensions.shape, .{
-                        .is_complex = w.flags.is_complex,
-                        .vectors_enabled = w.flags.vectors_enabled,
-                    });
-                    errdefer v.release();
+                    const v = try TensorT.alloc(context, pipeline, w.dimensions.shape, .{});
+                    errdefer v.release(pipeline);
 
-                    const bv = try Tensor.alloc(context, w.dimensions.shape[0..1], .{
-                        .is_complex = w.flags.is_complex,
-                        .vectors_enabled = w.flags.vectors_enabled,
-                    });
-                    errdefer bv.release();
+                    const bv = try TensorT.alloc(context, pipeline, w.dimensions.shape[0..1], .{});
+                    errdefer bv.release(pipeline);
 
                     try gradient_histories_array.append(v);
                     errdefer _ = gradient_histories_array.pop();
@@ -97,7 +92,7 @@ pub fn RMSProp(comptime T: type) type {
                 .bias_gradient_histories = bias_gradient_histories,
             };
 
-            return Optimizer{
+            return OptimizerT{
                 .vtable = .{
                     .step = &step,
                     .zero = &zero,
@@ -109,75 +104,63 @@ pub fn RMSProp(comptime T: type) type {
 
         fn executeRMSProp(
             self: *const Self,
-            command_queue: *const wekua.core.CommandQueue,
-            x: *Tensor,
-            gradient: *Tensor,
-            gradient_history: *Tensor,
+            pipeline: *Pipeline,
+            x: *TensorT,
+            gradient: *TensorT,
+            gradient_history: *TensorT,
         ) !void {
+            const command_queue = pipeline.command_queue;
+
+            const vectors_enabled = x.flags.vectors_enabled and gradient.flags.vectors_enabled and gradient_history.flags.vectors_enabled;
             const kernel = try KernelsSet.getClKernel(
                 T,
                 command_queue,
-                x,
+                vectors_enabled,
                 .RMSProp,
                 "rmsprop_kernel",
                 rmsprop_cl_kernel,
                 null,
             );
 
-            const x_prev_events = x.events_manager.getPrevEvents(.write);
-            const gradient_prev_events = gradient.events_manager.getPrevEvents(.read);
-            const gradient_history_prev_events = gradient_history.events_manager.getPrevEvents(.write);
+            const prev_events = pipeline.prevEvents();
 
-            const events_set = try wekua.tensor.EventManager.EventsSet.init(
-                command_queue.allocator,
-                &.{ x_prev_events, gradient_prev_events, gradient_history_prev_events },
-                null,
-            );
-            errdefer events_set.release();
+            const setArg = cl.kernel.setArg;
+            const cl_mem_size = @sizeOf(cl.buffer.Mem);
 
-            const prev_events = events_set.getPrevEvents();
+            try setArg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
+            try setArg(kernel, 1, cl_mem_size, @ptrCast(&gradient.buffer));
+            try setArg(kernel, 2, cl_mem_size, @ptrCast(&gradient_history.buffer));
 
-            const set_arg = cl.kernel.set_arg;
-            const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
+            const num_elements = if (vectors_enabled)
+                x.dimensions.number_of_elements
+            else
+                x.dimensions.number_of_elements_without_padding;
 
-            try set_arg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
-            try set_arg(kernel, 1, cl_mem_size, @ptrCast(&gradient.buffer));
-            try set_arg(kernel, 2, cl_mem_size, @ptrCast(&gradient_history.buffer));
+            try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&num_elements));
+            try setArg(kernel, 4, @sizeOf(T), @ptrCast(&self.config.lr));
+            try setArg(kernel, 5, @sizeOf(T), @ptrCast(&self.config.gamma));
 
-            try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&x.memory_layout.row_pitch_for_vectors));
-            try set_arg(kernel, 4, @sizeOf(u64), @ptrCast(&x.memory_layout.slice_pitch_for_vectors));
-
-            try set_arg(kernel, 5, @sizeOf(T), @ptrCast(&self.config.lr));
-            try set_arg(kernel, 6, @sizeOf(T), @ptrCast(&self.config.gamma));
-
-            if (x.flags.is_complex) {
-                try set_arg(kernel, 7, @sizeOf(T), @ptrCast(&self.config.lri));
-                try set_arg(kernel, 8, @sizeOf(T), @ptrCast(&self.config.gammai));
-            }
-
-            var new_event: cl.event.cl_event = undefined;
-            try cl.kernel.enqueue_nd_range(
-                command_queue.cmd,
+            var new_event: cl.event.Event = undefined;
+            try cl.kernel.enqueueNdRange(
+                command_queue.cl_command_queue,
                 kernel,
                 null,
-                &x.work_configuration.global_work_items,
-                &x.work_configuration.local_work_items[command_queue.wekua_id],
+                @ptrCast(&num_elements),
+                if (vectors_enabled)
+                    x.work_configuration.local_work_items_for_vectors_1d
+                else
+                    x.work_configuration.local_work_items_1d,
                 prev_events,
                 &new_event,
             );
+            errdefer tensor_module.helpers.releaseEvent(new_event);
 
-            try events_set.appendNewEvent(
-                T,
-                true,
-                &.{ .write, .read, .write },
-                &.{ x, gradient, gradient_history },
-                new_event,
-            );
+            try pipeline.append(&.{new_event});
         }
 
         fn step(
             ptr: *anyopaque,
-            command_queue: *const wekua.core.CommandQueue,
+            pipeline: *Pipeline,
             cache: *const Cache,
         ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
@@ -187,23 +170,23 @@ pub fn RMSProp(comptime T: type) type {
             var index: usize = 0;
 
             for (cache.slots) |*slot| {
-                const layer = slot.layer;
-                const gradients = layer.getGradients(slot.cache);
-                const weights = layer.getWeights();
+                const layer_ref = slot.layer;
+                const gradients = layer_ref.getGradients(slot.cache);
+                const weights = layer_ref.getWeights();
 
                 var _index = index;
                 for (weights, gradients) |w, g| {
-                    try self.executeRMSProp(command_queue, w, g, gradient_histories[index]);
+                    try self.executeRMSProp(pipeline, w, g, gradient_histories[index]);
                     _index += 1;
                 }
 
-                if (layer.getBiasGradients(slot.cache)) |bias_gradients| {
+                if (layer_ref.getBiasGradients(slot.cache)) |bias_gradients| {
                     _index = index;
-                    const bias = layer.getBias();
-                    for (bias.?, bias_gradients) |b, maybe_bg| {
+                    const bias_slice = layer_ref.getBias();
+                    for (bias_slice.?, bias_gradients) |b, maybe_bg| {
                         const bg = maybe_bg orelse continue;
 
-                        try self.executeRMSProp(command_queue, b.?, bg, bias_gradient_histories[index]);
+                        try self.executeRMSProp(pipeline, b.?, bg, bias_gradient_histories[index]);
                     }
                 }
 
@@ -211,21 +194,21 @@ pub fn RMSProp(comptime T: type) type {
             }
         }
 
-        fn zero(ptr: *anyopaque, command_queue: *const wekua.core.CommandQueue) !void {
+        fn zero(ptr: *anyopaque, pipeline: *Pipeline) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             for (self.gradient_histories, self.bias_gradient_histories) |v, bv| {
-                try wekua.tensor.fill.zeroes(T, v, command_queue);
-                try wekua.tensor.fill.zeroes(T, bv, command_queue);
+                try tensor_module.fill.zeroes(T, pipeline, v);
+                try tensor_module.fill.zeroes(T, pipeline, bv);
             }
         }
 
-        fn deinit(ptr: *const anyopaque) void {
+        fn deinit(ptr: *anyopaque, pipeline: *Pipeline) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             for (self.gradient_histories, self.bias_gradient_histories) |v, bv| {
-                v.release();
-                bv.release();
+                v.release(pipeline);
+                bv.release(pipeline);
             }
 
             const allocator = self.allocator;

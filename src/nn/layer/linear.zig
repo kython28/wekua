@@ -1,13 +1,20 @@
-const wekua = @import("../../wekua.zig");
 const std = @import("std");
 const cl = @import("opencl");
 
-const w_activation = wekua.nn.activation;
-const w_layer = @import("main.zig");
-
-const core = wekua.core;
+const core = @import("core");
+const Pipeline = core.Pipeline;
 const KernelsSet = core.KernelsSet;
-const CommandQueue = core.CommandQueue;
+
+const utils = @import("utils");
+
+const tensor_module = @import("tensor");
+const Tensor = tensor_module.Tensor;
+
+const blas = @import("blas");
+const math = @import("math");
+
+const w_activation = @import("../activation/main.zig");
+const w_layer = @import("main.zig");
 
 const bias_cl_kernel: []const u8 = @embedFile("kernels/bias.cl");
 const bias_step_cl_kernel: []const u8 = @embedFile("kernels/bias_step.cl");
@@ -15,7 +22,6 @@ const bias_step_cl_kernel: []const u8 = @embedFile("kernels/bias_step.cl");
 pub const ExtraParams = struct {
     deep: usize = 1,
     enable_bias: bool = true,
-    use_complex_numbers: bool = false,
 };
 
 inline fn get_random_limits(comptime T: type, input: usize, output: usize, start: *T, end: *T) void {
@@ -40,120 +46,116 @@ inline fn get_random_limits(comptime T: type, input: usize, output: usize, start
 pub fn Linear(
     comptime T: type,
 ) type {
-    const Tensor = wekua.Tensor(T);
+    const TensorT = Tensor(T);
     const Layer = w_layer.Layer(T);
     const Activation = w_activation.Activation(T);
 
-    const LinearCache = struct {
-        outputs: []*Tensor,
-        sensitivities: []*Tensor,
-        acti_derivatives: []*Tensor,
+    const SubType = core.types.getType(T);
 
-        gradients: []*Tensor,
-        bias_gradients: []*Tensor,
+    const LinearCache = struct {
+        outputs: []*TensorT,
+        sensitivities: []*TensorT,
+        acti_derivatives: []*TensorT,
+
+        gradients: []*TensorT,
+        bias_gradients: []*TensorT,
         bias_gradients_lis: []u64,
     };
 
     return struct {
         allocator: std.mem.Allocator,
 
-        weights: []*Tensor,
+        weights: []*TensorT,
 
         bias_enabled: bool,
-        bias: []?*Tensor,
+        bias: []?*TensorT,
 
         activation: ?w_activation.Activation(T),
 
-        context: *const wekua.core.Context,
+        context: *const core.Context,
 
         const Self = @This();
 
         pub fn init(
-            context: *const wekua.core.Context,
+            context: *const core.Context,
+            pipeline: *Pipeline,
             input: usize,
             output: usize,
-            activation: ?Activation,
+            acti: ?Activation,
             extra_params: ExtraParams,
         ) !Layer {
-            if (input == 0 or output == 0 or extra_params.deep == 0) return wekua.tensor.Errors.InvalidValue;
+            if (input == 0 or output == 0 or extra_params.deep == 0) return tensor_module.Errors.InvalidValue;
 
             const allocator = context.allocator;
 
-            const layer = try allocator.create(Self);
-            errdefer allocator.destroy(layer);
+            const self_layer = try allocator.create(Self);
+            errdefer allocator.destroy(self_layer);
 
-            layer.activation = activation;
-            layer.allocator = allocator;
-            layer.context = context;
-            layer.bias_enabled = extra_params.enable_bias;
+            self_layer.activation = acti;
+            self_layer.allocator = allocator;
+            self_layer.context = context;
+            self_layer.bias_enabled = extra_params.enable_bias;
 
-            var bottom: T = undefined;
-            var top: T = undefined;
-            get_random_limits(T, input, output, &bottom, &top);
+            var bottom: SubType = undefined;
+            var top: SubType = undefined;
+            get_random_limits(SubType, input, output, &bottom, &top);
 
-            const weights = try allocator.alloc(*Tensor, extra_params.deep);
-            layer.weights = weights;
+            const weights = try allocator.alloc(*TensorT, extra_params.deep);
+            self_layer.weights = weights;
 
             var weights_created: usize = 0;
             errdefer {
                 for (weights[0..weights_created]) |w| {
-                    w.release();
+                    w.release(pipeline);
                 }
                 allocator.free(weights);
             }
 
-            const first_weight_layer = try Tensor.alloc(context, &.{ output, input }, .{
-                .is_complex = extra_params.use_complex_numbers,
-            });
+            const first_weight_layer = try TensorT.alloc(context, pipeline, &.{ output, input }, .{});
             weights[0] = first_weight_layer;
             weights_created += 1;
 
-            const default_command_queue = &context.command_queues[0];
-            try wekua.tensor.random.uniform(
+            try tensor_module.random.uniform(
                 T,
-                default_command_queue,
+                pipeline,
                 first_weight_layer,
                 null,
                 bottom,
                 top,
             );
 
-            get_random_limits(T, output, output, &bottom, &top);
+            get_random_limits(SubType, output, output, &bottom, &top);
             for (weights[1..]) |*w| {
-                const weight = try Tensor.alloc(context, &.{ output, output }, .{
-                    .is_complex = extra_params.use_complex_numbers,
-                });
-                errdefer weight.release();
+                const weight = try TensorT.alloc(context, pipeline, &.{ output, output }, .{});
+                errdefer weight.release(pipeline);
 
-                try wekua.tensor.random.uniform(T, default_command_queue, weight, null, bottom, top);
+                try tensor_module.random.uniform(T, pipeline, weight, null, bottom, top);
 
                 w.* = weight;
                 weights_created += 1;
             }
 
             if (extra_params.enable_bias) {
-                const bias_layers = try allocator.alloc(?*Tensor, extra_params.deep);
-                layer.bias = bias_layers;
+                const bias_layers = try allocator.alloc(?*TensorT, extra_params.deep);
+                self_layer.bias = bias_layers;
 
                 var bias_created: usize = 0;
                 errdefer {
                     for (bias_layers[0..bias_created]) |b| {
-                        b.?.release();
+                        b.?.release(pipeline);
                     }
                     allocator.free(bias_layers);
                 }
 
                 for (bias_layers) |*b| {
-                    b.* = try Tensor.alloc(context, &.{output}, .{
-                        .is_complex = extra_params.use_complex_numbers,
-                    });
+                    b.* = try TensorT.alloc(context, pipeline, &.{output}, .{});
                     bias_created += 1;
                 }
             }
 
             return Layer{
                 .vtable = .{
-                    .deinit = &deinit,
+                    .deinit = &layer_deinit,
                     .getCachedOutput = &getCachedOutput,
                     .getWeights = &getWeights,
                     .getBias = &getBias,
@@ -165,22 +167,22 @@ pub fn Linear(
                     .getGradients = &getGradients,
                     .getBiasGradients = &getBiasGradients,
                 },
-                .ptr = layer,
+                .ptr = self_layer,
             };
         }
 
-        pub fn deinit(ptr: *const anyopaque) void {
+        pub fn layer_deinit(ptr: *const anyopaque, pipeline: *Pipeline) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const allocator = self.allocator;
             for (self.weights) |w| {
-                w.release();
+                w.release(pipeline);
             }
             allocator.free(self.weights);
 
             if (self.bias_enabled) {
                 for (self.bias) |b| {
-                    b.?.release();
+                    b.?.release(pipeline);
                 }
                 allocator.free(self.bias);
             }
@@ -188,19 +190,19 @@ pub fn Linear(
             allocator.destroy(self);
         }
 
-        fn getCachedOutput(_: *const anyopaque, cache: *const anyopaque) *Tensor {
+        fn getCachedOutput(_: *const anyopaque, cache: *const anyopaque) *TensorT {
             const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
             const outputs = cache_data.outputs;
             return outputs[outputs.len - 1];
         }
 
-        fn getWeights(ptr: *const anyopaque) []const *Tensor {
+        fn getWeights(ptr: *const anyopaque) []const *TensorT {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             return self.weights;
         }
 
-        fn getBias(ptr: *const anyopaque) ?[]const ?*Tensor {
+        fn getBias(ptr: *const anyopaque) ?[]const ?*TensorT {
             const self: *const Self = @ptrCast(@alignCast(ptr));
             if (!self.bias_enabled) return null;
 
@@ -209,23 +211,24 @@ pub fn Linear(
 
         fn prepareCache(
             ptr: *const anyopaque,
+            pipeline: *Pipeline,
             number_of_elements: u64,
         ) !*anyopaque {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
-            const outputs = try self.allocator.alloc(*Tensor, self.weights.len);
+            const outputs = try self.allocator.alloc(*TensorT, self.weights.len);
             errdefer self.allocator.free(outputs);
 
-            const sensitivities = try self.allocator.alloc(*Tensor, self.weights.len);
+            const sensitivities = try self.allocator.alloc(*TensorT, self.weights.len);
             errdefer self.allocator.free(sensitivities);
 
-            const acti_derivatives = try self.allocator.alloc(*Tensor, self.weights.len);
+            const acti_derivatives = try self.allocator.alloc(*TensorT, self.weights.len);
             errdefer self.allocator.free(acti_derivatives);
 
-            const gradients = try self.allocator.alloc(*Tensor, self.weights.len);
+            const gradients = try self.allocator.alloc(*TensorT, self.weights.len);
             errdefer self.allocator.free(gradients);
 
-            const bias_gradients = try self.allocator.alloc(*Tensor, self.weights.len);
+            const bias_gradients = try self.allocator.alloc(*TensorT, self.weights.len);
             errdefer self.allocator.free(bias_gradients);
 
             const bias_gradients_lis = try self.allocator.alloc(u64, self.weights.len);
@@ -240,16 +243,16 @@ pub fn Linear(
                     gradients[0..slots_created],
                     bias_gradients[0..slots_created],
                 ) |o, s, ad, g, bg| {
-                    o.release();
-                    s.release();
-                    ad.release();
-                    g.release();
-                    bg.release();
+                    o.release(pipeline);
+                    s.release(pipeline);
+                    ad.release(pipeline);
+                    g.release(pipeline);
+                    bg.release(pipeline);
                 }
             }
 
             const context = self.context;
-            const default_command_queue = &context.command_queues[0];
+            const command_queue = pipeline.command_queue;
 
             for (
                 self.weights,
@@ -260,40 +263,34 @@ pub fn Linear(
                 bias_gradients,
                 bias_gradients_lis,
             ) |w, *o, *s, *ad, *g, *gb, *gb_li| {
-                const output = w.dimensions.shape[0];
-                const use_complex_numbers = w.flags.is_complex;
+                const weight_output = w.dimensions.shape[0];
 
-                o.* = try Tensor.alloc(context, &.{ number_of_elements, output }, .{
-                    .is_complex = use_complex_numbers,
-                });
-                errdefer o.*.release();
+                o.* = try TensorT.alloc(context, pipeline, &.{ number_of_elements, weight_output }, .{});
+                errdefer o.*.release(pipeline);
 
-                s.* = try Tensor.alloc(context, &.{ number_of_elements, output }, .{
-                    .is_complex = use_complex_numbers,
-                });
-                errdefer s.*.release();
+                s.* = try TensorT.alloc(context, pipeline, &.{ number_of_elements, weight_output }, .{});
+                errdefer s.*.release(pipeline);
 
-                ad.* = try Tensor.alloc(context, &.{ number_of_elements, output }, .{
-                    .is_complex = use_complex_numbers,
-                });
-                errdefer ad.*.release();
+                ad.* = try TensorT.alloc(context, pipeline, &.{ number_of_elements, weight_output }, .{});
+                errdefer ad.*.release(pipeline);
 
-                try wekua.tensor.fill.constant(T, default_command_queue, s.*, 1, null);
+                const one_val: T = if (comptime core.types.isComplex(T))
+                    .{ .real = 1, .imag = 0 }
+                else
+                    1;
 
-                g.* = try Tensor.alloc(context, w.dimensions.shape, .{
-                    .is_complex = use_complex_numbers,
-                });
-                errdefer g.*.release();
+                try tensor_module.fill.constant(T, pipeline, s.*, one_val);
 
-                gb.* = try Tensor.alloc(context, &.{output}, .{
-                    .is_complex = use_complex_numbers,
-                });
-                errdefer gb.*.release();
+                g.* = try TensorT.alloc(context, pipeline, w.dimensions.shape, .{});
+                errdefer g.*.release(pipeline);
 
-                wekua.utils.calculateWorkItems(
+                gb.* = try TensorT.alloc(context, pipeline, &.{weight_output}, .{});
+                errdefer gb.*.release(pipeline);
+
+                utils.calculateWorkItems(
                     &.{gb.*.memory_layout.row_pitch_for_vectors},
                     @as([*]u64, @ptrCast(gb_li))[0..1],
-                    default_command_queue.max_work_group_size,
+                    command_queue.max_work_group_size,
                 );
 
                 slots_created += 1;
@@ -312,30 +309,30 @@ pub fn Linear(
             return cache;
         }
 
-        fn releaseCache(ptr: *const anyopaque, cache: *const anyopaque) void {
+        fn releaseCache(ptr: *const anyopaque, pipeline: *Pipeline, cache: *const anyopaque) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const allocator = self.allocator;
             const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
 
             for (cache_data.outputs) |o| {
-                o.release();
+                o.release(pipeline);
             }
 
             for (cache_data.gradients) |g| {
-                g.release();
+                g.release(pipeline);
             }
 
             for (cache_data.bias_gradients) |bg| {
-                bg.release();
+                bg.release(pipeline);
             }
 
             for (cache_data.acti_derivatives) |ad| {
-                ad.release();
+                ad.release(pipeline);
             }
 
             for (cache_data.sensitivities) |s| {
-                s.release();
+                s.release(pipeline);
             }
 
             allocator.free(cache_data.outputs);
@@ -349,85 +346,98 @@ pub fn Linear(
         }
 
         fn addBias(
-            command_queue: *const CommandQueue,
-            output: *Tensor,
-            bias: *Tensor,
+            pipeline: *Pipeline,
+            output: *TensorT,
+            bias_tensor: *TensorT,
         ) !void {
+            const command_queue = pipeline.command_queue;
+
+            const vectors_enabled = output.flags.vectors_enabled;
             const kernel = try KernelsSet.getClKernel(
                 T,
                 command_queue,
-                output,
+                vectors_enabled,
                 .LinearBias,
                 "bias",
                 bias_cl_kernel,
                 null,
             );
 
-            const prev_events = output.events_manager.getPrevEvents(.write);
+            const prev_events = pipeline.prevEvents();
 
-            const set_arg = cl.kernel.set_arg;
-            const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
+            const setArg = cl.kernel.setArg;
+            const cl_mem_size = @sizeOf(cl.buffer.Mem);
 
-            try set_arg(kernel, 0, cl_mem_size, @ptrCast(&output.buffer));
-            try set_arg(kernel, 1, cl_mem_size, @ptrCast(&bias.buffer));
+            try setArg(kernel, 0, cl_mem_size, @ptrCast(&output.buffer));
+            try setArg(kernel, 1, cl_mem_size, @ptrCast(&bias_tensor.buffer));
 
-            try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&output.memory_layout.row_pitch));
-            try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&output.memory_layout.slice_pitch));
+            const row_pitch = if (vectors_enabled)
+                output.memory_layout.row_pitch_for_vectors
+            else
+                output.memory_layout.row_pitch;
+            try setArg(kernel, 2, @sizeOf(u64), @ptrCast(&row_pitch));
 
-            var new_event: cl.event.cl_event = undefined;
-            try cl.kernel.enqueue_nd_range(
-                command_queue.cmd,
+            const num_elements = if (vectors_enabled)
+                output.dimensions.number_of_elements
+            else
+                output.dimensions.number_of_elements_without_padding;
+            try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&num_elements));
+
+            var new_event: cl.event.Event = undefined;
+            try cl.kernel.enqueueNdRange(
+                command_queue.cl_command_queue,
                 kernel,
                 null,
-                &output.work_configuration.global_work_items,
-                &output.work_configuration.local_work_items[command_queue.wekua_id],
+                @ptrCast(&num_elements),
+                if (vectors_enabled)
+                    output.work_configuration.local_work_items_for_vectors_1d
+                else
+                    output.work_configuration.local_work_items_1d,
                 prev_events,
                 &new_event,
             );
-            errdefer |err| wekua.tensor.helpers.releaseEvent(new_event, err);
+            errdefer tensor_module.helpers.releaseEvent(new_event);
 
-            _ = try output.events_manager.appendNewEvent(.write, prev_events, new_event, null);
+            try pipeline.append(&.{new_event});
         }
 
         fn forward(
             ptr: *const anyopaque,
-            command_queue: *const CommandQueue,
-            input: *Tensor,
+            pipeline: *Pipeline,
+            input_tensor: *TensorT,
             cache: *anyopaque,
-        ) !*Tensor {
+        ) !*TensorT {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const linear_cache: *LinearCache = @ptrCast(@alignCast(cache));
             const outputs_cached = linear_cache.outputs;
 
-            var in = input;
+            var in = input_tensor;
 
-            const bias = self.bias;
+            const bias_slice = self.bias;
             const bias_enabled = self.bias_enabled;
 
             const activation_layer = self.activation;
 
             for (self.weights, outputs_cached, 0..) |w, oc, index| {
-                try wekua.blas.gemm.perform(
+                try blas.gemm(
                     T,
-                    command_queue,
-                    null,
+                    pipeline,
                     null,
                     in,
                     .no_transpose,
                     w,
                     .transpose,
                     null,
-                    null,
                     oc,
                 );
 
                 if (bias_enabled) {
-                    try addBias(command_queue, oc, bias[index].?);
+                    try addBias(pipeline, oc, bias_slice[index].?);
                 }
 
-                if (activation_layer) |*acti| {
-                    try acti.run(command_queue, oc);
+                if (activation_layer) |*act| {
+                    try act.run(pipeline, oc);
                 }
 
                 in = oc;
@@ -436,56 +446,46 @@ pub fn Linear(
             return in;
         }
 
-        fn getSensitivity(_: *const anyopaque, cache: *const anyopaque) *Tensor {
+        fn getSensitivity(_: *const anyopaque, cache: *const anyopaque) *TensorT {
             const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
 
-            const gradients = cache_data.sensitivities;
-            return gradients[gradients.len - 1];
+            const sensitivities_slice = cache_data.sensitivities;
+            return sensitivities_slice[sensitivities_slice.len - 1];
         }
 
         fn getBiasSensitivity(
-            command_queue: *const core.CommandQueue,
-            sensitivity: *Tensor,
-            bias_gradient: *Tensor,
+            pipeline: *Pipeline,
+            sensitivity: *TensorT,
+            bias_gradient: *TensorT,
             lwi: []const u64,
         ) !void {
+            const command_queue = pipeline.command_queue;
+
+            const vectors_enabled = sensitivity.flags.vectors_enabled;
             const kernel = try KernelsSet.getClKernel(
                 T,
                 command_queue,
-                sensitivity,
+                vectors_enabled,
                 .LinearBiasStep,
                 "bias_step",
                 bias_step_cl_kernel,
                 null,
             );
 
-            // try wekua.tensor.print(T, command_queue, sensitivity);
-            // try wekua.tensor.print(T, command_queue, bias_gradient);
+            const prev_events = pipeline.prevEvents();
 
-            const sensitivity_prev_events = sensitivity.events_manager.getPrevEvents(.read);
-            const bias_gradient_prev_events = bias_gradient.events_manager.getPrevEvents(.write);
+            const setArg = cl.kernel.setArg;
+            const cl_mem_size = @sizeOf(cl.buffer.Mem);
 
-            const events_set = try wekua.tensor.EventManager.EventsSet.init(
-                command_queue.allocator,
-                &.{ sensitivity_prev_events, bias_gradient_prev_events },
-                null,
-            );
-            errdefer events_set.release();
+            try setArg(kernel, 0, cl_mem_size, @ptrCast(&sensitivity.buffer));
+            try setArg(kernel, 1, cl_mem_size, @ptrCast(&bias_gradient.buffer));
 
-            const prev_events = events_set.getPrevEvents();
+            try setArg(kernel, 2, @sizeOf(u64), @ptrCast(&sensitivity.memory_layout.row_pitch_for_vectors));
+            try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&sensitivity.dimensions.shape[0]));
 
-            const set_arg = cl.kernel.set_arg;
-            const cl_mem_size = @sizeOf(cl.buffer.cl_mem);
-
-            try set_arg(kernel, 0, cl_mem_size, @ptrCast(&sensitivity.buffer));
-            try set_arg(kernel, 1, cl_mem_size, @ptrCast(&bias_gradient.buffer));
-
-            try set_arg(kernel, 2, @sizeOf(u64), @ptrCast(&sensitivity.memory_layout.row_pitch_for_vectors));
-            try set_arg(kernel, 3, @sizeOf(u64), @ptrCast(&sensitivity.dimensions.shape[0]));
-
-            var new_event: cl.event.cl_event = undefined;
-            try cl.kernel.enqueue_nd_range(
-                command_queue.cmd,
+            var new_event: cl.event.Event = undefined;
+            try cl.kernel.enqueueNdRange(
+                command_queue.cl_command_queue,
                 kernel,
                 null,
                 @as([*]const u64, @ptrCast(&bias_gradient.memory_layout.row_pitch_for_vectors))[0..1],
@@ -493,23 +493,17 @@ pub fn Linear(
                 prev_events,
                 &new_event,
             );
-            errdefer |err| wekua.tensor.helpers.releaseEvent(new_event, err);
+            errdefer tensor_module.helpers.releaseEvent(new_event);
 
-            try events_set.appendNewEvent(
-                T,
-                true,
-                &.{ .read, .write },
-                &.{ sensitivity, bias_gradient },
-                new_event,
-            );
+            try pipeline.append(&.{new_event});
         }
 
         fn backward(
             ptr: *const anyopaque,
-            command_queue: *const CommandQueue,
+            pipeline: *Pipeline,
             cache: *anyopaque,
-            input: *Tensor,
-            input_sensitivity: ?*Tensor,
+            input_tensor: *TensorT,
+            input_sensitivity: ?*TensorT,
         ) !void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
             const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
@@ -520,56 +514,54 @@ pub fn Linear(
 
             const acti_derivatives = cache_data.acti_derivatives;
             const sensitivities = cache_data.sensitivities;
-            const bias_gradients = cache_data.bias_gradients;
-            const gradients = cache_data.gradients;
-            const outputs = cache_data.outputs;
+            const bias_grads = cache_data.bias_gradients;
+            const grads = cache_data.gradients;
+            const outs = cache_data.outputs;
 
             const bias_gradients_lis = cache_data.bias_gradients_lis;
 
             var sensitivity = sensitivities[sensitivities.len - 1];
 
             var index: usize = weights.len - 1;
-            var output = outputs[index];
+            var output = outs[index];
             while (true) {
                 const acti_derivative = acti_derivatives[index];
-                if (activation_layer) |*acti| {
-                    try acti.getDerivative(command_queue, output, acti_derivative);
+                if (activation_layer) |*act| {
+                    try act.getDerivative(pipeline, output, acti_derivative);
                 }
 
-                try wekua.math.basic.dot(T, command_queue, sensitivity, acti_derivative);
+                try math.basic.dot(T, pipeline, sensitivity, acti_derivative);
 
-                const prev_output: *Tensor = blk: {
+                const prev_output: *TensorT = blk: {
                     if (index >= 1) {
-                        break :blk outputs[index - 1];
+                        break :blk outs[index - 1];
                     }
-                    break :blk input;
+                    break :blk input_tensor;
                 };
                 output = prev_output;
 
-                try wekua.blas.gemm.perform(
+                try blas.gemm(
                     T,
-                    command_queue,
-                    null,
+                    pipeline,
                     null,
                     sensitivity,
                     .transpose,
                     prev_output,
                     .no_transpose,
                     null,
-                    null,
-                    gradients[index],
+                    grads[index],
                 );
 
                 if (bias_enabled) {
                     try getBiasSensitivity(
-                        command_queue,
+                        pipeline,
                         sensitivity,
-                        bias_gradients[index],
+                        bias_grads[index],
                         bias_gradients_lis[index..(index + 1)],
                     );
                 }
 
-                const next_sensitivity: *Tensor = blk: {
+                const next_sensitivity: *TensorT = blk: {
                     if (index >= 1) {
                         break :blk sensitivities[index - 1];
                     }
@@ -577,16 +569,14 @@ pub fn Linear(
                     break :blk input_sensitivity orelse return;
                 };
 
-                try wekua.blas.gemm.perform(
+                try blas.gemm(
                     T,
-                    command_queue,
-                    null,
+                    pipeline,
                     null,
                     sensitivity,
                     .no_transpose,
                     weights[index],
                     .no_transpose,
-                    null,
                     null,
                     next_sensitivity,
                 );
@@ -598,12 +588,12 @@ pub fn Linear(
             }
         }
 
-        fn getGradients(_: *const anyopaque, cache: *const anyopaque) []const *Tensor {
+        fn getGradients(_: *const anyopaque, cache: *const anyopaque) []const *TensorT {
             const cache_data: *const LinearCache = @ptrCast(@alignCast(cache));
             return cache_data.gradients;
         }
 
-        fn getBiasGradients(ptr: *const anyopaque, cache: *const anyopaque) ?[]const *Tensor {
+        fn getBiasGradients(ptr: *const anyopaque, cache: *const anyopaque) ?[]const ?*TensorT {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             if (!self.bias_enabled) return null;
