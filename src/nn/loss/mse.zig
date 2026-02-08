@@ -7,10 +7,11 @@ const KernelsSet = core.KernelsSet;
 
 const tensor_module = @import("tensor");
 const Tensor = tensor_module.Tensor;
+const TensorErrors = tensor_module.Errors;
 
 const math = @import("math");
 
-const w_cache = @import("../layer/cache.zig");
+const cache_module = @import("../layer/cache.zig");
 
 const mse_cl_kernel: []const u8 = @embedFile("kernels/mse.cl");
 
@@ -19,7 +20,7 @@ fn getKernel(
     comptime calculate_derivative: bool,
     command_queue: *const core.CommandQueue,
     vectors_enabled: bool,
-) !cl.kernel.Kernel {
+) TensorErrors!cl.kernel.Kernel {
     const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
     const kernels_set = try KernelsSet.getKernelSet(command_queue, .MSE, SUPPORTED_TYPES.len * 2 * 2);
 
@@ -65,9 +66,9 @@ pub fn mse(
     pipeline: *Pipeline,
     output: *Tensor(T),
     expected: *Tensor(T),
-    cache: *const w_cache.Cache(T),
+    cache: *const cache_module.Cache(T),
     error_result: ?*T,
-) !void {
+) TensorErrors!void {
     const error_tensor = cache.error_tensor;
 
     try tensor_module.helpers.eqlTensors(T, output, expected);
@@ -93,33 +94,30 @@ pub fn mse(
     try setArg(kernel, 1, cl_mem_size, @ptrCast(&expected.buffer));
     try setArg(kernel, 2, cl_mem_size, @ptrCast(&error_tensor.buffer));
 
-    comptime var arg_index: usize = 3;
-
     if (calculate_derivative) {
         const last_slot = cache.slots[cache.slots.len - 1];
         const sensitivity = last_slot.layer.getSensitivity(last_slot.cache);
 
-        try setArg(kernel, arg_index, cl_mem_size, @ptrCast(&sensitivity.buffer));
-        arg_index += 1;
+        try setArg(kernel, 3, cl_mem_size, @ptrCast(&sensitivity.buffer));
     }
 
-    const num_elements = if (vectors_enabled)
-        output.dimensions.number_of_elements
-    else
-        output.dimensions.number_of_elements_without_padding;
-
-    try setArg(kernel, arg_index, @sizeOf(u64), @ptrCast(&num_elements));
+    var num_elements: u64 = undefined;
+    var work_items: u64 = undefined;
+    if (vectors_enabled) {
+        num_elements = output.memory_layout.number_of_vectors;
+        work_items = output.work_configuration.local_work_items_for_vectors_1d[command_queue.wekua_id];
+    }else{
+        num_elements = output.dimensions.number_of_elements;
+        work_items = output.work_configuration.local_work_items_1d[command_queue.wekua_id];
+    }
 
     var new_event: cl.event.Event = undefined;
     try cl.kernel.enqueueNdRange(
         command_queue.cl_command_queue,
         kernel,
         null,
-        @ptrCast(&num_elements),
-        if (vectors_enabled)
-            output.work_configuration.local_work_items_for_vectors_1d
-        else
-            output.work_configuration.local_work_items_1d,
+        &.{num_elements},
+        &.{work_items},
         prev_events,
         &new_event,
     );

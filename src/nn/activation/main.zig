@@ -1,10 +1,14 @@
-pub const Sigmoid = @import("sigmoid.zig").Sigmoid;
-pub const Tanh = @import("tanh.zig").Tanh;
+const sigmoid_module = @import("sigmoid.zig");
+const tanh_module = @import("tanh.zig");
+pub const Sigmoid = sigmoid_module.Sigmoid;
+pub const Tanh = tanh_module.Tanh;
 
 const core = @import("core");
 const Pipeline = core.Pipeline;
 
 const tensor_module = @import("tensor");
+const TensorErrors = tensor_module.Errors;
+
 const Tensor = tensor_module.Tensor;
 
 // TODO: Implement activations for integers
@@ -18,14 +22,14 @@ pub fn Activation(comptime T: type) type {
                 ptr: *const anyopaque,
                 pipeline: *Pipeline,
                 net_output: *ActivationTensor,
-            ) anyerror!void,
+            ) TensorErrors!void,
 
             getDerivative: *const fn (
                 ptr: *const anyopaque,
                 pipeline: *Pipeline,
                 input: *ActivationTensor,
                 derivative: *ActivationTensor,
-            ) anyerror!void,
+            ) TensorErrors!void,
         };
 
         ptr: *anyopaque,
@@ -37,7 +41,7 @@ pub fn Activation(comptime T: type) type {
             self: *const Self,
             pipeline: *Pipeline,
             net_output: *ActivationTensor,
-        ) !void {
+        ) TensorErrors!void {
             try self.vtable.run(@ptrCast(self.ptr), pipeline, net_output);
         }
 
@@ -46,7 +50,7 @@ pub fn Activation(comptime T: type) type {
             pipeline: *Pipeline,
             output: *ActivationTensor,
             derivative: *ActivationTensor,
-        ) !void {
+        ) TensorErrors!void {
             try tensor_module.helpers.eqlTensors(T, output, derivative);
             try self.vtable.getDerivative(@ptrCast(self.ptr), pipeline, output, derivative);
         }
@@ -54,6 +58,6 @@ pub fn Activation(comptime T: type) type {
 }
 
 test {
-    _ = @import("sigmoid.zig");
-    _ = @import("tanh.zig");
+    _ = sigmoid_module;
+    _ = tanh_module;
 }

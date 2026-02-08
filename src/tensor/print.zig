@@ -6,33 +6,31 @@ const core = @import("core");
 const Pipeline = core.Pipeline;
 const CommandQueue = core.CommandQueue;
 
-const w_tensor = @import("main.zig");
-const Tensor = w_tensor.Tensor;
-
-pub const Errors = std.Io.Writer.Error || cl.errors.OpenCLError || std.fmt.BufPrintError;
+const tensor_module = @import("main.zig");
+const Tensor = tensor_module.Tensor;
 
 fn unmap_tensor_buffer(
     comptime T: type,
     command_queue: *const CommandQueue,
     buffer: cl.buffer.Mem,
     map: []T,
-) Errors!void {
+) !void {
     var unmap_event: cl.event.Event = undefined;
     try cl.buffer.unmap([]T, command_queue.cl_command_queue, buffer, map, null, &unmap_event);
 
     try cl.event.wait(unmap_event);
 }
 
-inline fn printPadding(writer: *std.Io.Writer, padding: usize) Errors!void {
+inline fn printPadding(writer: anytype, padding: usize) !void {
     for (0..padding) |_| try writer.writeByte(' ');
 }
 
-inline fn openBracket(writer: *std.Io.Writer, padding: usize) Errors!void {
+inline fn openBracket(writer: anytype, padding: usize) !void {
     try printPadding(writer, padding);
     try writer.writeByte('[');
 }
 
-inline fn closeBracket(writer: *std.Io.Writer, padding: usize) Errors!void {
+inline fn closeBracket(writer: anytype, padding: usize) !void {
     try printPadding(writer, padding);
     try writer.writeAll("],");
 }
@@ -40,11 +38,11 @@ inline fn closeBracket(writer: *std.Io.Writer, padding: usize) Errors!void {
 inline fn printComplexIntegerValue(
     comptime T: type,
     comptime max_value_str_len: []const u8,
-    writer: *std.Io.Writer,
+    writer: anytype,
     index: usize,
     tmp_buffer: []u8,
     buf: []const T,
-) Errors!void {
+) !void {
     var formatted_buf: []u8 = undefined;
     const value = buf[index];
     const real_value = value.real;
@@ -72,11 +70,11 @@ inline fn printComplexIntegerValue(
 
 inline fn printComplexFloatValue(
     comptime T: type,
-    writer: *std.Io.Writer,
+    writer: anytype,
     index: usize,
     tmp_buffer: []u8,
     buf: []const T,
-) Errors!void {
+) !void {
     var formatted_buf: []u8 = undefined;
     const value = buf[index];
     const real_value = value.real;
@@ -104,11 +102,11 @@ inline fn printComplexFloatValue(
 
 fn printVector(
     comptime T: type,
-    writer: *std.Io.Writer,
+    writer: anytype,
     padding: usize,
     buf: []const T,
     cols: u64,
-) Errors!void {
+) !void {
     try printPadding(writer, padding);
     const is_complex = comptime core.types.isComplex(T);
     const SubType = core.types.getType(T);
@@ -219,12 +217,12 @@ fn printVector(
 
 inline fn printVectorOrMatrix(
     comptime T: type,
-    writer: *std.Io.Writer,
+    writer: anytype,
     padding: usize,
     buf: []const T,
     pitches: []const u64,
     shape: []const u64,
-) Errors!void {
+) !void {
     if (pitches.len == 1) {
         try printVector(T, writer, padding, buf[0..shape[0]], shape[0]);
     } else {
@@ -266,12 +264,12 @@ inline fn printVectorOrMatrix(
 
 fn printDim(
     comptime T: type,
-    writer: *std.Io.Writer,
+    writer: anytype,
     padding: usize,
     buf: []T,
     shape: []const u64,
     pitches: []const u64,
-) Errors!void {
+) !void {
     try openBracket(writer, padding);
     if (pitches.len > 2) {
         try writer.writeByte('\n');
@@ -317,9 +315,9 @@ fn printDim(
 pub fn printZ(
     comptime T: type,
     pipeline: *Pipeline,
-    writer: *std.Io.Writer,
+    writer: anytype,
     tensor: *Tensor(T),
-) Errors!void {
+) !void {
     const command_queue = pipeline.command_queue;
     const prev_events = pipeline.prevEvents();
 
@@ -365,18 +363,19 @@ pub fn print(
     comptime T: type,
     pipeline: *Pipeline,
     tensor: *Tensor(T),
-) Errors!void {
+) !void {
     const allocator = pipeline.command_queue.context.allocator;
 
+    // TODO: Update to new Writer
     var array: std.ArrayList(u8) = .empty;
     defer array.deinit(allocator);
 
     const array_writer = array.writer(allocator);
-    var writer = array_writer.adaptToNewApi(&.{}).new_interface;
-    try printZ(T, pipeline, &writer, tensor);
+    try printZ(T, pipeline, &array_writer, tensor);
     if (builtin.is_test) {
         std.log.warn("{s}", .{array.items});
     }else{
-        try std.io.getStdOut().writeAll(array.items);
+        var stdout_file = std.fs.File.stdout();
+        try stdout_file.writeAll(array.items);
     }
 }

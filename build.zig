@@ -104,6 +104,35 @@ pub fn build(b: *std.Build) void {
         run_check_step.dependOn(&test_compilation_step.step);
     }
 
+    // Examples
+    const example_name = b.option([]const u8, "example", "Name of the example to run");
+    const run_example_step = b.step("run_example", "Run an example (use -Dexample=<name>)");
+
+    if (example_name) |name| {
+        const example_path = b.fmt("examples/{s}.zig", .{name});
+
+        const example_module = b.addModule(name, .{
+            .root_source_file = b.path(example_path),
+            .target = target,
+            .optimize = optimize,
+        });
+        example_module.addImport("wekua", wekua_module);
+
+        const example_exe = b.addExecutable(.{
+            .root_module = example_module,
+            .name = name,
+            .use_llvm = true,
+        });
+
+        const install_example = b.addInstallArtifact(example_exe, .{});
+
+        const run_example = b.addRunArtifact(example_exe);
+        run_example.has_side_effects = true;
+
+        run_example_step.dependOn(&install_example.step);
+        run_example_step.dependOn(&run_example.step);
+    }
+
     const benchmark_module = b.addModule("benchmark", .{
         .root_source_file = b.path("benchmark/main.zig"),
         .target = target,

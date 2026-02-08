@@ -9,12 +9,13 @@ const utils = @import("utils");
 
 const tensor_module = @import("tensor");
 const Tensor = tensor_module.Tensor;
+const TensorErrors = tensor_module.Errors;
 
 const blas = @import("blas");
 const math = @import("math");
 
-const w_activation = @import("../activation/main.zig");
-const w_layer = @import("main.zig");
+const activation_module = @import("../activation/main.zig");
+const layer_module = @import("main.zig");
 
 const bias_cl_kernel: []const u8 = @embedFile("kernels/bias.cl");
 const bias_step_cl_kernel: []const u8 = @embedFile("kernels/bias_step.cl");
@@ -24,7 +25,7 @@ pub const ExtraParams = struct {
     enable_bias: bool = true,
 };
 
-inline fn get_random_limits(comptime T: type, input: usize, output: usize, start: *T, end: *T) void {
+inline fn getRandomLimits(comptime T: type, input: usize, output: usize, start: *T, end: *T) void {
     const limit = switch (@typeInfo(T)) {
         .int => std.math.sqrt(6 / (input + output)),
         .float => std.math.sqrt(6.0 / @as(T, @floatFromInt(input + output))),
@@ -47,8 +48,8 @@ pub fn Linear(
     comptime T: type,
 ) type {
     const TensorT = Tensor(T);
-    const Layer = w_layer.Layer(T);
-    const Activation = w_activation.Activation(T);
+    const Layer = layer_module.Layer(T);
+    const Activation = activation_module.Activation(T);
 
     const SubType = core.types.getType(T);
 
@@ -70,7 +71,7 @@ pub fn Linear(
         bias_enabled: bool,
         bias: []?*TensorT,
 
-        activation: ?w_activation.Activation(T),
+        activation: ?activation_module.Activation(T),
 
         context: *const core.Context,
 
@@ -83,8 +84,8 @@ pub fn Linear(
             output: usize,
             acti: ?Activation,
             extra_params: ExtraParams,
-        ) !Layer {
-            if (input == 0 or output == 0 or extra_params.deep == 0) return tensor_module.Errors.InvalidValue;
+        ) TensorErrors!Layer {
+            if (input == 0 or output == 0 or extra_params.deep == 0) return TensorErrors.InvalidValue;
 
             const allocator = context.allocator;
 
@@ -98,7 +99,7 @@ pub fn Linear(
 
             var bottom: SubType = undefined;
             var top: SubType = undefined;
-            get_random_limits(SubType, input, output, &bottom, &top);
+            getRandomLimits(SubType, input, output, &bottom, &top);
 
             const weights = try allocator.alloc(*TensorT, extra_params.deep);
             self_layer.weights = weights;
@@ -124,7 +125,7 @@ pub fn Linear(
                 top,
             );
 
-            get_random_limits(SubType, output, output, &bottom, &top);
+            getRandomLimits(SubType, output, output, &bottom, &top);
             for (weights[1..]) |*w| {
                 const weight = try TensorT.alloc(context, pipeline, &.{ output, output }, .{});
                 errdefer weight.release(pipeline);
@@ -155,7 +156,7 @@ pub fn Linear(
 
             return Layer{
                 .vtable = .{
-                    .deinit = &layer_deinit,
+                    .deinit = &layerDeinit,
                     .getCachedOutput = &getCachedOutput,
                     .getWeights = &getWeights,
                     .getBias = &getBias,
@@ -171,7 +172,7 @@ pub fn Linear(
             };
         }
 
-        pub fn layer_deinit(ptr: *const anyopaque, pipeline: *Pipeline) void {
+        pub fn layerDeinit(ptr: *const anyopaque, pipeline: *Pipeline) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const allocator = self.allocator;
@@ -213,7 +214,7 @@ pub fn Linear(
             ptr: *const anyopaque,
             pipeline: *Pipeline,
             number_of_elements: u64,
-        ) !*anyopaque {
+        ) TensorErrors!*anyopaque {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const outputs = try self.allocator.alloc(*TensorT, self.weights.len);
@@ -349,7 +350,7 @@ pub fn Linear(
             pipeline: *Pipeline,
             output: *TensorT,
             bias_tensor: *TensorT,
-        ) !void {
+        ) TensorErrors!void {
             const command_queue = pipeline.command_queue;
 
             const vectors_enabled = output.flags.vectors_enabled;
@@ -364,35 +365,35 @@ pub fn Linear(
             );
 
             const prev_events = pipeline.prevEvents();
+            var row_pitch: u64 = undefined;
+            var num_elements: u64 = undefined;
+            var work_items: u64 = undefined;
 
             const setArg = cl.kernel.setArg;
             const cl_mem_size = @sizeOf(cl.buffer.Mem);
+            const wekua_id = command_queue.wekua_id;
+
+            if (vectors_enabled) {
+                row_pitch = output.memory_layout.row_pitch_for_vectors;
+                num_elements = output.memory_layout.number_of_vectors;
+                work_items = output.work_configuration.local_work_items_for_vectors_1d[wekua_id];
+            }else{
+                row_pitch = output.memory_layout.row_pitch;
+                num_elements = output.dimensions.number_of_elements;
+                work_items = output.work_configuration.local_work_items_1d[wekua_id];
+            }
 
             try setArg(kernel, 0, cl_mem_size, @ptrCast(&output.buffer));
             try setArg(kernel, 1, cl_mem_size, @ptrCast(&bias_tensor.buffer));
-
-            const row_pitch = if (vectors_enabled)
-                output.memory_layout.row_pitch_for_vectors
-            else
-                output.memory_layout.row_pitch;
             try setArg(kernel, 2, @sizeOf(u64), @ptrCast(&row_pitch));
-
-            const num_elements = if (vectors_enabled)
-                output.dimensions.number_of_elements
-            else
-                output.dimensions.number_of_elements_without_padding;
-            try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&num_elements));
 
             var new_event: cl.event.Event = undefined;
             try cl.kernel.enqueueNdRange(
                 command_queue.cl_command_queue,
                 kernel,
                 null,
-                @ptrCast(&num_elements),
-                if (vectors_enabled)
-                    output.work_configuration.local_work_items_for_vectors_1d
-                else
-                    output.work_configuration.local_work_items_1d,
+                &.{num_elements},
+                &.{work_items},
                 prev_events,
                 &new_event,
             );
@@ -406,44 +407,45 @@ pub fn Linear(
             pipeline: *Pipeline,
             input_tensor: *TensorT,
             cache: *anyopaque,
-        ) !*TensorT {
+        ) TensorErrors!*TensorT {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const linear_cache: *LinearCache = @ptrCast(@alignCast(cache));
             const outputs_cached = linear_cache.outputs;
 
-            var in = input_tensor;
+            var input = input_tensor;
 
             const bias_slice = self.bias;
             const bias_enabled = self.bias_enabled;
 
             const activation_layer = self.activation;
 
-            for (self.weights, outputs_cached, 0..) |w, oc, index| {
+            for (self.weights, outputs_cached, 0..) |weight, output, index| {
                 try blas.gemm(
                     T,
                     pipeline,
                     null,
-                    in,
+                    input,
                     .no_transpose,
-                    w,
+                    weight,
                     .transpose,
                     null,
-                    oc,
+                    output,
                 );
 
+                // TODO: avoid this repeated condition
                 if (bias_enabled) {
-                    try addBias(pipeline, oc, bias_slice[index].?);
+                    try addBias(pipeline, output, bias_slice[index].?);
                 }
 
                 if (activation_layer) |*act| {
-                    try act.run(pipeline, oc);
+                    try act.run(pipeline, output);
                 }
 
-                in = oc;
+                input = output;
             }
 
-            return in;
+            return input;
         }
 
         fn getSensitivity(_: *const anyopaque, cache: *const anyopaque) *TensorT {
@@ -458,7 +460,7 @@ pub fn Linear(
             sensitivity: *TensorT,
             bias_gradient: *TensorT,
             lwi: []const u64,
-        ) !void {
+        ) TensorErrors!void {
             const command_queue = pipeline.command_queue;
 
             const vectors_enabled = sensitivity.flags.vectors_enabled;
@@ -504,7 +506,7 @@ pub fn Linear(
             cache: *anyopaque,
             input_tensor: *TensorT,
             input_sensitivity: ?*TensorT,
-        ) !void {
+        ) TensorErrors!void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
             const cache_data: *LinearCache = @ptrCast(@alignCast(cache));
 

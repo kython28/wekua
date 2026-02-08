@@ -3,10 +3,13 @@ const std = @import("std");
 const core = @import("core");
 const Pipeline = core.Pipeline;
 
+const tensor_module = @import("tensor");
+const TensorErrors = tensor_module.Errors;
+
 const blas = @import("blas");
 
-const optimizer = @import("main.zig");
-const w_layer = @import("../layer/main.zig");
+const optimizer_module = @import("main.zig");
+const layer_mdoule = @import("../layer/main.zig");
 
 // Gradient Descent
 pub fn GD(comptime T: type) type {
@@ -15,8 +18,8 @@ pub fn GD(comptime T: type) type {
         else => @compileError("Gradient Descent optimizer only supports f32 and f64 types"),
     }
 
-    const Cache = w_layer.Cache(T);
-    const Optimizer = optimizer.Optimizer(T);
+    const Cache = layer_mdoule.Cache(T);
+    const Optimizer = optimizer_module.Optimizer(T);
 
     return struct {
         pub const Config = struct {
@@ -28,7 +31,7 @@ pub fn GD(comptime T: type) type {
 
         const Self = @This();
 
-        pub fn init(allocator: std.mem.Allocator, config: Config) !Optimizer {
+        pub fn init(allocator: std.mem.Allocator, config: Config) error{OutOfMemory}!Optimizer {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
@@ -53,7 +56,7 @@ pub fn GD(comptime T: type) type {
             ptr: *anyopaque,
             pipeline: *Pipeline,
             cache: *const Cache,
-        ) !void {
+        ) TensorErrors!void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const lr = self.config.lr;
@@ -90,7 +93,7 @@ pub fn GD(comptime T: type) type {
             }
         }
 
-        fn zero(_: *anyopaque, _: *Pipeline) !void {}
+        fn zero(_: *anyopaque, _: *Pipeline) TensorErrors!void {}
 
         fn deinit(ptr: *anyopaque, _: *Pipeline) void {
             const self: *const Self = @ptrCast(@alignCast(ptr));

@@ -5,6 +5,7 @@ const core = @import("core");
 const Pipeline = core.Pipeline;
 
 const tensor_module = @import("tensor");
+const TensorErrors = tensor_module.Errors;
 
 pub fn Cache(comptime T: type) type {
     const CacheLayer = layer.Layer(T);
@@ -27,7 +28,7 @@ pub fn Cache(comptime T: type) type {
             pipeline: *Pipeline,
             number_of_elements: u64,
             layers: []const *const CacheLayer,
-        ) !Self {
+        ) TensorErrors!Self {
             const allocator = context.allocator;
             const slots = try allocator.alloc(CacheSlot, layers.len);
             var slots_created: usize = 0;

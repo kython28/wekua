@@ -4,12 +4,13 @@ const core = @import("core");
 const Pipeline = core.Pipeline;
 
 const tensor_module = @import("tensor");
+const TensorErrors = tensor_module.Errors;
 
-const w_layer = @import("main.zig");
+const layer_module = @import("main.zig");
 
 pub fn Sequential(comptime T: type) type {
     const Tensor = tensor_module.Tensor(T);
-    const Layer = w_layer.Layer(T);
+    const Layer = layer_module.Layer(T);
 
     const SequentialCache = struct {
         caches: []*anyopaque,
@@ -25,15 +26,15 @@ pub fn Sequential(comptime T: type) type {
 
         const Self = @This();
 
-        pub fn init(allocator: std.mem.Allocator) !*Self {
+        pub fn init(allocator: std.mem.Allocator) TensorErrors!*Self {
             const seq_layer = try allocator.create(Self);
             errdefer allocator.destroy(seq_layer);
 
             seq_layer.* = .{
                 .allocator = allocator,
-                .layers = std.ArrayList(Layer).init(allocator),
-                .weights = std.ArrayList(*Tensor).init(allocator),
-                .bias = std.ArrayList(?*Tensor).init(allocator),
+                .layers = .empty,
+                .weights = .empty,
+                .bias = .empty,
             };
 
             return seq_layer;
@@ -58,30 +59,34 @@ pub fn Sequential(comptime T: type) type {
             };
         }
 
-        fn layer_deinit(ptr: *const anyopaque, pipeline: *Pipeline) void {
-            const self: *const Self = @ptrCast(@alignCast(ptr));
+        fn layer_deinit(ptr: *anyopaque, pipeline: *Pipeline) void {
+            const self: *Self = @ptrCast(@alignCast(ptr));
             self.deinit(pipeline);
         }
 
-        pub fn deinit(self: *const Self, pipeline: *Pipeline) void {
+        pub fn deinit(self: *Self, pipeline: *Pipeline) void {
             for (self.layers.items) |l| {
                 l.deinit(pipeline);
             }
-            self.layers.deinit();
-            self.weights.deinit();
-            self.bias.deinit();
+            const allocator = self.allocator;
 
-            self.allocator.destroy(self);
+            self.layers.deinit(allocator);
+            self.weights.deinit(allocator);
+            self.bias.deinit(allocator);
+
+            allocator.destroy(self);
         }
 
-        pub fn append(self: *Self, new_layer: Layer) !void {
-            try self.layers.append(new_layer);
+        pub fn append(self: *Self, new_layer: Layer) TensorErrors!void {
+            const allocator = self.allocator;
+
+            try self.layers.append(allocator, new_layer);
             errdefer _ = self.layers.pop();
 
             const layer_weights = new_layer.getWeights();
             const layer_bias = new_layer.getBias();
 
-            try self.weights.appendSlice(layer_weights);
+            try self.weights.appendSlice(allocator, layer_weights);
             errdefer {
                 for (0..layer_weights.len) |_| {
                     _ = self.weights.pop();
@@ -89,9 +94,9 @@ pub fn Sequential(comptime T: type) type {
             }
 
             if (layer_bias) |b| {
-                try self.bias.appendSlice(b);
+                try self.bias.appendSlice(allocator, b);
             } else {
-                try self.bias.ensureTotalCapacity(self.bias.capacity + layer_weights.len);
+                try self.bias.ensureTotalCapacity(allocator, self.bias.capacity + layer_weights.len);
                 for (layer_weights) |_| {
                     self.bias.appendAssumeCapacity(null);
                 }
@@ -129,7 +134,7 @@ pub fn Sequential(comptime T: type) type {
             ptr: *const anyopaque,
             pipeline: *Pipeline,
             number_of_elements: u64,
-        ) !*anyopaque {
+        ) TensorErrors!*anyopaque {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const allocator = self.allocator;
@@ -208,7 +213,7 @@ pub fn Sequential(comptime T: type) type {
             pipeline: *Pipeline,
             input_tensor: *Tensor,
             cache: *anyopaque,
-        ) !*Tensor {
+        ) TensorErrors!*Tensor {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const cache_data: *const SequentialCache = @ptrCast(@alignCast(cache));
@@ -240,7 +245,7 @@ pub fn Sequential(comptime T: type) type {
             cache: *anyopaque,
             input_tensor: *Tensor,
             input_gradient: ?*Tensor,
-        ) !void {
+        ) TensorErrors!void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const cache_data: *const SequentialCache = @ptrCast(@alignCast(cache));

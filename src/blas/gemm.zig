@@ -9,18 +9,12 @@ const KernelsSet = core.KernelsSet;
 const tensor_module = @import("tensor");
 const Tensor = tensor_module.Tensor;
 const TensorErrors = tensor_module.Errors;
+const GemmAlgorithm = tensor_module.GemmAlgorithm;
 
 const gemm_Kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
 const gemm_nxn_Kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
 const gemm_nxn_gpu_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
 
-pub const Algorithm = enum(u8) {
-    generic = 0,
-    @"4x4" = 1,
-    @"8x8" = 2,
-    @"16x16" = 3,
-    @"32x32" = 4,
-};
 
 pub const Operation = enum(u8) {
     no_transpose = 0,
@@ -36,12 +30,12 @@ fn getKernel(
     has_beta: bool,
     op_a: Operation,
     op_b: Operation,
-    default_algorithm: Algorithm,
+    default_algorithm: GemmAlgorithm,
     k_size: u64,
-    algorithm_ptr: *Algorithm,
+    algorithm_ptr: *GemmAlgorithm,
 ) TensorErrors!cl.kernel.Kernel {
     const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
-    const num_algorithms = std.meta.fields(Algorithm).len;
+    const num_algorithms = std.meta.fields(GemmAlgorithm).len;
     const kernels_per_algorithm = 2 * 2 * 2 * 2 * 2 * SUPPORTED_TYPES.len;
 
     const kernels_set = try KernelsSet.getKernelSet(
@@ -50,17 +44,17 @@ fn getKernel(
         num_algorithms * kernels_per_algorithm,
     );
 
-    const algorithm: Algorithm = blk: {
+    const algorithm: GemmAlgorithm = blk: {
         if (comptime core.types.isComplex(T)) {
             break :blk .generic;
         }
-        if ((k_size % 32) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"32x32"))
+        if ((k_size % 32) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"32x32"))
             break :blk .@"32x32";
-        if ((k_size % 16) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"16x16"))
+        if ((k_size % 16) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"16x16"))
             break :blk .@"16x16";
-        if ((k_size % 8) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"8x8"))
+        if ((k_size % 8) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"8x8"))
             break :blk .@"8x8";
-        if ((k_size % 4) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(Algorithm.@"4x4"))
+        if ((k_size % 4) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"4x4"))
             break :blk .@"4x4";
         break :blk .generic;
     };
@@ -197,7 +191,7 @@ pub fn gemm(
 
     const k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
 
-    var algorithm: Algorithm = undefined;
+    var algorithm: GemmAlgorithm = undefined;
     const kernel = try getKernel(
         T,
         command_queue,
@@ -206,7 +200,7 @@ pub fn gemm(
         has_beta,
         op_a,
         op_b,
-        .generic, // TODO: c.work_configuration.gemm_algorithm_per_device[wekua_id]
+        c.work_configuration.gemm_algorithm_per_device[command_queue.wekua_id],
         k_size,
         &algorithm,
     );

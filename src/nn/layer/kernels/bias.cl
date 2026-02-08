@@ -3,11 +3,9 @@
 __kernel void bias(
     __global wk *const restrict output,
     __constant const wk *const restrict bias,
-    const ulong row_pitch,
-    const ulong number_of_elements
+    const ulong row_pitch
 ) {
     const ulong index = get_global_id(0);
-    if (index >= number_of_elements) return;
 
     const ulong col = index % row_pitch;
 

@@ -2,11 +2,9 @@
 
 __kernel void tanh_dev(
     __constant const wk *const restrict input,
-    __global wk *const restrict derivative,
-    const ulong number_of_elements
+    __global wk *const restrict derivative
 ) {
     const ulong index = get_global_id(0);
-    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
     wk val = input[index];

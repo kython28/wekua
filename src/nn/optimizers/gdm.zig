@@ -7,9 +7,10 @@ const KernelsSet = core.KernelsSet;
 
 const tensor_module = @import("tensor");
 const Tensor = tensor_module.Tensor;
+const TensorErrors = tensor_module.Errors;
 
-const optimizer = @import("main.zig");
-const w_layer = @import("../layer/main.zig");
+const optimizer_module = @import("main.zig");
+const layer_module = @import("../layer/main.zig");
 
 const gdm_cl_kernel = @embedFile("kernels/gdm.cl");
 
@@ -20,8 +21,8 @@ pub fn GDM(comptime T: type) type {
         else => @compileError("Gradient Descent Momentum optimizer only supports f32 and f64 types"),
     }
 
-    const Cache = w_layer.Cache(T);
-    const OptimizerT = optimizer.Optimizer(T);
+    const Cache = layer_module.Cache(T);
+    const OptimizerT = optimizer_module.Optimizer(T);
     const TensorT = Tensor(T);
 
     return struct {
@@ -37,7 +38,12 @@ pub fn GDM(comptime T: type) type {
 
         const Self = @This();
 
-        pub fn init(context: *const core.Context, pipeline: *Pipeline, cache: *const Cache, config: Config) !OptimizerT {
+        pub fn init(
+            context: *const core.Context,
+            pipeline: *Pipeline,
+            cache: *const Cache,
+            config: Config,
+        ) TensorErrors!OptimizerT {
             const allocator = context.allocator;
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
@@ -108,7 +114,7 @@ pub fn GDM(comptime T: type) type {
             x: *TensorT,
             gradient: *TensorT,
             velocity: *TensorT,
-        ) !void {
+        ) TensorErrors!void {
             const command_queue = pipeline.command_queue;
 
             const vectors_enabled = x.flags.vectors_enabled and gradient.flags.vectors_enabled and velocity.flags.vectors_enabled;
@@ -130,26 +136,27 @@ pub fn GDM(comptime T: type) type {
             try setArg(kernel, 0, cl_mem_size, @ptrCast(&x.buffer));
             try setArg(kernel, 1, cl_mem_size, @ptrCast(&gradient.buffer));
             try setArg(kernel, 2, cl_mem_size, @ptrCast(&velocity.buffer));
+            try setArg(kernel, 3, @sizeOf(T), @ptrCast(&self.config.lr));
+            try setArg(kernel, 4, @sizeOf(T), @ptrCast(&self.config.beta));
 
-            const num_elements = if (vectors_enabled)
-                x.dimensions.number_of_elements
-            else
-                x.dimensions.number_of_elements_without_padding;
+            var num_elements: u64 = undefined;
+            var work_items: u64 = undefined;
 
-            try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&num_elements));
-            try setArg(kernel, 4, @sizeOf(T), @ptrCast(&self.config.lr));
-            try setArg(kernel, 5, @sizeOf(T), @ptrCast(&self.config.beta));
+            if (vectors_enabled) {
+                num_elements = x.memory_layout.number_of_vectors;
+                work_items = x.work_configuration.local_work_items_for_vectors_1d[command_queue.wekua_id];
+            } else {
+                num_elements = x.dimensions.number_of_elements;
+                work_items = x.work_configuration.local_work_items_1d[command_queue.wekua_id];
+            }
 
             var new_event: cl.event.Event = undefined;
             try cl.kernel.enqueueNdRange(
                 command_queue.cl_command_queue,
                 kernel,
                 null,
-                @ptrCast(&num_elements),
-                if (vectors_enabled)
-                    x.work_configuration.local_work_items_for_vectors_1d
-                else
-                    x.work_configuration.local_work_items_1d,
+                &.{num_elements},
+                &.{work_items},
                 prev_events,
                 &new_event,
             );
@@ -162,7 +169,7 @@ pub fn GDM(comptime T: type) type {
             ptr: *anyopaque,
             pipeline: *Pipeline,
             cache: *const Cache,
-        ) !void {
+        ) TensorErrors!void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             const velocities = self.velocities;
@@ -194,7 +201,7 @@ pub fn GDM(comptime T: type) type {
             }
         }
 
-        fn zero(ptr: *anyopaque, pipeline: *Pipeline) !void {
+        fn zero(ptr: *anyopaque, pipeline: *Pipeline) TensorErrors!void {
             const self: *const Self = @ptrCast(@alignCast(ptr));
 
             for (self.velocities, self.bias_velocities) |v, bv| {

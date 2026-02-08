@@ -1,11 +1,9 @@
 #include "wekua.h"
 
 __kernel void sigmoid(
-    __global wk *const restrict output,
-    const ulong number_of_elements
+    __global wk *const restrict output
 ) {
 	const ulong index = get_global_id(0);
-    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
     wk val = output[index];
@@ -21,11 +19,9 @@ __kernel void sigmoid(
 
 __kernel void sigmoid_dev(
     __constant const wk *const restrict output,
-    __global wk *const restrict derivative,
-    const ulong number_of_elements
+    __global wk *const restrict derivative
 ) {
     const ulong index = get_global_id(0);
-    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
     wk val = output[index];

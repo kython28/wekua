@@ -56,23 +56,24 @@ pub fn Tanh(comptime T: type) type {
             try setArg(kernel, 0, cl_mem_size, @ptrCast(&input.buffer));
             try setArg(kernel, 1, cl_mem_size, @ptrCast(&derivative.buffer));
 
-            const num_elements = if (vectors_enabled)
-                input.dimensions.number_of_elements
-            else
-                input.dimensions.number_of_elements_without_padding;
+            var num_elements: u64 = undefined;
+            var work_items: u64 = undefined;
 
-            try setArg(kernel, 2, @sizeOf(u64), @ptrCast(&num_elements));
+            if (vectors_enabled) {
+                num_elements = input.memory_layout.number_of_vectors;
+                work_items = input.work_configuration.local_work_items_for_vectors_1d[command_queue.wekua_id];
+            } else {
+                num_elements = input.dimensions.number_of_elements;
+                work_items = input.work_configuration.local_work_items_1d[command_queue.wekua_id];
+            }
 
             var new_event: cl.event.Event = undefined;
             try cl.kernel.enqueueNdRange(
                 command_queue.cl_command_queue,
                 kernel,
                 null,
-                @ptrCast(&num_elements),
-                if (vectors_enabled)
-                    input.work_configuration.local_work_items_for_vectors_1d
-                else
-                    input.work_configuration.local_work_items_1d,
+                &.{num_elements},
+                &.{work_items},
                 prev_events,
                 &new_event,
             );

@@ -4,12 +4,10 @@ __kernel void rmsprop_kernel(
     __global wk *const restrict x,
     __constant const wk *const restrict gradients,
     __global wk *const restrict gradients_history,
-    const ulong number_of_elements,
     const wk lr,
     const wk gamma
 ) {
     const ulong index = get_global_id(0);
-    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
     wk gradient = gradients[index];

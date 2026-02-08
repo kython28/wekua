@@ -7,7 +7,7 @@ const utils = @import("utils.zig");
 
 pub const name: []const u8 = "GEMM";
 pub const dtype: []const u8 = "f32";
-pub const starting_point: u64 = 2;
+pub const starting_point: u64 = 4;
 
 pub const niterations: u64 = switch (builtin.mode) {
     .Debug => 1,

@@ -3,16 +3,13 @@
 __kernel void mse_kernel(
     __constant const wk *const restrict output,
     __constant const wk *const restrict expected,
-    __global wk *const restrict error_tensor,
+    __global wk *const restrict error_tensor
 
 #if CALC_DEV
-    __global wk *const restrict dev_output,
+    , __global wk *const restrict dev_output
 #endif
-
-    const ulong number_of_elements
 ) {
     const ulong index = get_global_id(0);
-    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
     wk o = output[index];

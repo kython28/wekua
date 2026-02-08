@@ -4,12 +4,10 @@ __kernel void gdm_kernel(
     __global wk *const restrict x,
     __constant const wk *const restrict gradients,
     __global wk *const restrict velocities,
-    const ulong number_of_elements,
     const wk lr,
     const wk beta
 ) {
     const ulong index = get_global_id(0);
-    if (index >= number_of_elements) return;
 
 #if WK_COMPLEX
     wk old_velocity = velocities[index];

@@ -1,18 +1,21 @@
-pub const linear = @import("linear.zig");
-pub const sequential = @import("sequential.zig");
+pub const linear_module = @import("linear.zig");
+pub const sequential_module = @import("sequential.zig");
 
 const core = @import("core");
 const Pipeline = core.Pipeline;
 
 const tensor_module = @import("tensor");
-pub const Cache = @import("cache.zig").Cache;
+const TensorErrors = tensor_module.Errors;
+
+const cache_module = @import("cache.zig");
+pub const Cache = cache_module.Cache;
 
 pub fn Layer(comptime T: type) type {
     const Tensor = tensor_module.Tensor(T);
 
     return struct {
         pub const VTable = struct {
-            deinit: *const fn (ptr: *const anyopaque, pipeline: *Pipeline) void,
+            deinit: *const fn (ptr: *anyopaque, pipeline: *Pipeline) void,
 
             getCachedOutput: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *Tensor,
             getWeights: *const fn (ptr: *const anyopaque) []const *Tensor,
@@ -22,7 +25,7 @@ pub fn Layer(comptime T: type) type {
                 ptr: *const anyopaque,
                 pipeline: *Pipeline,
                 number_of_elements: u64,
-            ) anyerror!*anyopaque,
+            ) TensorErrors!*anyopaque,
 
             releaseCache: *const fn (
                 ptr: *const anyopaque,
@@ -35,7 +38,7 @@ pub fn Layer(comptime T: type) type {
                 pipeline: *Pipeline,
                 input: *Tensor,
                 cache: *anyopaque,
-            ) anyerror!*Tensor,
+            ) TensorErrors!*Tensor,
 
             getSensitivity: *const fn (ptr: *const anyopaque, cache: *const anyopaque) *Tensor,
 
@@ -45,7 +48,7 @@ pub fn Layer(comptime T: type) type {
                 cache: *anyopaque,
                 input: *Tensor,
                 input_gradient: ?*Tensor,
-            ) anyerror!void,
+            ) TensorErrors!void,
 
             getGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) []const *Tensor,
             getBiasGradients: *const fn (ptr: *const anyopaque, cache: *const anyopaque) ?[]const ?*Tensor,
@@ -76,7 +79,7 @@ pub fn Layer(comptime T: type) type {
             self: *const Self,
             pipeline: *Pipeline,
             number_of_elements: u64,
-        ) !*anyopaque {
+        ) TensorErrors!*anyopaque {
             return self.vtable.prepareCache(@ptrCast(self.ptr), pipeline, number_of_elements);
         }
 
@@ -93,7 +96,7 @@ pub fn Layer(comptime T: type) type {
             pipeline: *Pipeline,
             input: *Tensor,
             cache: *anyopaque,
-        ) !*Tensor {
+        ) TensorErrors!*Tensor {
             return self.vtable.forward(@ptrCast(self.ptr), pipeline, input, cache);
         }
 
@@ -110,7 +113,7 @@ pub fn Layer(comptime T: type) type {
             cache: *anyopaque,
             input: *Tensor,
             input_gradient: ?*Tensor,
-        ) !void {
+        ) TensorErrors!void {
             return self.vtable.backward(@ptrCast(self.ptr), pipeline, cache, input, input_gradient);
         }
 
@@ -131,7 +134,7 @@ pub fn Layer(comptime T: type) type {
 }
 
 test {
-    _ = linear;
-    _ = sequential;
-    _ = @import("cache.zig");
+    _ = linear_module;
+    _ = sequential_module;
+    _ = cache_module;
 }
