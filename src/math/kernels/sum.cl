@@ -18,9 +18,10 @@ __kernel void sum_kernel(
     wk res = {0, 0};
     for (ulong k = 0; k < row_pitch; k++) {
         const wk val = x[index + k];
-        res = (wk){ res.real + val.real, res.imag + val.imag };
+        res.real += val.real;
+        res.imag += val.imag;
     }
-    y[i * row_pitch2 + j] = (wks){ res.real, res.imag };
+    y[i * row_pitch2 + j] = res;
 #else
 
 #if WK_VECTOR_WIDTH == 1
