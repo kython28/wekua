@@ -45,15 +45,20 @@ pub fn dot(
     try setArg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
 
     const wekua_id = command_queue.wekua_id;
-    var global_work_items: [1]u64 = undefined;
+    var global_work_items: []const u64 = undefined;
     var local_work_items: []const u64 = undefined;
 
     if (vectors_enabled) {
-        global_work_items = .{x.memory_layout.number_of_vectors};
+        global_work_items = @as([*]u64, @ptrCast(&x.memory_layout.number_of_vectors))[0..1];
         local_work_items = x.work_configuration.local_work_items_for_vectors_1d[wekua_id .. wekua_id + 1];
     } else {
-        global_work_items = .{x.dimensions.number_of_elements};
-        local_work_items = x.work_configuration.local_work_items_1d[wekua_id .. wekua_id + 1];
+        global_work_items = &x.work_configuration.global_work_items;
+        local_work_items = &x.work_configuration.local_work_items[wekua_id];
+
+        try setArg(kernel, 2, @sizeOf(u64), @ptrCast(&x.memory_layout.slice_pitch_for_vectors));
+        try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&x.memory_layout.row_pitch_for_vectors));
+        try setArg(kernel, 4, @sizeOf(u64), @ptrCast(&y.memory_layout.slice_pitch_for_vectors));
+        try setArg(kernel, 5, @sizeOf(u64), @ptrCast(&y.memory_layout.row_pitch_for_vectors));
     }
 
     var new_event: cl.event.Event = undefined;
@@ -61,7 +66,7 @@ pub fn dot(
         command_queue.cl_command_queue,
         kernel,
         null,
-        &global_work_items,
+        global_work_items,
         local_work_items,
         prev_events,
         &new_event,
@@ -182,23 +187,16 @@ pub fn sum(
         if (temporal_tensor_allocated) temporal_tensor.release(pipeline);
     }
 
-    var result: T = undefined;
-
+    var result: T = std.mem.zeroes(T);
     if (comptime core.types.isComplex(T)) {
-        const SubType = core.types.getType(T);
-        var real_sum: SubType = 0;
-        var imag_sum: SubType = 0;
         for (buf_map) |v| {
-            real_sum += v.real;
-            imag_sum += v.imag;
+            result.real += v.real;
+            result.imag += v.imag;
         }
-        result = .{ .real = real_sum, .imag = imag_sum };
     } else {
-        var acc: T = 0;
         for (buf_map) |v| {
-            acc += v;
+            result += v;
         }
-        result = acc;
     }
 
     return result;
@@ -272,10 +270,10 @@ test "dot - element-wise multiplication" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
-            const y = try Tensor(T).empty(context, pipeline, &shape, config);
+            const y = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer y.release(pipeline);
 
             const x_buf = try allocator.alloc(T, shape[0]);
@@ -336,7 +334,7 @@ test "sum - basic sum operation" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
             const buf = try allocator.alloc(T, shape[0]);
@@ -390,7 +388,7 @@ test "mean - basic mean operation for float types" {
             };
 
             if (is_float) {
-                const x = try Tensor(T).empty(context, pipeline, &shape, config);
+                const x = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer x.release(pipeline);
 
                 const buf = try allocator.alloc(T, shape[0]);
