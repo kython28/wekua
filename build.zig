@@ -80,6 +80,8 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     const run_check_step = b.step("check", "ZLS");
 
+    const module_name_to_test = b.option([]const u8, "module_to_test", "Name of the module to test");
+
     const modules_to_test = .{
         .{core_module, "core"},
         .{tensor_module, "tensor"},
@@ -91,17 +93,19 @@ pub fn build(b: *std.Build) void {
         const module = module_to_test[0];
         const name = module_to_test[1];
 
-        const test_compilation_step = b.addTest(.{
-            .root_module = module,
-            .use_llvm = true,
-            .name = name,
-        });
+        if (module_name_to_test == null or std.mem.eql(u8, name, module_name_to_test.?)) {
+            const test_compilation_step = b.addTest(.{
+                .root_module = module,
+                .use_llvm = true,
+                .name = name,
+            });
 
-        const run = b.addRunArtifact(test_compilation_step);
-        run.has_side_effects = true;
+            const run = b.addRunArtifact(test_compilation_step);
+            run.has_side_effects = true;
 
-        test_step.dependOn(&run.step);
-        run_check_step.dependOn(&test_compilation_step.step);
+            test_step.dependOn(&run.step);
+            run_check_step.dependOn(&test_compilation_step.step);
+        }
     }
 
     // Examples
