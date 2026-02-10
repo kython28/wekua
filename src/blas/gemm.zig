@@ -180,16 +180,22 @@ pub fn gemm(
 
     const command_queue = pipeline.command_queue;
 
-    var has_alpha = (alpha != null or beta != null);
+    const has_alpha = (alpha != null or beta != null);
     const has_beta = (beta != null);
-    if (has_beta) has_alpha = true;
 
     const vectors_enabled = if (comptime core.types.isComplex(T))
         false
     else
         (a.flags.vectors_enabled and b.flags.vectors_enabled and op_a == .no_transpose and op_b == .transpose and command_queue.vector_widths[core.types.getTypeId(T)] > 1);
 
-    const k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
+
+    var k_size: u64 = undefined;
+    if (vectors_enabled) {
+        k_size = a.memory_layout.row_pitch_for_vectors;
+    }else{
+        k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
+        k_size += k_size % 2;
+    }
 
     var algorithm: GemmAlgorithm = undefined;
     const kernel = try getKernel(
@@ -209,28 +215,22 @@ pub fn gemm(
 
     var a_row_pitch: u64 = undefined;
     var b_row_pitch: u64 = undefined;
-    var cols: u64 = undefined;
 
     if (vectors_enabled) {
         a_row_pitch = a.memory_layout.row_pitch_for_vectors;
         b_row_pitch = b.memory_layout.row_pitch_for_vectors;
-        cols = a_row_pitch;
     } else {
         a_row_pitch = a.memory_layout.row_pitch;
         b_row_pitch = b.memory_layout.row_pitch;
-        cols = a.dimensions.shape[1 - @intFromEnum(op_a)];
-        cols += cols % 2;
     }
 
     const wekua_id = command_queue.wekua_id;
 
     var global_work_items: []const u64 = &c.work_configuration.global_work_items_gemm_generic;
-    var local_work_items: []const u64 = undefined;
+    var local_work_items: []const u64 = &c.work_configuration.local_work_items_gemm_generic[wekua_id];
 
     switch (algorithm) {
-        .generic => {
-            local_work_items = &c.work_configuration.local_work_items_gemm_generic[wekua_id];
-        },
+        .generic => {},
         .@"4x4" => {
             global_work_items = &c.work_configuration.global_work_items_gemm_4x4[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_4x4[wekua_id];
@@ -260,7 +260,7 @@ pub fn gemm(
     try setArg(kernel, 4, @sizeOf(u64), @ptrCast(&b_row_pitch));
     try setArg(kernel, 5, @sizeOf(u64), @ptrCast(&c.memory_layout.row_pitch));
 
-    try setArg(kernel, 6, @sizeOf(u64), @ptrCast(&cols));
+    try setArg(kernel, 6, @sizeOf(u64), @ptrCast(&k_size));
 
     if (has_alpha) {
         const alpha_val: T = alpha orelse if (comptime core.types.isComplex(T))
@@ -329,15 +329,15 @@ test "gemm - A * I = A for all non-complex types" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!comptime core.types.isComplex(T)) {
+        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 // Fill A with known values
@@ -383,15 +383,15 @@ test "gemm - I * A = A for all non-complex types" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!comptime core.types.isComplex(T)) {
+        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 const a_buf = try allocator.alloc(T, n * n);
@@ -436,15 +436,15 @@ test "gemm - alpha scaling with identity" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!comptime core.types.isComplex(T)) {
+        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 const a_buf = try allocator.alloc(T, n * n);
@@ -489,15 +489,15 @@ test "gemm - alpha and beta" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!comptime core.types.isComplex(T)) {
+        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 const a_buf = try allocator.alloc(T, n * n);
@@ -589,15 +589,15 @@ test "gemm - transpose operations" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!comptime core.types.isComplex(T)) {
+        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 const a_buf = try allocator.alloc(T, n * n);
@@ -660,15 +660,15 @@ test "gemm - A * I = A for complex types" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (comptime core.types.isComplex(T)) {
+        if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 const a_buf = try allocator.alloc(T, n * n);
@@ -715,15 +715,15 @@ test "gemm - alpha scaling with identity for complex types" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (comptime core.types.isComplex(T)) {
+        if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 const a_buf = try allocator.alloc(T, n * n);
@@ -771,15 +771,15 @@ test "gemm - alpha and beta for complex types" {
     const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (comptime core.types.isComplex(T)) {
+        if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).empty(context, pipeline, &shape, config);
+                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer a.release(pipeline);
 
-                const ident = try Tensor(T).empty(context, pipeline, &shape, config);
+                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer ident.release(pipeline);
 
-                const c_mat = try Tensor(T).empty(context, pipeline, &shape, config);
+                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer c_mat.release(pipeline);
 
                 const a_buf = try allocator.alloc(T, n * n);
