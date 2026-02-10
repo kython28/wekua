@@ -21,9 +21,10 @@ fn getKernel(
     substract: bool,
 ) TensorErrors!cl.kernel.Kernel {
     const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
-    const kernels_set = try KernelsSet.getKernelSet(command_queue, .AXPY, SUPPORTED_TYPES.len * 2 * 2);
+    const kernels_set = try KernelsSet.getKernelSet(command_queue, .AXPY, SUPPORTED_TYPES.len * 2 * 2 * 2);
 
-    var kernel_index: usize = @intFromBool(has_alpha) * (2 * SUPPORTED_TYPES.len);
+    var kernel_index: usize = @intFromBool(vectors_enabled) * (2 * 2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromBool(has_alpha) * (2 * SUPPORTED_TYPES.len);
     kernel_index += @intFromBool(substract) * SUPPORTED_TYPES.len;
     kernel_index += @as(usize, core.types.getTypeIndex(T));
 
@@ -128,20 +129,28 @@ pub fn axpy(
     try setArg(kernel, 1, cl_mem_size, @ptrCast(&y.buffer));
 
     const wekua_id = command_queue.wekua_id;
-    var global_work_items: [1]u64 = undefined;
+    var global_work_items: []const u64 = undefined;
     var local_work_items: []const u64 = undefined;
+    var arg_index: u32 = 2;
 
     if (vectors_enabled) {
-        global_work_items = .{x.memory_layout.number_of_vectors};
+        global_work_items = @as([*]u64, @ptrCast(&x.memory_layout.number_of_vectors))[0..1];
         local_work_items = x.work_configuration.local_work_items_for_vectors_1d[wekua_id .. wekua_id + 1];
     } else {
-        global_work_items = .{x.dimensions.number_of_elements};
-        local_work_items = x.work_configuration.local_work_items_1d[wekua_id .. wekua_id + 1];
+        global_work_items = &x.work_configuration.global_work_items;
+        local_work_items = &x.work_configuration.local_work_items[wekua_id];
+
+        try setArg(kernel, 2, @sizeOf(u64), @ptrCast(&x.memory_layout.slice_pitch_for_vectors));
+        try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&x.memory_layout.row_pitch_for_vectors));
+        try setArg(kernel, 4, @sizeOf(u64), @ptrCast(&y.memory_layout.slice_pitch_for_vectors));
+        try setArg(kernel, 5, @sizeOf(u64), @ptrCast(&y.memory_layout.row_pitch_for_vectors));
+
+        arg_index = 6;
     }
 
     if (has_alpha) {
-        const _alpha = alpha.?;
-        try setArg(kernel, 2, @sizeOf(T), &_alpha);
+        const _has_alpha = alpha.?;
+        try setArg(kernel, arg_index, @sizeOf(T), @ptrCast(&_has_alpha));
     }
 
     var new_event: cl.event.Event = undefined;
@@ -149,7 +158,7 @@ pub fn axpy(
         command_queue.cl_command_queue,
         kernel,
         null,
-        &global_work_items,
+        global_work_items,
         local_work_items,
         prev_events,
         &new_event,
@@ -181,10 +190,10 @@ test "axpy - basic operation y = alpha*x + y for 1D tensor" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
-            const y = try Tensor(T).empty(context, pipeline, &shape, config);
+            const y = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer y.release(pipeline);
 
             const buffer_size = shape[0];
@@ -288,10 +297,10 @@ test "axpy - with alpha = null (direct sum) for all types" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
-            const y = try Tensor(T).empty(context, pipeline, &shape, config);
+            const y = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer y.release(pipeline);
 
             const buffer_size = shape[0];
@@ -399,10 +408,10 @@ test "axpy - with alpha = -1 (subtraction) for signed types" {
 
             // Only test signed types for subtraction
             if (is_signed) {
-                const x = try Tensor(T).empty(context, pipeline, &shape, config);
+                const x = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer x.release(pipeline);
 
-                const y = try Tensor(T).empty(context, pipeline, &shape, config);
+                const y = try Tensor(T).alloc(context, pipeline, &shape, config);
                 defer y.release(pipeline);
 
                 const buffer_size = shape[0];
@@ -507,10 +516,10 @@ test "axpy - 2D tensor for all types" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
-            const y = try Tensor(T).empty(context, pipeline, &shape, config);
+            const y = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer y.release(pipeline);
 
             const buffer_size = shape[0] * shape[1];
@@ -622,10 +631,10 @@ test "axpy - 3D tensor for all types" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
-            const y = try Tensor(T).empty(context, pipeline, &shape, config);
+            const y = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer y.release(pipeline);
 
             // Fill x with ones
@@ -684,18 +693,18 @@ test "axpy - with different vector configurations" {
         if (command_queue.isTypeSupported(T) and !(comptime core.types.isComplex(T))) {
             // Create tensors with vectors enabled
             const config_vectors = tensor_module.CreateConfig{ .vectors_enabled = true };
-            const x_vec = try Tensor(T).empty(context, pipeline, &shape, config_vectors);
+            const x_vec = try Tensor(T).alloc(context, pipeline, &shape, config_vectors);
             defer x_vec.release(pipeline);
 
-            const y_vec = try Tensor(T).empty(context, pipeline, &shape, config_vectors);
+            const y_vec = try Tensor(T).alloc(context, pipeline, &shape, config_vectors);
             defer y_vec.release(pipeline);
 
             // Create tensors with vectors disabled
             const config_no_vectors = tensor_module.CreateConfig{ .vectors_enabled = false };
-            const x_no_vec = try Tensor(T).empty(context, pipeline, &shape, config_no_vectors);
+            const x_no_vec = try Tensor(T).alloc(context, pipeline, &shape, config_no_vectors);
             defer x_no_vec.release(pipeline);
 
-            const y_no_vec = try Tensor(T).empty(context, pipeline, &shape, config_no_vectors);
+            const y_no_vec = try Tensor(T).alloc(context, pipeline, &shape, config_no_vectors);
             defer y_no_vec.release(pipeline);
 
             const buffer_size = shape[0] * shape[1];
@@ -820,10 +829,10 @@ test "axpy - zero alpha" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
-            const y = try Tensor(T).empty(context, pipeline, &shape, config);
+            const y = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer y.release(pipeline);
 
             // Fill x with ones
@@ -881,10 +890,10 @@ test "axpy - complex numbers with non-zero imaginary alpha" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and comptime core.types.isComplex(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
-            const y = try Tensor(T).empty(context, pipeline, &shape, config);
+            const y = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer y.release(pipeline);
 
             const buffer_size = shape[0];
