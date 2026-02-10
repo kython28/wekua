@@ -141,7 +141,7 @@ test "sin - basic operation" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and comptime isFloatType(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
             const buf = try allocator.alloc(T, shape[0]);
@@ -201,7 +201,7 @@ test "cos - basic operation" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and comptime isFloatType(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
             const buf = try allocator.alloc(T, shape[0]);
@@ -256,7 +256,7 @@ test "tan - basic operation" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and comptime isFloatType(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
             const buf = try allocator.alloc(T, shape[0]);
@@ -307,7 +307,7 @@ test "sinh - basic operation" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and comptime isFloatType(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
             const buf = try allocator.alloc(T, shape[0]);
@@ -358,7 +358,7 @@ test "cosh - basic operation" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and comptime isFloatType(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
             const buf = try allocator.alloc(T, shape[0]);
@@ -409,7 +409,7 @@ test "tanh - basic operation" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (command_queue.isTypeSupported(T) and comptime isFloatType(T)) {
-            const x = try Tensor(T).empty(context, pipeline, &shape, config);
+            const x = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer x.release(pipeline);
 
             const buf = try allocator.alloc(T, shape[0]);

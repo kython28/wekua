@@ -308,7 +308,7 @@ test "toComplex - with specific values to real space" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(f32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(f32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
@@ -347,7 +347,7 @@ test "toComplex - with specific values to imag space" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(f32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(f32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
@@ -448,7 +448,7 @@ test "toComplex - verify using getValue for real space" {
     const shape = [_]u64{ 2, 3 };
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(f32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(f32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
@@ -491,7 +491,7 @@ test "toComplex - verify using getValue for imag space" {
     const shape = [_]u64{ 2, 3 };
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(f32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(f32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
@@ -584,7 +584,7 @@ test "toComplex - overwrite previous data in real space" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(f32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(f32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
@@ -626,7 +626,7 @@ test "toComplex - overwrite previous data in imag space" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(f32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(f32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);

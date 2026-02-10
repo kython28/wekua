@@ -355,7 +355,7 @@ test "toReal - with specific values extract real space" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(core.types.ComplexF32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(f32).alloc(context, pipeline, &shape, config);
@@ -400,7 +400,7 @@ test "toReal - with specific values extract imag space" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(core.types.ComplexF32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(f32).alloc(context, pipeline, &shape, config);
@@ -445,7 +445,7 @@ test "toReal - verify using getValue for real space" {
     const shape = [_]u64{ 2, 3 };
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(core.types.ComplexF32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(f32).alloc(context, pipeline, &shape, config);
@@ -494,7 +494,7 @@ test "toReal - verify using getValue for imag space" {
     const shape = [_]u64{ 2, 3 };
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(core.types.ComplexF32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(f32).alloc(context, pipeline, &shape, config);
@@ -547,7 +547,7 @@ test "toReal - round trip with toComplex" {
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and command_queue.isTypeSupported(T)) {
-            const original = try Tensor(T).empty(context, pipeline, &shape, config);
+            const original = try Tensor(T).alloc(context, pipeline, &shape, config);
             defer original.release(pipeline);
 
             const ComplexT = core.types.Complex(T);
@@ -654,7 +654,7 @@ test "toReal - overwrite previous data extract real" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(core.types.ComplexF32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(f32).alloc(context, pipeline, &shape, config);
@@ -708,7 +708,7 @@ test "toReal - overwrite previous data extract imag" {
     const shape = [_]u64{5};
     const config = tensor_module.CreateConfig{};
 
-    const src = try Tensor(core.types.ComplexF32).empty(context, pipeline, &shape, config);
+    const src = try Tensor(core.types.ComplexF32).alloc(context, pipeline, &shape, config);
     defer src.release(pipeline);
 
     const dst = try Tensor(f32).alloc(context, pipeline, &shape, config);
