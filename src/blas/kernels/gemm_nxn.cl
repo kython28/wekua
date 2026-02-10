@@ -1,8 +1,28 @@
 #include "wekua.h"
 
+#define FILL_TILE(tile, values, row_index, col_index, row_pitch) \
+    base_index = row_index * row_pitch + col_index; \
+    for (ulong y = 0; y < BLOCK_SIZE; y += 1) { \
+        __attribute__((opencl_unroll_hint)) \
+        for (ulong x = 0; x < BLOCK_SIZE; x += 1) { \
+            tile[y * BLOCK_SIZE + x] = values[base_index + x]; \
+        } \
+        base_index += row_pitch; \
+    }
+
+#define FILL_TRANSPOSED_TILE(tile, values, row_index, col_index, row_pitch) \
+    for (ulong y = 0; y < BLOCK_SIZE; y += 1) { \
+        base_index = row_index * row_pitch + col_index + y; \
+        __attribute__((opencl_unroll_hint)) \
+        for (ulong x = 0; x < BLOCK_SIZE; x += 1) { \
+            tile[y * BLOCK_SIZE + x] = values[base_index]; \
+            base_index += row_pitch; \
+        } \
+    }
+
 __kernel void gemm(
-    __constant const wk *const restrict A,
-    __constant const wk *const restrict B,
+    __global const wk *const restrict A,
+    __global const wk *const restrict B,
 
     __global wks *const restrict C,
 
@@ -29,46 +49,19 @@ __kernel void gemm(
     for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
         ulong base_index;
 #if A_TRANS
-        base_index = k * A_row_pitch + i;
-        for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-            __attribute__((opencl_unroll_hint))
-            for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-                A_tmp_buffer[y * BLOCK_SIZE + x] = A[base_index + y];
-            }
-            base_index += A_row_pitch;
-        }
+        FILL_TRANSPOSED_TILE(A_tmp_buffer, A, i, k, A_row_pitch)
 #else
-        base_index = i * A_row_pitch + k;
-        for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-            __attribute__((opencl_unroll_hint))
-            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-                A_tmp_buffer[y * BLOCK_SIZE + x] = A[base_index + x];
-            }
-            base_index += A_row_pitch;
-        }
+        FILL_TILE(A_tmp_buffer, A, i, k, A_row_pitch)
 #endif
 
 #if B_TRANS
-        base_index = j * B_row_pitch + k;
-        for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-            __attribute__((opencl_unroll_hint))
-            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-                B_tmp_buffer[y * BLOCK_SIZE + x] = B[base_index + x];
-            }
-            base_index += B_row_pitch;
-        }
+        FILL_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
 #else
-        base_index = k * B_row_pitch + j;
-        for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-            __attribute__((opencl_unroll_hint))
-            for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-                B_tmp_buffer[y * BLOCK_SIZE + x] = B[base_index + y];
-            }
-            base_index += B_row_pitch;
-        }
+        FILL_TRANSPOSED_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
 #endif
 
         for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
+            /* ulong a_base_index = y * BLOCK_SIZE; */
             for (ulong x = 0; x < BLOCK_SIZE; x += 2) {
 #if WK_VECTOR_WIDTH == 1
                 wk C11 = 0;
@@ -96,18 +89,10 @@ __kernel void gemm(
                     const wk B12 = B_tmp_buffer[base_index + BLOCK_SIZE];
                     const wk B22 = B_tmp_buffer[base_index + BLOCK_SIZE + 1];
 
-                    const wk s1 = (B12 - B22) * A11;
-                    const wk s2 = (B21 - B11) * A22;
-                    const wk s3 = (A11 + A12) * B22;
-                    const wk s4 = (A21 + A22) * B11;
-                    const wk s5 = (A11 + A22) * (B11 + B22);
-                    const wk s6 = (A12 - A22) * (B21 + B22);
-                    const wk s7 = (A11 - A21) * (B11 + B12);
-
-                    C11 += s5 + s2 - s3 + s6;
-                    C12 += s1 + s3;
-                    C21 += s2 + s4;
-                    C22 += s5 + s1 - s4 - s7;
+                    C11 = A11 * B11 + A12 * B21 + C11;
+                    C12 = A11 * B12 + A12 * B22 + C12;
+                    C21 = A21 * B11 + A22 * B21 + C21;
+                    C22 = A21 * B12 + A22 * B22 + C22;
                 }
 
                 base_index = y * BLOCK_SIZE + x;
