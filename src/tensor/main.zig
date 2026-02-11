@@ -162,7 +162,7 @@ const WorkConfiguration = struct {
                 @field(self, global_field_name) = try arena_allocator.alloc([2]u64, command_queues.len);
                 @field(self, local_field_name) = try arena_allocator.alloc([2]u64, command_queues.len);
                 max_block_length = block_length;
-            }else{
+            } else {
                 @field(self, global_field_name) = &.{};
                 @field(self, local_field_name) = &.{};
             }
@@ -176,9 +176,9 @@ const WorkConfiguration = struct {
                 const block_size = cmd.vector_widths[type_index] * block_length2 * @sizeOf(T);
                 const blocks_fit_in_local_mem = switch (cmd.local_mem_type) {
                     .local => (block_size * 2 * 4 <= cmd.local_mem_size),
-                    .global => ((block_size * block_length2) <= 16 * 1024)
+                    .global => ((block_size * block_length2) <= 16 * 1024),
                 };
-                
+
                 if (block_length2 <= max_block_length and blocks_fit_in_local_mem) {
                     const algorithm_name = std.fmt.comptimePrint("{0}x{0}", .{block_length2});
                     const g_field_name = std.fmt.comptimePrint("global_work_items_gemm_{s}", .{algorithm_name});
@@ -189,10 +189,14 @@ const WorkConfiguration = struct {
                         .global => {
                             g_values[0] = gwi_h / block_length2;
                             g_values[1] = gwi_w / block_length2;
-                        }
+                        },
                     }
                     algorithm = @field(GemmAlgorithm, algorithm_name);
-                    utils.calculateWorkItems(g_values, &@field(self, l_field_name)[i], @min(block_length2 * block_length2, cmd.max_work_group_size));
+                    utils.calculateWorkItems(
+                        g_values,
+                        &@field(self, l_field_name)[i],
+                        @min(block_length2 * block_length2, cmd.max_work_group_size),
+                    );
                 }
             }
             self.gemm_algorithm_per_device[i] = algorithm;
