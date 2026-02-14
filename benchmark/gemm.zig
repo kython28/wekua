@@ -11,7 +11,7 @@ pub const starting_point: u64 = 4;
 
 pub const niterations: u64 = switch (builtin.mode) {
     .Debug => 1,
-    else => 10,
+    else => 1,
 };
 
 const PreferredType = f32;

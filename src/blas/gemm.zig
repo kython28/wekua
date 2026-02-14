@@ -13,6 +13,7 @@ const GemmAlgorithm = tensor_module.GemmAlgorithm;
 
 const gemm_Kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
 const gemm_nxn_Kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
+const gemm_nxn_outer_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
 const gemm_nxn_gpu_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
 
 
@@ -31,6 +32,8 @@ fn getKernel(
     op_a: Operation,
     op_b: Operation,
     default_algorithm: GemmAlgorithm,
+    a_row_pitch: u64,
+    b_row_pitch: u64,
     k_size: u64,
     algorithm_ptr: *GemmAlgorithm,
 ) TensorErrors!cl.kernel.Kernel {
@@ -101,7 +104,25 @@ fn getKernel(
         .generic => gemm_Kernel,
         else => switch (command_queue.local_mem_type) {
             .local => gemm_nxn_gpu_Kernel,
-            else => gemm_nxn_Kernel,
+            .global => blk: {
+                if (op_a == .no_transpose and op_b == .transpose) {
+                    break :blk gemm_nxn_Kernel;
+                }else if (op_a == .transpose and op_b == .no_transpose) {
+                    break :blk gemm_nxn_outer_Kernel;
+                }else if (op_a == .transpose and op_b == .transpose) {
+                    if (a_row_pitch > b_row_pitch) {
+                        break :blk gemm_nxn_Kernel;
+                    }else{
+                        break :blk gemm_nxn_outer_Kernel;
+                    }
+                }else{
+                    if (a_row_pitch > b_row_pitch) {
+                        break :blk gemm_nxn_outer_Kernel;
+                    }else{
+                        break :blk gemm_nxn_Kernel;
+                    }
+                }
+            },
         },
     };
 
@@ -183,11 +204,13 @@ pub fn gemm(
     const has_alpha = (alpha != null or beta != null);
     const has_beta = (beta != null);
 
-    const vectors_enabled = if (comptime core.types.isComplex(T))
-        false
-    else
-        (a.flags.vectors_enabled and b.flags.vectors_enabled and op_a == .no_transpose and op_b == .transpose and command_queue.vector_widths[core.types.getTypeId(T)] > 1);
-
+    var vectors_enabled: bool = a.flags.vectors_enabled and b.flags.vectors_enabled;
+    const perfect_for_outer_product = (op_a == .transpose and op_b == .no_transpose and command_queue.local_mem_type == .global);
+    if ((comptime core.types.isComplex(T)) or command_queue.vector_widths[core.types.getTypeId(T)] == 1) {
+        vectors_enabled = false;
+    } else {
+        vectors_enabled &= ((op_a == .no_transpose and op_b == .transpose) or perfect_for_outer_product);
+    }
 
     var k_size: u64 = undefined;
     if (vectors_enabled) {
@@ -197,21 +220,12 @@ pub fn gemm(
         k_size += k_size % 2;
     }
 
-    var algorithm: GemmAlgorithm = undefined;
-    const kernel = try getKernel(
-        T,
-        command_queue,
-        vectors_enabled,
-        has_alpha,
-        has_beta,
-        op_a,
-        op_b,
-        c.work_configuration.gemm_algorithm_per_device[command_queue.wekua_id],
-        k_size,
-        &algorithm,
-    );
+    if (perfect_for_outer_product and k_size < 4 and vectors_enabled) {
+        vectors_enabled = false;
 
-    const prev_events = pipeline.prevEvents();
+        k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
+        k_size += k_size % 2;
+    }
 
     var a_row_pitch: u64 = undefined;
     var b_row_pitch: u64 = undefined;
@@ -224,6 +238,23 @@ pub fn gemm(
         b_row_pitch = b.memory_layout.row_pitch;
     }
 
+    var algorithm: GemmAlgorithm = undefined;
+    const kernel = try getKernel(
+        T,
+        command_queue,
+        vectors_enabled,
+        has_alpha,
+        has_beta,
+        op_a,
+        op_b,
+        c.work_configuration.gemm_algorithm_per_device[command_queue.wekua_id],
+        a_row_pitch,
+        b_row_pitch,
+        k_size,
+        &algorithm,
+    );
+
+    const prev_events = pipeline.prevEvents();
     const wekua_id = command_queue.wekua_id;
 
     var global_work_items: []const u64 = &c.work_configuration.global_work_items_gemm_generic;

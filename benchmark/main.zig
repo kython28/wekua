@@ -5,7 +5,7 @@ const axpy = @import("axpy.zig");
 const gemm = @import("gemm.zig");
 
 const modules = .{
-    axpy,
+    // axpy,
     gemm,
 };
 
