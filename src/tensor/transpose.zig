@@ -164,7 +164,7 @@ pub fn transpose_2d_inplace(
     // Maybe it looks dangerous to use arena_allocator.dupe() here
     // but theoretically it can fail only when the arena reset fails
     // Anyway i will try to fix it later
-    tensor.dimensions.shape = arena_allocator.dupe(u64, shape) catch {
+    tensor.dimensions.shape = arena_allocator.dupe(u64, &shape) catch {
         @panic("Out of memory while defining new shape");
     };
 
@@ -633,6 +633,245 @@ test "transpose - with known values" {
     for (output_data, expected) |actual, exp| {
         try testing.expectEqual(exp, actual);
     }
+}
+
+test "transpose_2d_inplace - square matrix for all types" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 3, 3 };
+    const config = tensor_module.CreateConfig{};
+
+    inline for (core.types.SUPPORTED_TYPES) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
+            defer tensor.release(pipeline);
+
+            // Save original values before transpose
+            try random.uniform(T, pipeline, tensor, 42, null, null);
+
+            var original_values: [3][3]T = undefined;
+            for (0..3) |i| {
+                for (0..3) |j| {
+                    const coords = [_]u64{ i, j };
+                    try memory.getValue(T, pipeline, tensor, &coords, &original_values[i][j]);
+                    pipeline.waitAndCleanup();
+                }
+            }
+
+            // Transpose in-place
+            try transpose_2d_inplace(T, pipeline, tensor);
+
+            // Shape should remain [3, 3]
+            try testing.expectEqual(3, tensor.dimensions.shape[0]);
+            try testing.expectEqual(3, tensor.dimensions.shape[1]);
+
+            // Verify: transposed[j][i] == original[i][j]
+            for (0..3) |i| {
+                for (0..3) |j| {
+                    const coords = [_]u64{ j, i };
+                    var value: T = undefined;
+                    try memory.getValue(T, pipeline, tensor, &coords, &value);
+                    pipeline.waitAndCleanup();
+
+                    if (comptime core.types.isComplex(T)) {
+                        try testing.expectEqual(original_values[i][j].real, value.real);
+                        try testing.expectEqual(original_values[i][j].imag, value.imag);
+                    } else {
+                        try testing.expectEqual(original_values[i][j], value);
+                    }
+                }
+            }
+        }
+    }
+}
+
+test "transpose_2d_inplace - rectangular matrix for all types" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 3, 4 };
+    const config = tensor_module.CreateConfig{};
+
+    inline for (core.types.SUPPORTED_TYPES) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
+            defer tensor.release(pipeline);
+
+            try random.uniform(T, pipeline, tensor, 123, null, null);
+
+            // Save original values
+            var original_values: [3][4]T = undefined;
+            for (0..3) |i| {
+                for (0..4) |j| {
+                    const coords = [_]u64{ i, j };
+                    try memory.getValue(T, pipeline, tensor, &coords, &original_values[i][j]);
+                    pipeline.waitAndCleanup();
+                }
+            }
+
+            // Transpose in-place
+            try transpose_2d_inplace(T, pipeline, tensor);
+
+            // Shape should be [4, 3]
+            try testing.expectEqual(4, tensor.dimensions.shape[0]);
+            try testing.expectEqual(3, tensor.dimensions.shape[1]);
+
+            // Verify: transposed[j][i] == original[i][j]
+            for (0..3) |i| {
+                for (0..4) |j| {
+                    const coords = [_]u64{ j, i };
+                    var value: T = undefined;
+                    try memory.getValue(T, pipeline, tensor, &coords, &value);
+                    pipeline.waitAndCleanup();
+
+                    if (comptime core.types.isComplex(T)) {
+                        try testing.expectEqual(original_values[i][j].real, value.real);
+                        try testing.expectEqual(original_values[i][j].imag, value.imag);
+                    } else {
+                        try testing.expectEqual(original_values[i][j], value);
+                    }
+                }
+            }
+        }
+    }
+}
+
+test "transpose_2d_inplace - with known values" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 2, 3 };
+    const config = tensor_module.CreateConfig{};
+
+    const tensor = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer tensor.release(pipeline);
+
+    // Fill with known pattern: [[1, 2, 3], [4, 5, 6]]
+    const input_data = [_]f32{ 1, 2, 3, 4, 5, 6 };
+    try memory.readFromBuffer(f32, pipeline, tensor, &input_data);
+
+    // Transpose in-place
+    try transpose_2d_inplace(f32, pipeline, tensor);
+
+    // Shape should now be [3, 2]
+    try testing.expectEqual(3, tensor.dimensions.shape[0]);
+    try testing.expectEqual(2, tensor.dimensions.shape[1]);
+
+    // Expected: [[1, 4], [2, 5], [3, 6]]
+    const expected = [_][2]f32{ .{ 1, 4 }, .{ 2, 5 }, .{ 3, 6 } };
+    for (0..3) |i| {
+        for (0..2) |j| {
+            const coords = [_]u64{ i, j };
+            var value: f32 = undefined;
+            try memory.getValue(f32, pipeline, tensor, &coords, &value);
+            pipeline.waitAndCleanup();
+            try testing.expectEqual(expected[i][j], value);
+        }
+    }
+}
+
+test "transpose_2d_inplace - double transpose returns original" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const shape = [_]u64{ 3, 4 };
+    const config = tensor_module.CreateConfig{};
+
+    inline for (core.types.SUPPORTED_TYPES) |T| {
+        if (command_queue.isTypeSupported(T)) {
+            const tensor = try Tensor(T).alloc(context, pipeline, &shape, config);
+            defer tensor.release(pipeline);
+
+            try random.uniform(T, pipeline, tensor, 333, null, null);
+
+            // Save original values
+            var original_values: [3][4]T = undefined;
+            for (0..3) |i| {
+                for (0..4) |j| {
+                    const coords = [_]u64{ i, j };
+                    try memory.getValue(T, pipeline, tensor, &coords, &original_values[i][j]);
+                    pipeline.waitAndCleanup();
+                }
+            }
+
+            // Double transpose
+            try transpose_2d_inplace(T, pipeline, tensor);
+            try transpose_2d_inplace(T, pipeline, tensor);
+
+            // Shape should return to [3, 4]
+            try testing.expectEqual(3, tensor.dimensions.shape[0]);
+            try testing.expectEqual(4, tensor.dimensions.shape[1]);
+
+            // Verify original values are restored
+            for (0..3) |i| {
+                for (0..4) |j| {
+                    const coords = [_]u64{ i, j };
+                    var value: T = undefined;
+                    try memory.getValue(T, pipeline, tensor, &coords, &value);
+                    pipeline.waitAndCleanup();
+
+                    if (comptime core.types.isComplex(T)) {
+                        try testing.expectEqual(original_values[i][j].real, value.real);
+                        try testing.expectEqual(original_values[i][j].imag, value.imag);
+                    } else {
+                        try testing.expectEqual(original_values[i][j], value);
+                    }
+                }
+            }
+        }
+    }
+}
+
+test "transpose_2d_inplace - non-2D tensor returns error" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const config = tensor_module.CreateConfig{};
+
+    // 1D tensor
+    const shape_1d = [_]u64{6};
+    const tensor_1d = try Tensor(f32).alloc(context, pipeline, &shape_1d, config);
+    defer tensor_1d.release(pipeline);
+
+    try testing.expectError(tensor_module.Errors.InvalidValue, transpose_2d_inplace(f32, pipeline, tensor_1d));
+
+    // 3D tensor
+    const shape_3d = [_]u64{ 2, 3, 4 };
+    const tensor_3d = try Tensor(f32).alloc(context, pipeline, &shape_3d, config);
+    defer tensor_3d.release(pipeline);
+
+    try testing.expectError(tensor_module.Errors.InvalidValue, transpose_2d_inplace(f32, pipeline, tensor_3d));
 }
 
 test "transpose - invalid dimension out of bounds" {
