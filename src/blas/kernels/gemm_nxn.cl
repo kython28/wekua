@@ -62,7 +62,6 @@ __kernel void gemm(
 
 #if WK_VECTOR_WIDTH <= 8
         for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
-            /* ulong a_base_index = y * BLOCK_SIZE; */
             for (ulong x = 0; x < BLOCK_SIZE; x += 2) {
 #if WK_VECTOR_WIDTH == 1
                 wk C11 = 0;
