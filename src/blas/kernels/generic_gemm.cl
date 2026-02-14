@@ -212,18 +212,10 @@ __kernel void gemm(
         const wk B22 = B[B_index2 + 1];
 #endif
 
-        const wk s1 = (B12 - B22) * A11;
-        const wk s2 = (B21 - B11) * A22;
-        const wk s3 = (A11 + A12) * B22;
-        const wk s4 = (A21 + A22) * B11;
-        const wk s5 = (A11 + A22) * (B11 + B22);
-        const wk s6 = (A12 - A22) * (B21 + B22);
-        const wk s7 = (A11 - A21) * (B11 + B12);
-
-        C11 += s5 + s2 - s3 + s6;
-        C12 += s1 + s3;
-        C21 += s2 + s4;
-        C22 += s5 + s1 - s4 - s7;
+        C11 = A11 * B11 + A12 * B21 + C11;
+        C12 = A11 * B12 + A12 * B22 + C12;
+        C21 = A21 * B11 + A22 * B21 + C21;
+        C22 = A21 * B12 + A22 * B22 + C22;
     }
 
     const ulong C_index = i*C_row_pitch + j;

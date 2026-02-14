@@ -10,7 +10,7 @@ const modules = .{
 };
 
 const col_width = 12;
-const name_col_width = 17;
+const name_col_width = 22;
 
 fn printHLine(stdout: anytype, ncols: usize, comptime left: []const u8, comptime mid: []const u8, comptime right: []const u8) !void {
     try stdout.writeAll(left);
@@ -40,15 +40,8 @@ pub fn main() !void {
         break :blk std.heap.c_allocator;
     };
 
-    const mode_str = switch (builtin.mode) {
-        .Debug => "Debug",
-        .ReleaseSafe => "ReleaseSafe",
-        .ReleaseFast => "ReleaseFast",
-        .ReleaseSmall => "ReleaseSmall",
-    };
-
     try stdout.print("\n", .{});
-    try stdout.print("  wekua benchmark suite ({s})\n", .{mode_str});
+    try stdout.print("  wekua benchmark suite ({s})\n", .{@tagName(builtin.mode)});
     try stdout.print("\n", .{});
 
     inline for (modules) |module| {

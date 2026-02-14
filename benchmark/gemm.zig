@@ -16,8 +16,26 @@ pub const niterations: u64 = switch (builtin.mode) {
 
 const PreferredType = f32;
 const WekuaCPreferredType = utils.wekua_c.WEKUA_DTYPE_FLOAT;
+const GemmOperation = wekua.blas.GemmOperation;
+
+fn toCblasTranspose(op: GemmOperation) c_uint {
+    return switch (op) {
+        .no_transpose => utils.openblas.CblasNoTrans,
+        .transpose => utils.openblas.CblasTrans,
+    };
+}
+
+fn opName(op: GemmOperation) []const u8 {
+    return switch (op) {
+        .no_transpose => "N",
+        .transpose => "T",
+    };
+}
 
 fn run_openblas_test(
+    op_a: GemmOperation,
+    op_b: GemmOperation,
+    _: cl.device.Type,
     allocator: std.mem.Allocator,
     size: usize,
     alphas: []PreferredType,
@@ -42,8 +60,8 @@ fn run_openblas_test(
     for (alphas, betas) |alpha, beta| {
         gemm_func(
             utils.openblas.CblasRowMajor,
-            utils.openblas.CblasNoTrans,
-            utils.openblas.CblasTrans,
+            toCblasTranspose(op_a),
+            toCblasTranspose(op_b),
             @intCast(size),
             @intCast(size),
             @intCast(size),
@@ -64,6 +82,8 @@ fn run_openblas_test(
 }
 
 fn run_old_wekua_test(
+    op_a: GemmOperation,
+    op_b: GemmOperation,
     device_type: cl.device.Type,
     allocator: std.mem.Allocator,
     size: usize,
@@ -109,9 +129,9 @@ fn run_old_wekua_test(
         ret = utils.wekua_c.wekuaBlasGemm(
             @constCast(&alpha),
             null,
-            0,
+            @intFromEnum(op_a),
             a,
-            1,
+            @intFromEnum(op_b),
             b,
             @constCast(&beta),
             null,
@@ -127,31 +147,9 @@ fn run_old_wekua_test(
     return total_diff;
 }
 
-inline fn run_old_wekua_cpu_test(
-    allocator: std.mem.Allocator,
-    size: usize,
-    alphas: []PreferredType,
-    betas: []PreferredType,
-    buf1: []PreferredType,
-    buf2: []PreferredType,
-    buf3: []PreferredType,
-) !f64 {
-    return run_old_wekua_test(.cpu, allocator, size, alphas, betas, buf1, buf2, buf3);
-}
-
-inline fn run_old_wekua_gpu_test(
-    allocator: std.mem.Allocator,
-    size: usize,
-    alphas: []PreferredType,
-    betas: []PreferredType,
-    buf1: []PreferredType,
-    buf2: []PreferredType,
-    buf3: []PreferredType,
-) !f64 {
-    return run_old_wekua_test(.gpu, allocator, size, alphas, betas, buf1, buf2, buf3);
-}
-
 fn run_wekua_test(
+    op_a: GemmOperation,
+    op_b: GemmOperation,
     device_type: cl.device.Type,
     allocator: std.mem.Allocator,
     size: usize,
@@ -186,13 +184,13 @@ fn run_wekua_test(
     try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, c, buf3);
 
     // Warmup: compile kernels
-    try wekua.blas.gemm(PreferredType, pipeline, 1.0, a, .no_transpose, b, .transpose, 0.0, c);
+    try wekua.blas.gemm(PreferredType, pipeline, 1.0, a, op_a, b, op_b, 0.0, c);
     pipeline.waitAndCleanup();
 
     var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
     for (alphas, betas) |alpha, beta| {
-        try wekua.blas.gemm(PreferredType, pipeline, alpha, a, .no_transpose, b, .transpose, beta, c);
+        try wekua.blas.gemm(PreferredType, pipeline, alpha, a, op_a, b, op_b, beta, c);
     }
     pipeline.waitAndCleanup();
 
@@ -202,91 +200,88 @@ fn run_wekua_test(
     return total_diff;
 }
 
-inline fn run_wekua_cpu_test(
-    allocator: std.mem.Allocator,
-    size: usize,
-    alphas: []PreferredType,
-    betas: []PreferredType,
-    buf1: []PreferredType,
-    buf2: []PreferredType,
-    buf3: []PreferredType,
-) !f64 {
-    return run_wekua_test(.cpu, allocator, size, alphas, betas, buf1, buf2, buf3);
-}
-
-inline fn run_wekua_gpu_test(
-    allocator: std.mem.Allocator,
-    size: usize,
-    alphas: []PreferredType,
-    betas: []PreferredType,
-    buf1: []PreferredType,
-    buf2: []PreferredType,
-    buf3: []PreferredType,
-) !f64 {
-    return run_wekua_test(.gpu, allocator, size, alphas, betas, buf1, buf2, buf3);
-}
-
-const tests = .{
-    .{ "OpenBLAS", run_openblas_test },
-    // .{ "Wekua (C)", run_old_wekua_cpu_test },
-    // .{ "Wekua (C) GPU", run_old_wekua_gpu_test },
-    .{ "wekua (Zig)", run_wekua_cpu_test },
-    .{ "wekua (Zig) GPU", run_wekua_gpu_test },
+const operations = .{
+    .{ GemmOperation.no_transpose, GemmOperation.no_transpose },
+    .{ GemmOperation.no_transpose, GemmOperation.transpose },
+    .{ GemmOperation.transpose, GemmOperation.no_transpose },
+    .{ GemmOperation.transpose, GemmOperation.transpose },
 };
 
+const backends = .{
+    .{ "OpenBLAS", cl.device.Type.cpu, run_openblas_test },
+    // .{ "Wekua (C)", cl.device.Type.cpu, run_old_wekua_test },
+    // .{ "Wekua (C) GPU", cl.device.Type.gpu, run_old_wekua_test },
+    .{ "wekua (Zig)", cl.device.Type.cpu, run_wekua_test },
+    .{ "wekua (Zig) GPU", cl.device.Type.gpu, run_wekua_test },
+};
+
+const num_tests = operations.len * backends.len;
+
 pub fn run_benchmark(allocator: std.mem.Allocator) ![]utils.report {
-    const reports: []utils.report = try allocator.alloc(utils.report, tests.len);
+    const reports: []utils.report = try allocator.alloc(utils.report, num_tests);
     errdefer allocator.free(reports);
 
-    inline for (tests, 0..) |test_info, report_index| {
-        const test_name = test_info[0];
-        const test_func = test_info[1];
+    var report_index: usize = 0;
+    inline for (operations) |op_pair| {
+        const op_a = op_pair[0];
+        const op_b = op_pair[1];
 
-        var report = utils.report{ .name = test_name };
+        inline for (backends) |backend| {
+            const backend_name = backend[0];
+            const device_type = backend[1];
+            const test_func = backend[2];
 
-        var size: u64 = starting_point;
-        for (&report.avg_times_per_batch) |*t| {
-            const a = try allocator.alloc(PreferredType, size * size);
-            defer allocator.free(a);
+            const test_name = backend_name ++ " (" ++ (comptime opName(op_a)) ++ (comptime opName(op_b)) ++ ")";
+            var report = utils.report{ .name = test_name };
 
-            const b = try allocator.alloc(PreferredType, size * size);
-            defer allocator.free(b);
+            var size: u64 = starting_point;
+            for (&report.avg_times_per_batch) |*t| {
+                const a = try allocator.alloc(PreferredType, size * size);
+                defer allocator.free(a);
 
-            const c = try allocator.alloc(PreferredType, size * size);
-            defer allocator.free(c);
+                const b = try allocator.alloc(PreferredType, size * size);
+                defer allocator.free(b);
 
-            const randprg = std.crypto.random;
-            for (a, b, c) |*v1, *v2, *v3| {
-                v1.* = randprg.float(PreferredType);
-                v2.* = randprg.float(PreferredType);
-                v3.* = randprg.float(PreferredType);
+                const c = try allocator.alloc(PreferredType, size * size);
+                defer allocator.free(c);
+
+                const randprg = std.crypto.random;
+                for (a, b, c) |*v1, *v2, *v3| {
+                    v1.* = randprg.float(PreferredType);
+                    v2.* = randprg.float(PreferredType);
+                    v3.* = randprg.float(PreferredType);
+                }
+
+                const alphas = try allocator.alloc(PreferredType, niterations);
+                defer allocator.free(alphas);
+
+                const betas = try allocator.alloc(PreferredType, niterations);
+                defer allocator.free(betas);
+
+                for (alphas, betas) |*alpha, *beta| {
+                    alpha.* = randprg.float(PreferredType);
+                    beta.* = randprg.float(PreferredType);
+                }
+
+                t.* = try test_func(
+                    op_a,
+                    op_b,
+                    device_type,
+                    allocator,
+                    size,
+                    alphas,
+                    betas,
+                    a,
+                    b,
+                    c,
+                );
+
+                size *= 2;
             }
 
-            const alphas = try allocator.alloc(PreferredType, niterations);
-            defer allocator.free(alphas);
-
-            const betas = try allocator.alloc(PreferredType, niterations);
-            defer allocator.free(betas);
-
-            for (alphas, betas) |*alpha, *beta| {
-                alpha.* = randprg.float(PreferredType);
-                beta.* = randprg.float(PreferredType);
-            }
-
-            t.* = try test_func(
-                allocator,
-                size,
-                alphas,
-                betas,
-                a,
-                b,
-                c,
-            );
-
-            size *= 2;
+            reports[report_index] = report;
+            report_index += 1;
         }
-
-        reports[report_index] = report;
     }
 
     return reports;
