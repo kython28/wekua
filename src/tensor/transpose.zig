@@ -9,8 +9,10 @@ const Tensor = tensor_module.Tensor;
 const TensorErrors = tensor_module.Errors;
 
 const helpers = @import("helpers.zig");
+const init = @import("init.zig");
 
 const transpose_cl_kernel: []const u8 = @embedFile("kernels/transpose.cl");
+const transpose_2d_cl_kernel: []const u8 = @embedFile("kernels/transpose_2d.cl");
 
 pub fn transpose(
     comptime T: type,
@@ -101,6 +103,100 @@ pub fn transpose(
     errdefer helpers.releaseEvent(new_event);
 
     try pipeline.append(&.{new_event});
+}
+
+pub fn transpose_2d_inplace(
+    comptime T: type,
+    pipeline: *Pipeline,
+    tensor: *Tensor(T),
+) TensorErrors!void {
+    if (tensor.dimensions.shape.len != 2) {
+        return tensor_module.Errors.InvalidValue;
+    }
+
+    var shape: [2]u64 = undefined;
+    shape[0] = tensor.dimensions.shape[1];
+    shape[1] = tensor.dimensions.shape[0];
+
+    const command_queue = pipeline.command_queue;
+    const kernel = try KernelsSet.getClNoVectorKernel(
+        T,
+        command_queue,
+        .Transpose2D,
+        "transpose_2d",
+        transpose_2d_cl_kernel,
+        null,
+    );
+
+    const prev_events = pipeline.prevEvents();
+
+    const A_row_pitch = tensor.memory_layout.row_pitch;
+    const AT_row_pitch = tensor.memory_layout.slice_pitch / A_row_pitch;
+
+    const setArg = cl.kernel.setArg;
+    const u64_size = @sizeOf(u64);
+    const cl_mem_size = @sizeOf(cl.buffer.Mem);
+
+    try setArg(kernel, 0, cl_mem_size, @ptrCast(&tensor.buffer));
+    try setArg(kernel, 1, u64_size, @ptrCast(&A_row_pitch));
+    try setArg(kernel, 2, u64_size, @ptrCast(&AT_row_pitch));
+
+    const global_work_items = tensor.work_configuration.global_work_items_without_vectors[1..];
+    const local_work_items = tensor.work_configuration.local_work_items_without_vectors[1..];
+
+    var transpose_event: cl.event.Event = undefined;
+    try cl.kernel.enqueueNdRange(
+        command_queue.cl_command_queue,
+        kernel,
+        null,
+        global_work_items,
+        local_work_items,
+        prev_events,
+        &transpose_event,
+    );
+    errdefer helpers.releaseEvent(transpose_event);
+
+    _ = tensor.arena.reset(.retain_capacity);
+    const arena_allocator = tensor.arena.allocator();
+
+    // TODO: See how to handle errors here without panicking
+    // Maybe it looks dangerous to use arena_allocator.dupe() here
+    // but theoretically it can fail only when the arena reset fails
+    // Anyway i will try to fix it later
+    tensor.dimensions.shape = arena_allocator.dupe(u64, shape) catch {
+        @panic("Out of memory while defining new shape");
+    };
+
+    const pitches = arena_allocator.alloc(u64, 2) catch {
+        @panic("Out of memory while defining new pitches");
+    };
+    tensor.dimensions.pitches = pitches;
+
+    _ = try init.initTensorProperties(
+        T,
+        core.types.isComplex(T),
+        core.types.getTypeId(T),
+        tensor.context.command_queues,
+        arena_allocator,
+        tensor,
+        &shape,
+        tensor.flags.vectors_enabled,
+    );
+
+    var update_pitches_event: cl.event.Event = undefined;
+    try cl.buffer.write(
+        pipeline.command_queue.cl_command_queue,
+        tensor.pitches_buffer,
+        false,
+        0,
+        pitches.len * @sizeOf(u64),
+        pitches.ptr,
+        prev_events,
+        &update_pitches_event,
+    );
+    errdefer helpers.releaseEvent(update_pitches_event);
+
+    try pipeline.append(&.{transpose_event, update_pitches_event});
 }
 
 // -----------------------------------------------------------------------------
