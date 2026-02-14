@@ -43,7 +43,7 @@ pub fn init(
     self: *WorkConfiguration,
     comptime T: type,
     arena_allocator: std.mem.Allocator,
-    command_queues: []CommandQueue,
+    command_queues: []const CommandQueue,
     depth: u64,
     penultimate_size: u64,
     padded_penultimate_size: u64,
@@ -104,7 +104,7 @@ fn initGemm(
     self: *WorkConfiguration,
     comptime T: type,
     arena_allocator: std.mem.Allocator,
-    command_queues: []CommandQueue,
+    command_queues: []const CommandQueue,
     padded_penultimate_size: u64,
     last_size: u64,
 ) error{OutOfMemory}!void {
