@@ -28,8 +28,13 @@ __kernel void gemm(
     local wk A_tmp_buffer[4 * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     local wk B_tmp_buffer[4 * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
 
+#if A_TRANS == 0
     const ulong row_A = i*A_row_pitch;
+#endif
+
+#if B_TRANS
     const ulong row_B = j*B_row_pitch;
+#endif
 
 #if WK_VECTOR_WIDTH == 1
     wk C11 = 0;
@@ -52,6 +57,20 @@ __kernel void gemm(
         private wk B11, B12, B21, B22;
 
         if (x == 0) {
+#if A_TRANS
+            base_index = k * A_row_pitch + i;
+
+            A11 = A[base_index];
+            A21 = A[base_index + 1];
+
+            A12 = A[base_index + A_row_pitch];
+            A22 = A[base_index + A_row_pitch + 1];
+
+            A_tmp_buffer[local_base_index_A] = A11;
+            A_tmp_buffer[local_base_index_A + 1] = A12;
+            A_tmp_buffer[local_base_index_A + 2] = A21;
+            A_tmp_buffer[local_base_index_A + 3] = A22;
+#else
             base_index = row_A + k;
 
             A11 = A[base_index];
@@ -64,11 +83,14 @@ __kernel void gemm(
             A_tmp_buffer[local_base_index_A + 1] = A12;
             A_tmp_buffer[local_base_index_A + 2] = A21;
             A_tmp_buffer[local_base_index_A + 3] = A22;
+
+#endif
         }
 
         if (y == 0) {
+#if B_TRANS
             base_index = row_B + k;
-
+            
             B11 = B[base_index];
             B21 = B[base_index + 1];
 
@@ -79,6 +101,20 @@ __kernel void gemm(
             B_tmp_buffer[local_base_index_B + 1] = B21;
             B_tmp_buffer[local_base_index_B + 2] = B12;
             B_tmp_buffer[local_base_index_B + 3] = B22;
+#else
+            base_index = k * B_row_pitch + j;
+
+            B11 = B[base_index];
+            B12 = B[base_index + 1];
+
+            B21 = B[base_index + B_row_pitch];
+            B22 = B[base_index + B_row_pitch + 1];
+
+            B_tmp_buffer[local_base_index_B] = B11;
+            B_tmp_buffer[local_base_index_B + 1] = B21;
+            B_tmp_buffer[local_base_index_B + 2] = B12;
+            B_tmp_buffer[local_base_index_B + 3] = B22;
+#endif
         }
         barrier(CLK_LOCAL_MEM_FENCE);
 

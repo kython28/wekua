@@ -10,6 +10,16 @@
         base_index += row_pitch; \
     }
 
+#define FILL_TRANSPOSED_TILE(tile, values, row_index, col_index, row_pitch) \
+    for (ulong y = 0; y < BLOCK_SIZE; y += 1) { \
+        base_index = row_index * row_pitch + col_index + y; \
+        __attribute__((opencl_unroll_hint)) \
+        for (ulong x = 0; x < BLOCK_SIZE; x += 1) { \
+            tile[y * BLOCK_SIZE + x] = values[base_index]; \
+            base_index += row_pitch; \
+        } \
+    }
+
 __kernel void gemm(
     __global const wk *const restrict A,
     __global const wk *const restrict B,
@@ -38,8 +48,17 @@ __kernel void gemm(
 
     for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
         ulong base_index;
+#if A_TRANS
+        FILL_TRANSPOSED_TILE(A_tmp_buffer, A, i, k, A_row_pitch)
+#else
         FILL_TILE(A_tmp_buffer, A, i, k, A_row_pitch)
+#endif
+
+#if B_TRANS
         FILL_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
+#else
+        FILL_TRANSPOSED_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
+#endif
 
 #if WK_VECTOR_WIDTH <= 8
         for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
@@ -168,9 +187,9 @@ __kernel void gemm(
                     C33 = A31 * B13 + A32 * B23 + A33 * B33 + A34 * B43 + C33;
                     C34 = A31 * B14 + A32 * B24 + A33 * B34 + A34 * B44 + C34;
 
-                    C41 = A41 * B11 + A42 * B21 + A43 * B31 + A44 * B41 + C41;
-                    C42 = A41 * B12 + A42 * B22 + A43 * B32 + A44 * B42 + C42;
-                    C43 = A41 * B13 + A42 * B23 + A43 * B33 + A44 * B43 + C43;
+                    C41 = A41 * B11 + A42 * B21 + A43 * B31 + A44 * B41 + C41; 
+                    C42 = A41 * B12 + A42 * B22 + A43 * B32 + A44 * B42 + C42; 
+                    C43 = A41 * B13 + A42 * B23 + A43 * B33 + A44 * B43 + C43; 
                     C44 = A41 * B14 + A42 * B24 + A43 * B34 + A44 * B44 + C44;
                 }
 

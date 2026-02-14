@@ -25,11 +25,15 @@ __kernel void gemm(
     const ulong i = get_global_id(0) << 1;
     const ulong j = get_global_id(1) << 1;
 
+#if A_TRANS == 0
     const ulong row_A = i*A_row_pitch;
     const ulong next_row_A = row_A + A_row_pitch;
+#endif
 
+#if B_TRANS
     const ulong row_B = j*B_row_pitch;
     const ulong next_row_B = row_B + B_row_pitch;
+#endif
 
 #if WK_COMPLEX
 
@@ -41,15 +45,35 @@ __kernel void gemm(
     COMPLEX_MUL_K(T)
 
     for (ulong k=0; k<cols; k += 2) {
+#if A_TRANS
+        const ulong A_index = k*A_row_pitch + i;
+        const ulong A_index2 = A_index + A_row_pitch;
+
+        const wk A11 = A[A_index];
+        const wk A21 = A[A_index + 1];
+        const wk A12 = A[A_index2];
+        const wk A22 = A[A_index2 + 1];
+#else
         const wk A11 = A[row_A + k];
         const wk A12 = A[row_A + k + 1];
         const wk A21 = A[next_row_A + k];
         const wk A22 = A[next_row_A + k + 1];
+#endif
 
+#if B_TRANS
         const wk B11 = B[row_B + k];
         const wk B21 = B[row_B + k + 1];
         const wk B12 = B[next_row_B + k];
         const wk B22 = B[next_row_B + k + 1];
+#else
+        const ulong B_index = k*B_row_pitch + j;
+        const ulong B_index2 = B_index + B_row_pitch;
+
+        const wk B11 = B[B_index];
+        const wk B12 = B[B_index + 1];
+        const wk B21 = B[B_index2];
+        const wk B22 = B[B_index2 + 1];
+#endif
 
         // Strassen temporaries (component-wise add/sub on .real/.imag)
         wk t0 = { B22.real - B12.real, B22.imag - B12.imag };
@@ -158,15 +182,35 @@ __kernel void gemm(
     #endif
 
     for (ulong k=0; k<cols; k += 2) {
+#if A_TRANS
+        const ulong A_index = k*A_row_pitch + i;
+        const ulong A_index2 = A_index + A_row_pitch;
+
+        const wk A11 = A[A_index];
+        const wk A21 = A[A_index + 1];
+        const wk A12 = A[A_index2];
+        const wk A22 = A[A_index2 + 1];
+#else
         const wk A11 = A[row_A + k];
         const wk A12 = A[row_A + k + 1];
         const wk A21 = A[next_row_A + k];
         const wk A22 = A[next_row_A + k + 1];
+#endif
 
+#if B_TRANS
         const wk B11 = B[row_B + k];
         const wk B21 = B[row_B + k + 1];
         const wk B12 = B[next_row_B + k];
         const wk B22 = B[next_row_B + k + 1];
+#else
+        const ulong B_index = k*B_row_pitch + j;
+        const ulong B_index2 = B_index + B_row_pitch;
+
+        const wk B11 = B[B_index];
+        const wk B12 = B[B_index + 1];
+        const wk B21 = B[B_index2];
+        const wk B22 = B[B_index2 + 1];
+#endif
 
         C11 = A11 * B11 + A12 * B21 + C11;
         C12 = A11 * B12 + A12 * B22 + C12;

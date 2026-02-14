@@ -13,7 +13,6 @@ pub const KernelsID = enum(u16) {
     RandomUniform,
     RandRange,
     Transpose,
-    Transpose2D,
     ToComplex,
     ToReal,
     AXPY,

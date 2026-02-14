@@ -13,6 +13,7 @@ const GemmAlgorithm = tensor_module.GemmAlgorithm;
 
 const gemm_Kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
 const gemm_nxn_Kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
+const gemm_nxn_outer_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
 const gemm_nxn_gpu_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
 
 
@@ -28,13 +29,17 @@ fn getKernel(
     vectors_enabled: bool,
     has_alpha: bool,
     has_beta: bool,
+    op_a: Operation,
+    op_b: Operation,
     default_algorithm: GemmAlgorithm,
+    a_row_pitch: u64,
+    b_row_pitch: u64,
     k_size: u64,
     algorithm_ptr: *GemmAlgorithm,
 ) TensorErrors!cl.kernel.Kernel {
     const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
     const num_algorithms = std.meta.fields(GemmAlgorithm).len;
-    const kernels_per_algorithm = 2 * 2 * 2 * SUPPORTED_TYPES.len;
+    const kernels_per_algorithm = 2 * 2 * 2 * 2 * 2 * SUPPORTED_TYPES.len;
 
     const kernels_set = try KernelsSet.getKernelSet(
         command_queue,
@@ -59,9 +64,11 @@ fn getKernel(
     algorithm_ptr.* = algorithm;
 
     var kernel_index: usize = @intFromEnum(algorithm) * kernels_per_algorithm;
-    kernel_index += @intFromBool(vectors_enabled) * (2 * 2 * SUPPORTED_TYPES.len);
-    kernel_index += @intFromBool(has_alpha) * (2 * SUPPORTED_TYPES.len);
-    kernel_index += @intFromBool(has_beta) * SUPPORTED_TYPES.len;
+    kernel_index += @intFromBool(vectors_enabled) * (2 * 2 * 2 * 2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromBool(has_alpha) * (2 * 2 * 2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromBool(has_beta) * (2 * 2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromEnum(op_a) * (2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromEnum(op_b) * SUPPORTED_TYPES.len;
     kernel_index += @as(usize, core.types.getTypeIndex(T));
 
     if (kernels_set.kernels.?[kernel_index]) |v| return v;
@@ -81,10 +88,12 @@ fn getKernel(
     const allocator = command_queue.context.allocator;
     const extra_args: []u8 = try std.fmt.allocPrint(
         allocator,
-        "-DHAS_ALPHA={d} -DHAS_BETA={d} -DSTRIDE={d} -DBLOCK_SIZE={d}",
+        "-DHAS_ALPHA={d} -DHAS_BETA={d} -DA_TRANS={d} -DB_TRANS={d} -DSTRIDE={d} -DBLOCK_SIZE={d}",
         .{
             @intFromBool(has_alpha),
             @intFromBool(has_beta),
+            @intFromEnum(op_a),
+            @intFromEnum(op_b),
             stride,
             block_size,
         },
@@ -95,7 +104,25 @@ fn getKernel(
         .generic => gemm_Kernel,
         else => switch (command_queue.local_mem_type) {
             .local => gemm_nxn_gpu_Kernel,
-            .global => gemm_nxn_Kernel,
+            .global => blk: {
+                if (op_a == .no_transpose and op_b == .transpose) {
+                    break :blk gemm_nxn_Kernel;
+                }else if (op_a == .transpose and op_b == .no_transpose) {
+                    break :blk gemm_nxn_outer_Kernel;
+                }else if (op_a == .transpose and op_b == .transpose) {
+                    if (a_row_pitch > b_row_pitch) {
+                        break :blk gemm_nxn_Kernel;
+                    }else{
+                        break :blk gemm_nxn_outer_Kernel;
+                    }
+                }else{
+                    if (a_row_pitch > b_row_pitch) {
+                        break :blk gemm_nxn_outer_Kernel;
+                    }else{
+                        break :blk gemm_nxn_Kernel;
+                    }
+                }
+            },
         },
     };
 
@@ -174,44 +201,29 @@ pub fn gemm(
 
     const command_queue = pipeline.command_queue;
 
-    // Pre-transpose to guarantee kernel always sees A=normal, B=transposed
-    var a_needs_restore = false;
-    var b_needs_restore = false;
-
-    if (op_a == .transpose) {
-        try tensor_module.transpose_2d_inplace(T, pipeline, a);
-        a_needs_restore = true;
-    }
-
-    if (op_b == .no_transpose) {
-        try tensor_module.transpose_2d_inplace(T, pipeline, b);
-        b_needs_restore = true;
-    }
-
-    errdefer {
-        if (a_needs_restore) {
-            tensor_module.transpose_2d_inplace(T, pipeline, a) catch
-                @panic("Failed to restore tensor A to its original state after GEMM error");
-        }
-        if (b_needs_restore) {
-            tensor_module.transpose_2d_inplace(T, pipeline, b) catch
-                @panic("Failed to restore tensor B to its original state after GEMM error");
-        }
-    }
-
     const has_alpha = (alpha != null or beta != null);
     const has_beta = (beta != null);
 
     var vectors_enabled: bool = a.flags.vectors_enabled and b.flags.vectors_enabled;
+    const perfect_for_outer_product = (op_a == .transpose and op_b == .no_transpose and command_queue.local_mem_type == .global);
     if ((comptime core.types.isComplex(T)) or command_queue.vector_widths[core.types.getTypeId(T)] == 1) {
         vectors_enabled = false;
+    } else {
+        vectors_enabled &= ((op_a == .no_transpose and op_b == .transpose) or perfect_for_outer_product);
     }
 
     var k_size: u64 = undefined;
     if (vectors_enabled) {
         k_size = a.memory_layout.row_pitch_for_vectors;
-    } else {
-        k_size = a.dimensions.shape[1];
+    }else{
+        k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
+        k_size += k_size % 2;
+    }
+
+    if (perfect_for_outer_product and k_size < 4 and vectors_enabled) {
+        vectors_enabled = false;
+
+        k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
         k_size += k_size % 2;
     }
 
@@ -233,7 +245,11 @@ pub fn gemm(
         vectors_enabled,
         has_alpha,
         has_beta,
+        op_a,
+        op_b,
         c.work_configuration.gemm_algorithm_per_device[command_queue.wekua_id],
+        a_row_pitch,
+        b_row_pitch,
         k_size,
         &algorithm,
     );
@@ -303,17 +319,6 @@ pub fn gemm(
     errdefer tensor_module.helpers.releaseEvent(new_event);
 
     try pipeline.append(&.{new_event});
-
-    // Restore A: clear flag first so errdefer skips it if this fails
-    if (a_needs_restore) {
-        try tensor_module.transpose_2d_inplace(T, pipeline, a);
-        a_needs_restore = false;
-    }
-    // Restore B: if A's restore failed, errdefer handles B via b_needs_restore
-    if (b_needs_restore) {
-        try tensor_module.transpose_2d_inplace(T, pipeline, b);
-        b_needs_restore = false;
-    }
 }
 
 // -----------------------------------------------------------------------------
