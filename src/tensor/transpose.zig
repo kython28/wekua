@@ -141,8 +141,9 @@ pub fn transpose_2d_inplace(
     try setArg(kernel, 1, u64_size, @ptrCast(&A_row_pitch));
     try setArg(kernel, 2, u64_size, @ptrCast(&AT_row_pitch));
 
-    const global_work_items = tensor.work_configuration.global_work_items_without_vectors[1..];
-    const local_work_items = tensor.work_configuration.local_work_items_without_vectors[1..];
+    const wekua_id = command_queue.wekua_id;
+    const global_work_items: []const u64 = tensor.work_configuration.global_work_items_without_vectors[1..];
+    const local_work_items: []const u64 = tensor.work_configuration.local_work_items_without_vectors[wekua_id][1..];
 
     var transpose_event: cl.event.Event = undefined;
     try cl.kernel.enqueueNdRange(
