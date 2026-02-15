@@ -36,6 +36,10 @@ __kernel void gemm(
     const ulong A_base_index = i * A_slice_pitch;
     const ulong B_base_index = j * B_slice_pitch;
 
+#if WK_COMPLEX
+
+    COMPLEX_MUL_K(T)
+
     for (ulong k = 0; k < cols; k += 1) {
         ulong base_index = A_base_index + k * A_row_pitch;
         ulong tile_index = 0;
@@ -45,6 +49,7 @@ __kernel void gemm(
             for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
                 A_tmp_buffer[tile_index + x] = A_packed[base_index + x];
             }
+            base_index += BLOCK_SIZE;
             tile_index += BLOCK_SIZE;
         }
 
@@ -55,6 +60,117 @@ __kernel void gemm(
             for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
                 B_tmp_buffer[tile_index + x] = B_packed[base_index + x];
             }
+            base_index += BLOCK_SIZE;
+            tile_index += BLOCK_SIZE;
+        }
+
+        for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
+            for (ulong x = 0; x < BLOCK_SIZE; x += 2) {
+                wk C11 = {0, 0};
+                wk C12 = {0, 0};
+                wk C21 = {0, 0};
+                wk C22 = {0, 0};
+
+                __attribute__((opencl_unroll_hint))
+                for (ulong z = 0; z < BLOCK_SIZE; z += 2) {
+                    base_index = y * BLOCK_SIZE + z;
+                    const wk A11 = A_tmp_buffer[base_index];
+                    const wk A12 = A_tmp_buffer[base_index + 1];
+                    const wk A21 = A_tmp_buffer[base_index + BLOCK_SIZE];
+                    const wk A22 = A_tmp_buffer[base_index + BLOCK_SIZE + 1];
+
+                    base_index = x * BLOCK_SIZE + z;
+                    const wk B11 = B_tmp_buffer[base_index];
+                    const wk B21 = B_tmp_buffer[base_index + 1];
+                    const wk B12 = B_tmp_buffer[base_index + BLOCK_SIZE];
+                    const wk B22 = B_tmp_buffer[base_index + BLOCK_SIZE + 1];
+
+                    wk prod;
+
+                    COMPLEX_MUL(A11, B11, prod);
+                    C11.real += prod.real; C11.imag += prod.imag;
+                    COMPLEX_MUL(A12, B21, prod);
+                    C11.real += prod.real; C11.imag += prod.imag;
+
+                    COMPLEX_MUL(A11, B12, prod);
+                    C12.real += prod.real; C12.imag += prod.imag;
+                    COMPLEX_MUL(A12, B22, prod);
+                    C12.real += prod.real; C12.imag += prod.imag;
+
+                    COMPLEX_MUL(A21, B11, prod);
+                    C21.real += prod.real; C21.imag += prod.imag;
+                    COMPLEX_MUL(A22, B21, prod);
+                    C21.real += prod.real; C21.imag += prod.imag;
+
+                    COMPLEX_MUL(A21, B12, prod);
+                    C22.real += prod.real; C22.imag += prod.imag;
+                    COMPLEX_MUL(A22, B22, prod);
+                    C22.real += prod.real; C22.imag += prod.imag;
+                }
+
+                base_index = y * BLOCK_SIZE + x;
+                C_tmp_buffer[base_index].real += C11.real;
+                C_tmp_buffer[base_index].imag += C11.imag;
+                C_tmp_buffer[base_index + 1].real += C12.real;
+                C_tmp_buffer[base_index + 1].imag += C12.imag;
+                C_tmp_buffer[base_index + BLOCK_SIZE].real += C21.real;
+                C_tmp_buffer[base_index + BLOCK_SIZE].imag += C21.imag;
+                C_tmp_buffer[base_index + BLOCK_SIZE + 1].real += C22.real;
+                C_tmp_buffer[base_index + BLOCK_SIZE + 1].imag += C22.imag;
+            }
+        }
+    }
+
+    ulong C_base = C_row * C_row_pitch + C_col;
+    __attribute__((opencl_unroll_hint))
+    for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
+        __attribute__((opencl_unroll_hint))
+        for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
+#if HAS_ALPHA
+#if HAS_BETA
+            wk tmp_val = C_tmp_buffer[y * BLOCK_SIZE + x];
+            wk scaled;
+            COMPLEX_MUL(tmp_val, alpha, scaled);
+            wk old_val = C[C_base + x];
+            wk beta_scaled;
+            COMPLEX_MUL(old_val, beta, beta_scaled);
+            C[C_base + x] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+#else
+            wk tmp_val = C_tmp_buffer[y * BLOCK_SIZE + x];
+            wk scaled;
+            COMPLEX_MUL(tmp_val, alpha, scaled);
+            C[C_base + x] = (wks){ scaled.real, scaled.imag };
+#endif
+#else
+            C[C_base + x] = (wks){ C_tmp_buffer[y * BLOCK_SIZE + x].real, C_tmp_buffer[y * BLOCK_SIZE + x].imag };
+#endif
+        }
+        C_base += C_row_pitch;
+    }
+
+#else
+
+    for (ulong k = 0; k < cols; k += 1) {
+        ulong base_index = A_base_index + k * A_row_pitch;
+        ulong tile_index = 0;
+
+        for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
+            __attribute__((opencl_unroll_hint))
+            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
+                A_tmp_buffer[tile_index + x] = A_packed[base_index + x];
+            }
+            base_index += BLOCK_SIZE;
+            tile_index += BLOCK_SIZE;
+        }
+
+        base_index = B_base_index + k * B_row_pitch;
+        tile_index = 0;
+        for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
+            __attribute__((opencl_unroll_hint))
+            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
+                B_tmp_buffer[tile_index + x] = B_packed[base_index + x];
+            }
+            base_index += BLOCK_SIZE;
             tile_index += BLOCK_SIZE;
         }
 
@@ -185,9 +301,9 @@ __kernel void gemm(
                     C33 = A31 * B13 + A32 * B23 + A33 * B33 + A34 * B43 + C33;
                     C34 = A31 * B14 + A32 * B24 + A33 * B34 + A34 * B44 + C34;
 
-                    C41 = A41 * B11 + A42 * B21 + A43 * B31 + A44 * B41 + C41; 
-                    C42 = A41 * B12 + A42 * B22 + A43 * B32 + A44 * B42 + C42; 
-                    C43 = A41 * B13 + A42 * B23 + A43 * B33 + A44 * B43 + C43; 
+                    C41 = A41 * B11 + A42 * B21 + A43 * B31 + A44 * B41 + C41;
+                    C42 = A41 * B12 + A42 * B22 + A43 * B32 + A44 * B42 + C42;
+                    C43 = A41 * B13 + A42 * B23 + A43 * B33 + A44 * B43 + C43;
                     C44 = A41 * B14 + A42 * B24 + A43 * B34 + A44 * B44 + C44;
                 }
 
@@ -248,4 +364,6 @@ __kernel void gemm(
         }
         C_base += C_row_pitch;
     }
+
+#endif
 }
