@@ -65,6 +65,8 @@ inline fn getAlgorithm(
 pub fn PackedTensors(comptime T: type) type {
     const TensorT = Tensor(T);
 
+    const is_complex = core.types.isComplex(T);
+
     return struct {
         m_size: u64,
         n_size: u64,
@@ -93,7 +95,7 @@ pub fn PackedTensors(comptime T: type) type {
 
             const vector_width: u64 = @intCast(command_queue.vector_widths[core.types.getTypeId(T)]);
             var padded_k_size = k_size;
-            if (vectors_enabled) {
+            if (!is_complex and vectors_enabled) {
                 const remaining_size = padded_k_size % (vector_width * 2);
                 if (remaining_size > 0) {
                     padded_k_size += (vector_width * 2) - remaining_size;
@@ -118,7 +120,7 @@ pub fn PackedTensors(comptime T: type) type {
 
             const row_size = padded_k_size / block_size;
             var col_size: u64 = @as(u64, block_size) * block_size;
-            if (vectors_enabled) {
+            if (!is_complex and vectors_enabled) {
                 col_size *= vector_width;
             }
 
@@ -149,7 +151,7 @@ pub fn PackedTensors(comptime T: type) type {
 
                 .packed_a = packed_a,
                 .packed_b = packed_b,
-                .vectors_enabled = vectors_enabled,
+                .vectors_enabled = !is_complex and vectors_enabled,
                 .algorithm = recommended_algorithm,
             };
 
