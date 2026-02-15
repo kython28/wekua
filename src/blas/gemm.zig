@@ -15,13 +15,273 @@ const gemm_Kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
 const gemm_nxn_Kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
 const gemm_nxn_outer_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
 const gemm_nxn_gpu_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
-
+const gemm_pack_Kernel: []const u8 = @embedFile("kernels/gemm_pack.cl");
 
 pub const Operation = enum(u8) {
     no_transpose = 0,
     transpose = 1,
     // ConjugateTranspose // TODO
 };
+
+inline fn getBlockSizeFromAlgorithm(algorithm: GemmAlgorithm) u16 {
+    return switch (algorithm) {
+        .generic => 2,
+        .@"4x4" => 4,
+        .@"8x8" => 8,
+        .@"16x16" => 16,
+        .@"32x32" => 32,
+        .@"64x64" => 64,
+        .@"128x128" => 128,
+        .@"256x256" => 256,
+    };
+}
+
+inline fn getAlgorithm(
+    comptime T: type,
+    default_algorithm: GemmAlgorithm,
+    k_size: u64,
+) GemmAlgorithm {
+    if (comptime core.types.isComplex(T)) {
+        return .generic;
+    }
+
+    comptime var block_size = 256;
+    inline while (block_size >= 2) {
+        const field_name = switch (block_size) {
+            2 => "generic",
+            else => std.fmt.comptimePrint("{0}x{0}", .{block_size}),
+        };
+        const field_value = @field(GemmAlgorithm, field_name);
+        if ((k_size % block_size) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(field_value)) {
+            return field_value;
+        }
+
+        block_size /= 2;
+    }
+
+    @panic("Unsupported block size");
+}
+
+pub fn PackedTensors(comptime T: type) type {
+    const TensorT = Tensor(T);
+
+    return struct {
+        m_size: u64,
+        n_size: u64,
+        k_size: u64,
+
+        packed_a: *TensorT,
+        packed_b: *TensorT,
+        vectors_enabled: bool,
+        algorithm: GemmAlgorithm,
+
+        const Self = @This();
+
+        pub fn init(
+            pipeline: *Pipeline,
+            result_tensor: *Tensor(T),
+            k_size: u64,
+            vectors_enabled: bool,
+        ) TensorErrors!*Self {
+            const shape = result_tensor.dimensions.shape;
+            if (shape.len != 2) {
+                return tensor_module.Errors.InvalidValue;
+            }
+
+            const command_queue = pipeline.command_queue;
+            const wekua_id = command_queue.wekua_id;
+
+            const vector_width: u64 = @intCast(command_queue.vector_widths[core.types.getTypeId(T)]);
+            var padded_k_size = k_size;
+            if (vectors_enabled) {
+                const remaining_size = padded_k_size % (vector_width * 2);
+                if (remaining_size > 0) {
+                    padded_k_size += (vector_width * 2) - remaining_size;
+                }
+                padded_k_size /= vector_width;
+            } else {
+                padded_k_size += padded_k_size % 2;
+            }
+
+            const recommended_algorithm = getAlgorithm(
+                T,
+                result_tensor.work_configuration.gemm_algorithm_per_device[wekua_id],
+                padded_k_size,
+            );
+            const block_size = getBlockSizeFromAlgorithm(recommended_algorithm);
+
+            const m_size = shape[0];
+            const n_size = shape[1];
+
+            const padded_m_size = m_size + (m_size % block_size);
+            const padded_n_size = n_size + (n_size % block_size);
+
+            const row_size = padded_k_size / block_size;
+            var col_size: u64 = @as(u64, block_size) * block_size;
+            if (vectors_enabled) {
+                col_size *= vector_width;
+            }
+
+            const context = result_tensor.context;
+            const packed_a = try TensorT.alloc(
+                context,
+                pipeline,
+                &.{padded_m_size / block_size, row_size, col_size},
+                .{ .vectors_enabled = vectors_enabled },
+            );
+            errdefer packed_a.release(pipeline);
+
+            const packed_b = try TensorT.alloc(
+                context,
+                pipeline,
+                &.{padded_n_size / block_size, row_size, col_size},
+                .{ .vectors_enabled = vectors_enabled },
+            );
+            errdefer packed_b.release(pipeline);
+
+            const self = try pipeline.allocator.create(Self);
+            errdefer pipeline.allocator.destroy(self);
+
+            self.* = .{
+                .m_size = m_size,
+                .n_size = n_size,
+                .k_size = k_size,
+
+                .packed_a = packed_a,
+                .packed_b = packed_b,
+                .vectors_enabled = vectors_enabled,
+                .algorithm = recommended_algorithm,
+            };
+
+            return self;
+        }
+
+        fn getPackKernel(
+            self: *const Self,
+            command_queue: *const CommandQueue,
+            transpose: bool,
+        ) TensorErrors!cl.kernel.Kernel {
+            const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
+            const num_algorithms = std.meta.fields(GemmAlgorithm).len;
+            const kernels_per_algorithm = 2 * 2 * SUPPORTED_TYPES.len;
+
+            const kernels_set = try KernelsSet.getKernelSet(
+                command_queue,
+                .GEMMPack,
+                num_algorithms * kernels_per_algorithm,
+            );
+
+            var kernel_index: usize = @intFromEnum(self.algorithm) * kernels_per_algorithm;
+            kernel_index += @intFromBool(self.vectors_enabled) * (2 * SUPPORTED_TYPES.len);
+            kernel_index += @intFromBool(transpose) * SUPPORTED_TYPES.len;
+            kernel_index += @as(usize, core.types.getTypeIndex(T));
+
+            if (kernels_set.kernels.?[kernel_index]) |v| return v;
+
+            var kernel: cl.kernel.Kernel = undefined;
+            var program: cl.program.Program = undefined;
+
+            const block_size = getBlockSizeFromAlgorithm(self.algorithm);
+            const allocator = command_queue.context.allocator;
+            const extra_args = try std.fmt.allocPrint(
+                allocator,
+                "-DTRANSPOSE={d} -DBLOCK_SIZE={d}",
+                .{ @intFromBool(transpose), block_size },
+            );
+            defer allocator.free(extra_args);
+
+            try KernelsSet.compileKernel(T, command_queue, .{
+                .vectors_enabled = self.vectors_enabled,
+                .kernel_name = "pack",
+                .extra_args = extra_args,
+            }, &kernel, &program, gemm_pack_Kernel);
+
+            kernels_set.kernels.?[kernel_index] = kernel;
+            kernels_set.programs.?[kernel_index] = program;
+
+            return kernel;
+        }
+
+        pub fn pack(
+            self: *Self,
+            pipeline: *Pipeline,
+            a: *TensorT,
+            op_a: Operation,
+            b: *TensorT,
+            op_b: Operation,
+        ) TensorErrors!void {
+            const command_queue = pipeline.command_queue;
+            const wekua_id = command_queue.wekua_id;
+
+            const a_transpose = (op_a == .transpose);
+            const b_transpose = (op_b == .no_transpose); // inverted for B
+
+            const kernel_a = try self.getPackKernel(command_queue, a_transpose);
+            const kernel_b = try self.getPackKernel(command_queue, b_transpose);
+
+            const setArg = cl.kernel.setArg;
+            const cl_mem_size = @sizeOf(cl.buffer.Mem);
+
+            // Set kernel args for pack A
+            const a_src_pitch: u64 = if (self.vectors_enabled) a.memory_layout.row_pitch_for_vectors else a.memory_layout.row_pitch;
+            const a_dst_slice: u64 = if (self.vectors_enabled) self.packed_a.memory_layout.slice_pitch_for_vectors else self.packed_a.memory_layout.slice_pitch;
+            const a_dst_pitch: u64 = if (self.vectors_enabled) self.packed_a.memory_layout.row_pitch_for_vectors else self.packed_a.memory_layout.row_pitch;
+
+            try setArg(kernel_a, 0, cl_mem_size, @ptrCast(&a.buffer));
+            try setArg(kernel_a, 1, cl_mem_size, @ptrCast(&self.packed_a.buffer));
+            try setArg(kernel_a, 2, @sizeOf(u64), @ptrCast(&a_src_pitch));
+            try setArg(kernel_a, 3, @sizeOf(u64), @ptrCast(&a_dst_slice));
+            try setArg(kernel_a, 4, @sizeOf(u64), @ptrCast(&a_dst_pitch));
+
+            // Set kernel args for pack B
+            const b_src_pitch: u64 = if (self.vectors_enabled) b.memory_layout.row_pitch_for_vectors else b.memory_layout.row_pitch;
+            const b_dst_slice: u64 = if (self.vectors_enabled) self.packed_b.memory_layout.slice_pitch_for_vectors else self.packed_b.memory_layout.slice_pitch;
+            const b_dst_pitch: u64 = if (self.vectors_enabled) self.packed_b.memory_layout.row_pitch_for_vectors else self.packed_b.memory_layout.row_pitch;
+
+            try setArg(kernel_b, 0, cl_mem_size, @ptrCast(&b.buffer));
+            try setArg(kernel_b, 1, cl_mem_size, @ptrCast(&self.packed_b.buffer));
+            try setArg(kernel_b, 2, @sizeOf(u64), @ptrCast(&b_src_pitch));
+            try setArg(kernel_b, 3, @sizeOf(u64), @ptrCast(&b_dst_slice));
+            try setArg(kernel_b, 4, @sizeOf(u64), @ptrCast(&b_dst_pitch));
+
+            // NDRange from packed tensor's work_configuration (first 2 dims)
+            const a_global: []const u64 = self.packed_a.work_configuration.global_work_items[0..2];
+            const a_local: []const u64 = self.packed_a.work_configuration.local_work_items[wekua_id][0..2];
+
+            const b_global: []const u64 = self.packed_b.work_configuration.global_work_items[0..2];
+            const b_local: []const u64 = self.packed_b.work_configuration.local_work_items[wekua_id][0..2];
+
+            // Both kernels share the same prev_events and run concurrently
+            const prev_events = pipeline.prevEvents();
+
+            var event_a: cl.event.Event = undefined;
+            try cl.kernel.enqueueNdRange(
+                command_queue.cl_command_queue,
+                kernel_a,
+                null,
+                a_global,
+                a_local,
+                prev_events,
+                &event_a,
+            );
+            errdefer tensor_module.helpers.releaseEvent(event_a);
+
+            var event_b: cl.event.Event = undefined;
+            try cl.kernel.enqueueNdRange(
+                command_queue.cl_command_queue,
+                kernel_b,
+                null,
+                b_global,
+                b_local,
+                prev_events,
+                &event_b,
+            );
+            errdefer tensor_module.helpers.releaseEvent(event_b);
+
+            try pipeline.append(&.{ event_a, event_b });
+        }
+    };
+}
 
 fn getKernel(
     comptime T: type,
@@ -47,20 +307,7 @@ fn getKernel(
         num_algorithms * kernels_per_algorithm,
     );
 
-    const algorithm: GemmAlgorithm = blk: {
-        if (comptime core.types.isComplex(T)) {
-            break :blk .generic;
-        }
-        if ((k_size % 32) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"32x32"))
-            break :blk .@"32x32";
-        if ((k_size % 16) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"16x16"))
-            break :blk .@"16x16";
-        if ((k_size % 8) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"8x8"))
-            break :blk .@"8x8";
-        if ((k_size % 4) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(GemmAlgorithm.@"4x4"))
-            break :blk .@"4x4";
-        break :blk .generic;
-    };
+    const algorithm = getAlgorithm(T, default_algorithm, k_size);
     algorithm_ptr.* = algorithm;
 
     var kernel_index: usize = @intFromEnum(algorithm) * kernels_per_algorithm;
@@ -77,13 +324,7 @@ fn getKernel(
     var program: cl.program.Program = undefined;
 
     const stride = @intFromEnum(algorithm) + 1;
-    const block_size: u8 = switch (algorithm) {
-        .generic => 2,
-        .@"4x4" => 4,
-        .@"8x8" => 8,
-        .@"16x16" => 16,
-        .@"32x32" => 32,
-    };
+    const block_size = getBlockSizeFromAlgorithm(algorithm);
 
     const allocator = command_queue.context.allocator;
     const extra_args: []u8 = try std.fmt.allocPrint(
@@ -107,18 +348,18 @@ fn getKernel(
             .global => blk: {
                 if (op_a == .no_transpose and op_b == .transpose) {
                     break :blk gemm_nxn_Kernel;
-                }else if (op_a == .transpose and op_b == .no_transpose) {
+                } else if (op_a == .transpose and op_b == .no_transpose) {
                     break :blk gemm_nxn_outer_Kernel;
-                }else if (op_a == .transpose and op_b == .transpose) {
+                } else if (op_a == .transpose and op_b == .transpose) {
                     if (a_row_pitch > b_row_pitch) {
                         break :blk gemm_nxn_Kernel;
-                    }else{
+                    } else {
                         break :blk gemm_nxn_outer_Kernel;
                     }
-                }else{
+                } else {
                     if (a_row_pitch > b_row_pitch) {
                         break :blk gemm_nxn_outer_Kernel;
-                    }else{
+                    } else {
                         break :blk gemm_nxn_Kernel;
                     }
                 }
@@ -153,6 +394,10 @@ inline fn validateTensors(
     op_a: Operation,
     op_b: Operation,
 ) TensorErrors!void {
+    if (a.context != b.context or a.context != c.context) {
+        return tensor_module.Errors.UnqualTensorsContext;
+    }
+
     const a_shape = a.dimensions.shape;
     const b_shape = b.dimensions.shape;
     const c_shape = c.dimensions.shape;
@@ -215,7 +460,7 @@ pub fn gemm(
     var k_size: u64 = undefined;
     if (vectors_enabled) {
         k_size = a.memory_layout.row_pitch_for_vectors;
-    }else{
+    } else {
         k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
         k_size += k_size % 2;
     }
@@ -277,6 +522,18 @@ pub fn gemm(
         .@"32x32" => {
             global_work_items = &c.work_configuration.global_work_items_gemm_32x32[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_32x32[wekua_id];
+        },
+        .@"64x64" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_64x64[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_64x64[wekua_id];
+        },
+        .@"128x128" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_128x128[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_128x128[wekua_id];
+        },
+        .@"256x256" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_256x256[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_256x256[wekua_id];
         },
     }
 
@@ -842,6 +1099,270 @@ test "gemm - alpha and beta for complex types" {
                     const expected = castComplex(T, (i + 1) * 2 + 3, 0);
                     try testing.expectEqual(expected.real, val.real);
                     try testing.expectEqual(expected.imag, val.imag);
+                }
+            }
+        }
+    }
+}
+
+test "pack - normal packing (A no_transpose)" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const n = 8;
+    const shape = [_]u64{ n, n };
+    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+
+    const a = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer a.release(pipeline);
+
+    const b = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer b.release(pipeline);
+
+    const c_mat = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer c_mat.release(pipeline);
+
+    // Fill A with sequential values: A[i][j] = i * n + j + 1
+    const a_buf = try allocator.alloc(f32, n * n);
+    defer allocator.free(a_buf);
+    for (a_buf, 0..) |*val, i| {
+        val.* = @floatFromInt(i + 1);
+    }
+    try memory.readFromBuffer(f32, pipeline, a, a_buf);
+
+    // Fill B with zeros (not needed for this test, but pack requires both)
+    try fill.zeroes(f32, pipeline, b);
+
+    // Compute k_size like gemm does for no_transpose
+    var k_size: u64 = a.dimensions.shape[1];
+    k_size += k_size % 2;
+
+    const pack_ctx = try PackedTensors(f32).init(pipeline, c_mat, k_size, false);
+    defer pack_ctx.packed_a.release(pipeline);
+    defer pack_ctx.packed_b.release(pipeline);
+    defer pipeline.allocator.destroy(pack_ctx);
+
+    try pack_ctx.pack(pipeline, a, .no_transpose, b, .no_transpose);
+
+    // Read back packed_a
+    const packed_a_elems = pack_ctx.packed_a.dimensions.number_of_elements_without_padding;
+    const packed_a_buf = try allocator.alloc(f32, packed_a_elems);
+    defer allocator.free(packed_a_buf);
+
+    try memory.writeToBuffer(f32, pipeline, pack_ctx.packed_a, packed_a_buf);
+    pipeline.waitAndCleanup();
+
+    // Verify packed_a (TRANSPOSE=0 → FILL_TILE pattern)
+    const bs: u64 = getBlockSizeFromAlgorithm(pack_ctx.algorithm);
+    const packed_a_shape = pack_ctx.packed_a.dimensions.shape;
+    const tile_rows = packed_a_shape[0];
+    const tile_cols = packed_a_shape[1];
+    const tile_data = packed_a_shape[2];
+
+    for (0..tile_rows) |tr| {
+        for (0..tile_cols) |tc| {
+            for (0..bs) |y| {
+                for (0..bs) |x| {
+                    const packed_idx = tr * tile_cols * tile_data + tc * tile_data + y * bs + x;
+                    const src_row = tr * bs + y;
+                    const src_col = tc * bs + x;
+                    const expected = a_buf[src_row * n + src_col];
+                    try testing.expectEqual(expected, packed_a_buf[packed_idx]);
+                }
+            }
+        }
+    }
+}
+
+test "pack - transposed packing (A transpose)" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const n = 8;
+    const shape = [_]u64{ n, n };
+    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+
+    const a = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer a.release(pipeline);
+
+    const b = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer b.release(pipeline);
+
+    const c_mat = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer c_mat.release(pipeline);
+
+    // Fill A with sequential values: A[i][j] = i * n + j + 1
+    const a_buf = try allocator.alloc(f32, n * n);
+    defer allocator.free(a_buf);
+    for (a_buf, 0..) |*val, i| {
+        val.* = @floatFromInt(i + 1);
+    }
+    try memory.readFromBuffer(f32, pipeline, a, a_buf);
+
+    try fill.zeroes(f32, pipeline, b);
+
+    var k_size: u64 = a.dimensions.shape[0]; // transpose: k comes from shape[0]
+    k_size += k_size % 2;
+
+    const pack_ctx = try PackedTensors(f32).init(pipeline, c_mat, k_size, false);
+    defer pack_ctx.packed_a.release(pipeline);
+    defer pack_ctx.packed_b.release(pipeline);
+    defer pipeline.allocator.destroy(pack_ctx);
+
+    try pack_ctx.pack(pipeline, a, .transpose, b, .transpose);
+
+    // Read back packed_a
+    const packed_a_elems = pack_ctx.packed_a.dimensions.number_of_elements_without_padding;
+    const packed_a_buf = try allocator.alloc(f32, packed_a_elems);
+    defer allocator.free(packed_a_buf);
+
+    try memory.writeToBuffer(f32, pipeline, pack_ctx.packed_a, packed_a_buf);
+    pipeline.waitAndCleanup();
+
+    // Verify packed_a (TRANSPOSE=1 → FILL_TRANSPOSED_TILE pattern)
+    const bs: u64 = getBlockSizeFromAlgorithm(pack_ctx.algorithm);
+    const packed_a_shape = pack_ctx.packed_a.dimensions.shape;
+    const tile_rows = packed_a_shape[0];
+    const tile_cols = packed_a_shape[1];
+    const tile_data = packed_a_shape[2];
+
+    for (0..tile_rows) |tr| {
+        for (0..tile_cols) |tc| {
+            for (0..bs) |y| {
+                for (0..bs) |x| {
+                    const packed_idx = tr * tile_cols * tile_data + tc * tile_data + y * bs + x;
+                    // Transposed: tile[y*BS+x] = src[(tr*BS+x)*cols + tc*BS+y]
+                    const src_row = tr * bs + x;
+                    const src_col = tc * bs + y;
+                    const expected = a_buf[src_row * n + src_col];
+                    try testing.expectEqual(expected, packed_a_buf[packed_idx]);
+                }
+            }
+        }
+    }
+}
+
+test "pack - B packing (inverted transpose)" {
+    const allocator = testing.allocator;
+
+    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const n = 8;
+    const shape = [_]u64{ n, n };
+    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+
+    const a = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer a.release(pipeline);
+
+    const b = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer b.release(pipeline);
+
+    const c_mat = try Tensor(f32).alloc(context, pipeline, &shape, config);
+    defer c_mat.release(pipeline);
+
+    // Fill B with sequential values: B[i][j] = i * n + j + 1
+    const b_buf = try allocator.alloc(f32, n * n);
+    defer allocator.free(b_buf);
+    for (b_buf, 0..) |*val, i| {
+        val.* = @floatFromInt(i + 1);
+    }
+    try memory.readFromBuffer(f32, pipeline, b, b_buf);
+
+    try fill.zeroes(f32, pipeline, a);
+
+    var k_size: u64 = a.dimensions.shape[1];
+    k_size += k_size % 2;
+
+    // Test 1: op_b = .no_transpose → B packed with TRANSPOSE=1 (transposed read)
+    {
+        const pack_ctx = try PackedTensors(f32).init(pipeline, c_mat, k_size, false);
+        defer pack_ctx.packed_a.release(pipeline);
+        defer pack_ctx.packed_b.release(pipeline);
+        defer pipeline.allocator.destroy(pack_ctx);
+
+        try pack_ctx.pack(pipeline, a, .no_transpose, b, .no_transpose);
+
+        const packed_b_elems = pack_ctx.packed_b.dimensions.number_of_elements_without_padding;
+        const packed_b_buf = try allocator.alloc(f32, packed_b_elems);
+        defer allocator.free(packed_b_buf);
+
+        try memory.writeToBuffer(f32, pipeline, pack_ctx.packed_b, packed_b_buf);
+        pipeline.waitAndCleanup();
+
+        // Verify packed_b with TRANSPOSE=1 (FILL_TRANSPOSED_TILE pattern)
+        const bs: u64 = getBlockSizeFromAlgorithm(pack_ctx.algorithm);
+        const packed_b_shape = pack_ctx.packed_b.dimensions.shape;
+        const tile_rows = packed_b_shape[0];
+        const tile_cols = packed_b_shape[1];
+        const tile_data = packed_b_shape[2];
+
+        for (0..tile_rows) |tr| {
+            for (0..tile_cols) |tc| {
+                for (0..bs) |y| {
+                    for (0..bs) |x| {
+                        const packed_idx = tr * tile_cols * tile_data + tc * tile_data + y * bs + x;
+                        // Transposed: tile[y*BS+x] = src[(tr*BS+x)*cols + tc*BS+y]
+                        const src_row = tr * bs + x;
+                        const src_col = tc * bs + y;
+                        const expected = b_buf[src_row * n + src_col];
+                        try testing.expectEqual(expected, packed_b_buf[packed_idx]);
+                    }
+                }
+            }
+        }
+    }
+
+    // Test 2: op_b = .transpose → B packed with TRANSPOSE=0 (normal read)
+    {
+        const pack_ctx = try PackedTensors(f32).init(pipeline, c_mat, k_size, false);
+        defer pack_ctx.packed_a.release(pipeline);
+        defer pack_ctx.packed_b.release(pipeline);
+        defer pipeline.allocator.destroy(pack_ctx);
+
+        try pack_ctx.pack(pipeline, a, .no_transpose, b, .transpose);
+
+        const packed_b_elems = pack_ctx.packed_b.dimensions.number_of_elements_without_padding;
+        const packed_b_buf = try allocator.alloc(f32, packed_b_elems);
+        defer allocator.free(packed_b_buf);
+
+        try memory.writeToBuffer(f32, pipeline, pack_ctx.packed_b, packed_b_buf);
+        pipeline.waitAndCleanup();
+
+        // Verify packed_b with TRANSPOSE=0 (FILL_TILE pattern)
+        const bs: u64 = getBlockSizeFromAlgorithm(pack_ctx.algorithm);
+        const packed_b_shape = pack_ctx.packed_b.dimensions.shape;
+        const tile_rows = packed_b_shape[0];
+        const tile_cols = packed_b_shape[1];
+        const tile_data = packed_b_shape[2];
+
+        for (0..tile_rows) |tr| {
+            for (0..tile_cols) |tc| {
+                for (0..bs) |y| {
+                    for (0..bs) |x| {
+                        const packed_idx = tr * tile_cols * tile_data + tc * tile_data + y * bs + x;
+                        // Normal: tile[y*BS+x] = src[(tr*BS+y)*cols + tc*BS+x]
+                        const src_row = tr * bs + y;
+                        const src_col = tc * bs + x;
+                        const expected = b_buf[src_row * n + src_col];
+                        try testing.expectEqual(expected, packed_b_buf[packed_idx]);
+                    }
                 }
             }
         }

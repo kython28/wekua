@@ -18,6 +18,7 @@ pub const KernelsID = enum(u16) {
     AXPY,
     Identity,
     GEMM,
+    GEMMPack,
 
     // --- Math kernels ---
     // Basic

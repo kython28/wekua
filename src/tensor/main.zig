@@ -29,6 +29,7 @@ pub const Errors = error{
     UnqualTensorsAttribute,
     UnqualTensorsShape,
     UnqualTensorsDimension,
+    UnqualTensorsContext,
 } || std.mem.Allocator.Error || cl.errors.OpenCLError || core.KernelsSet.Errors;
 
 pub const CreateConfig = struct {
