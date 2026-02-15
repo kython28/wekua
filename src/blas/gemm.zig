@@ -126,7 +126,7 @@ pub fn PackedTensors(comptime T: type) type {
             const packed_a = try TensorT.alloc(
                 context,
                 pipeline,
-                &.{padded_m_size / block_size, row_size, col_size},
+                &.{ padded_m_size / block_size, row_size, col_size },
                 .{ .vectors_enabled = vectors_enabled },
             );
             errdefer packed_a.release(pipeline);
@@ -134,7 +134,7 @@ pub fn PackedTensors(comptime T: type) type {
             const packed_b = try TensorT.alloc(
                 context,
                 pipeline,
-                &.{padded_n_size / block_size, row_size, col_size},
+                &.{ padded_n_size / block_size, row_size, col_size },
                 .{ .vectors_enabled = vectors_enabled },
             );
             errdefer packed_b.release(pipeline);
@@ -190,11 +190,18 @@ pub fn PackedTensors(comptime T: type) type {
             );
             defer allocator.free(extra_args);
 
-            try KernelsSet.compileKernel(T, command_queue, .{
-                .vectors_enabled = self.vectors_enabled,
-                .kernel_name = "pack",
-                .extra_args = extra_args,
-            }, &kernel, &program, gemm_pack_Kernel);
+            try KernelsSet.compileKernel(
+                T,
+                command_queue,
+                .{
+                    .vectors_enabled = self.vectors_enabled,
+                    .kernel_name = "pack",
+                    .extra_args = extra_args,
+                },
+                &kernel,
+                &program,
+                gemm_pack_Kernel,
+            );
 
             kernels_set.kernels.?[kernel_index] = kernel;
             kernels_set.programs.?[kernel_index] = program;
@@ -222,37 +229,48 @@ pub fn PackedTensors(comptime T: type) type {
             const setArg = cl.kernel.setArg;
             const cl_mem_size = @sizeOf(cl.buffer.Mem);
 
-            // Set kernel args for pack A
-            const a_src_pitch: u64 = if (self.vectors_enabled) a.memory_layout.row_pitch_for_vectors else a.memory_layout.row_pitch;
-            const a_dst_slice: u64 = if (self.vectors_enabled) self.packed_a.memory_layout.slice_pitch_for_vectors else self.packed_a.memory_layout.slice_pitch;
-            const a_dst_pitch: u64 = if (self.vectors_enabled) self.packed_a.memory_layout.row_pitch_for_vectors else self.packed_a.memory_layout.row_pitch;
+            const packed_a = self.packed_a;
+            const packed_b = self.packed_b;
 
-            try setArg(kernel_a, 0, cl_mem_size, @ptrCast(&a.buffer));
-            try setArg(kernel_a, 1, cl_mem_size, @ptrCast(&self.packed_a.buffer));
-            try setArg(kernel_a, 2, @sizeOf(u64), @ptrCast(&a_src_pitch));
-            try setArg(kernel_a, 3, @sizeOf(u64), @ptrCast(&a_dst_slice));
-            try setArg(kernel_a, 4, @sizeOf(u64), @ptrCast(&a_dst_pitch));
+            var a_src_pitch: u64 = undefined;
+            var a_dst_slice: u64 = undefined;
+            var a_dst_pitch: u64 = undefined;
 
-            // Set kernel args for pack B
-            const b_src_pitch: u64 = if (self.vectors_enabled) b.memory_layout.row_pitch_for_vectors else b.memory_layout.row_pitch;
-            const b_dst_slice: u64 = if (self.vectors_enabled) self.packed_b.memory_layout.slice_pitch_for_vectors else self.packed_b.memory_layout.slice_pitch;
-            const b_dst_pitch: u64 = if (self.vectors_enabled) self.packed_b.memory_layout.row_pitch_for_vectors else self.packed_b.memory_layout.row_pitch;
+            var b_src_pitch: u64 = undefined;
+            var b_dst_slice: u64 = undefined;
+            var b_dst_pitch: u64 = undefined;
 
-            try setArg(kernel_b, 0, cl_mem_size, @ptrCast(&b.buffer));
-            try setArg(kernel_b, 1, cl_mem_size, @ptrCast(&self.packed_b.buffer));
-            try setArg(kernel_b, 2, @sizeOf(u64), @ptrCast(&b_src_pitch));
-            try setArg(kernel_b, 3, @sizeOf(u64), @ptrCast(&b_dst_slice));
-            try setArg(kernel_b, 4, @sizeOf(u64), @ptrCast(&b_dst_pitch));
+            if (self.vectors_enabled) {
+                a_src_pitch = a.memory_layout.row_pitch_for_vectors;
+                a_dst_slice = packed_a.memory_layout.slice_pitch_for_vectors;
+                a_dst_pitch = packed_a.memory_layout.row_pitch_for_vectors;
 
-            // NDRange from packed tensor's work_configuration (first 2 dims)
+                b_src_pitch = b.memory_layout.row_pitch_for_vectors;
+                b_dst_slice = packed_b.memory_layout.slice_pitch_for_vectors;
+                b_dst_pitch = packed_b.memory_layout.row_pitch_for_vectors;
+            }else{
+                a_src_pitch = a.memory_layout.row_pitch;
+                a_dst_slice = packed_a.memory_layout.slice_pitch;
+                a_dst_pitch = packed_a.memory_layout.row_pitch;
+
+                b_src_pitch = b.memory_layout.row_pitch;
+                b_dst_slice = packed_b.memory_layout.slice_pitch;
+                b_dst_pitch = packed_b.memory_layout.row_pitch;
+            }
+
             const a_global: []const u64 = self.packed_a.work_configuration.global_work_items[0..2];
             const a_local: []const u64 = self.packed_a.work_configuration.local_work_items[wekua_id][0..2];
 
             const b_global: []const u64 = self.packed_b.work_configuration.global_work_items[0..2];
             const b_local: []const u64 = self.packed_b.work_configuration.local_work_items[wekua_id][0..2];
 
-            // Both kernels share the same prev_events and run concurrently
             const prev_events = pipeline.prevEvents();
+
+            try setArg(kernel_a, 0, cl_mem_size, @ptrCast(&a.buffer));
+            try setArg(kernel_a, 1, cl_mem_size, @ptrCast(&self.packed_a.buffer));
+            try setArg(kernel_a, 2, @sizeOf(u64), @ptrCast(&a_src_pitch));
+            try setArg(kernel_a, 3, @sizeOf(u64), @ptrCast(&a_dst_slice));
+            try setArg(kernel_a, 4, @sizeOf(u64), @ptrCast(&a_dst_pitch));
 
             var event_a: cl.event.Event = undefined;
             try cl.kernel.enqueueNdRange(
@@ -265,6 +283,12 @@ pub fn PackedTensors(comptime T: type) type {
                 &event_a,
             );
             errdefer tensor_module.helpers.releaseEvent(event_a);
+
+            try setArg(kernel_b, 0, cl_mem_size, @ptrCast(&b.buffer));
+            try setArg(kernel_b, 1, cl_mem_size, @ptrCast(&self.packed_b.buffer));
+            try setArg(kernel_b, 2, @sizeOf(u64), @ptrCast(&b_src_pitch));
+            try setArg(kernel_b, 3, @sizeOf(u64), @ptrCast(&b_dst_slice));
+            try setArg(kernel_b, 4, @sizeOf(u64), @ptrCast(&b_dst_pitch));
 
             var event_b: cl.event.Event = undefined;
             try cl.kernel.enqueueNdRange(
