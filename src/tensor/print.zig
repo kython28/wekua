@@ -185,7 +185,8 @@ fn printVector(
                     }
                 },
                 false => {
-                    for (buf[0..@min(cols, 2)]) |v| {
+                    const limit = 4;
+                    for (buf[0..@min(cols, limit)]) |v| {
                         if ((@abs(10000.0) - @abs(v)) > 1e-8) {
                             try writer.print("{d: >14.8},", .{v});
                         } else {
@@ -193,14 +194,14 @@ fn printVector(
                         }
                     }
 
-                    if (cols > 2) {
-                        var dec: usize = 3;
-                        if (cols > 5) {
-                            dec = 2;
+                    if (cols > limit) {
+                        var dec: usize = limit + 1;
+                        if (cols > (limit * 2 + 1)) {
+                            dec = limit;
                             try writer.print("{s: >14},", .{"..."});
                         }
 
-                        for (buf[@max(2, cols - dec)..cols]) |v| {
+                        for (buf[@max(limit, cols - dec)..cols]) |v| {
                             if ((@abs(10000.0) - @abs(v)) > 1e-8) {
                                 try writer.print("{d: >14.8},", .{v});
                             } else {
