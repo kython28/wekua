@@ -15,7 +15,8 @@ const gemm_Kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
 const gemm_nxn_Kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
 const gemm_nxn_outer_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
 const gemm_nxn_gpu_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
-const gemm_pack_Kernel: []const u8 = @embedFile("kernels/gemm_pack.cl");
+const gemm_pack_tiles_Kernel: []const u8 = @embedFile("kernels/gemm_pack.cl");
+const gemm_nxn_pack_kernel: []const u8 = @embedFile("kernels/gemm_nxn_pack.cl");
 
 pub const Operation = enum(u8) {
     no_transpose = 0,
@@ -169,7 +170,7 @@ pub fn PackedTensors(comptime T: type) type {
 
             const kernels_set = try KernelsSet.getKernelSet(
                 command_queue,
-                .GEMMPack,
+                .PackGEMMTiles,
                 num_algorithms * kernels_per_algorithm,
             );
 
@@ -202,13 +203,35 @@ pub fn PackedTensors(comptime T: type) type {
                 },
                 &kernel,
                 &program,
-                gemm_pack_Kernel,
+                gemm_pack_tiles_Kernel,
             );
 
             kernels_set.kernels.?[kernel_index] = kernel;
             kernels_set.programs.?[kernel_index] = program;
 
             return kernel;
+        }
+
+        inline fn validateTensors(
+            self: *Self,
+            a: *TensorT,
+            op_a: Operation,
+            b: *TensorT,
+            op_b: Operation,
+        ) TensorErrors!void {
+            var valid = switch (op_a) {
+                .no_transpose => (a.dimensions.shape[0] == self.n_size and a.dimensions.shape[1] == self.k_size),
+                .transpose => (a.dimensions.shape[1] == self.n_size and a.dimensions.shape[0] == self.k_size),
+            };
+
+            valid &= switch (op_b) {
+                .no_transpose => (b.dimensions.shape[0] == self.k_size and b.dimensions.shape[1] == self.m_size),
+                .transpose => (b.dimensions.shape[1] == self.k_size and b.dimensions.shape[0] == self.m_size),
+            };
+
+            if (!valid) {
+                return tensor_module.Errors.InvalidValue;
+            }
         }
 
         pub fn pack(
@@ -219,6 +242,8 @@ pub fn PackedTensors(comptime T: type) type {
             b: *TensorT,
             op_b: Operation,
         ) TensorErrors!void {
+            try self.validateTensors(a, op_a, b, op_b);
+
             const command_queue = pipeline.command_queue;
             const wekua_id = command_queue.wekua_id;
 
@@ -250,7 +275,7 @@ pub fn PackedTensors(comptime T: type) type {
                 b_src_pitch = b.memory_layout.row_pitch_for_vectors;
                 b_dst_slice = packed_b.memory_layout.slice_pitch_for_vectors;
                 b_dst_pitch = packed_b.memory_layout.row_pitch_for_vectors;
-            }else{
+            } else {
                 a_src_pitch = a.memory_layout.row_pitch;
                 a_dst_slice = packed_a.memory_layout.slice_pitch;
                 a_dst_pitch = packed_a.memory_layout.row_pitch;
@@ -309,7 +334,7 @@ pub fn PackedTensors(comptime T: type) type {
     };
 }
 
-fn getKernel(
+fn getGemmKernelWithoutPacking(
     comptime T: type,
     command_queue: *const CommandQueue,
     vectors_enabled: bool,
@@ -457,7 +482,7 @@ inline fn validateTensors(
     }
 }
 
-pub fn gemm(
+fn gemmWithoutPacking(
     comptime T: type,
     pipeline: *Pipeline,
     alpha: ?T,
@@ -468,8 +493,6 @@ pub fn gemm(
     beta: ?T,
     c: *Tensor(T),
 ) TensorErrors!void {
-    try validateTensors(T, a, b, c, op_a, op_b);
-
     const command_queue = pipeline.command_queue;
 
     const has_alpha = (alpha != null or beta != null);
@@ -510,7 +533,7 @@ pub fn gemm(
     }
 
     var algorithm: GemmAlgorithm = undefined;
-    const kernel = try getKernel(
+    const kernel = try getGemmKernelWithoutPacking(
         T,
         command_queue,
         vectors_enabled,
@@ -602,6 +625,263 @@ pub fn gemm(
     errdefer tensor_module.helpers.releaseEvent(new_event);
 
     try pipeline.append(&.{new_event});
+}
+
+
+fn getGemmKernelWithPacking(
+    comptime T: type,
+    command_queue: *const CommandQueue,
+    vectors_enabled: bool,
+    has_alpha: bool,
+    has_beta: bool,
+    op_a: Operation,
+    op_b: Operation,
+    algorithm: GemmAlgorithm,
+) TensorErrors!cl.kernel.Kernel {
+    const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
+    const num_algorithms = std.meta.fields(GemmAlgorithm).len;
+    const kernels_per_algorithm = 2 * 2 * 2 * SUPPORTED_TYPES.len;
+
+    const kernels_set = try KernelsSet.getKernelSet(
+        command_queue,
+        .GEMMPack,
+        num_algorithms * kernels_per_algorithm,
+    );
+
+    var kernel_index: usize = @intFromEnum(algorithm) * kernels_per_algorithm;
+    kernel_index += @intFromBool(vectors_enabled) * (2 * 2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromBool(has_alpha) * (2 * SUPPORTED_TYPES.len);
+    kernel_index += @intFromBool(has_beta) * SUPPORTED_TYPES.len;
+    kernel_index += @as(usize, core.types.getTypeIndex(T));
+
+    if (kernels_set.kernels.?[kernel_index]) |v| return v;
+
+    var kernel: cl.kernel.Kernel = undefined;
+    var program: cl.program.Program = undefined;
+
+    const stride = @intFromEnum(algorithm) + 1;
+    const block_size = getBlockSizeFromAlgorithm(algorithm);
+
+    const allocator = command_queue.context.allocator;
+    const extra_args: []u8 = try std.fmt.allocPrint(
+        allocator,
+        "-DHAS_ALPHA={d} -DHAS_BETA={d} -DA_TRANS={d} -DB_TRANS={d} -DSTRIDE={d} -DBLOCK_SIZE={d}",
+        .{
+            @intFromBool(has_alpha),
+            @intFromBool(has_beta),
+            @intFromEnum(op_a),
+            @intFromEnum(op_b),
+            stride,
+            block_size,
+        },
+    );
+    defer allocator.free(extra_args);
+
+    try KernelsSet.compileKernel(
+        T,
+        command_queue,
+        .{
+            .vectors_enabled = vectors_enabled,
+            .kernel_name = "gemm",
+            .extra_args = extra_args,
+        },
+        &kernel,
+        &program,
+        gemm_nxn_pack_kernel,
+    );
+
+    kernels_set.kernels.?[kernel_index] = kernel;
+    kernels_set.programs.?[kernel_index] = program;
+
+    return kernel;
+}
+
+fn gemmWithPacking(
+    comptime T: type,
+    pipeline: *Pipeline,
+    alpha: ?T,
+    a: *Tensor(T),
+    op_a: Operation,
+    b: *Tensor(T),
+    op_b: Operation,
+    beta: ?T,
+    c: *Tensor(T),
+    packed_tensors: *PackedTensors(T),
+) TensorErrors!void {
+    const command_queue = pipeline.command_queue;
+    const wekua_id = command_queue.wekua_id;
+
+    const has_alpha = (alpha != null or beta != null);
+    const has_beta = (beta != null);
+
+    try packed_tensors.pack(
+        pipeline,
+        a,
+        op_a,
+        b,
+        op_b,
+    );
+
+    const vectors_enabled = packed_tensors.vectors_enabled;
+
+    const algorithm = packed_tensors.algorithm;
+    const kernel = try getGemmKernelWithPacking(
+        T,
+        command_queue,
+        vectors_enabled,
+        has_alpha,
+        has_beta,
+        op_a,
+        op_b,
+        algorithm,
+    );
+
+    var global_work_items: []const u64 = &c.work_configuration.global_work_items_gemm_generic;
+    var local_work_items: []const u64 = &c.work_configuration.local_work_items_gemm_generic[wekua_id];
+
+    switch (algorithm) {
+        .generic => {},
+        .@"4x4" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_4x4[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_4x4[wekua_id];
+        },
+        .@"8x8" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_8x8[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_8x8[wekua_id];
+        },
+        .@"16x16" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_16x16[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_16x16[wekua_id];
+        },
+        .@"32x32" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_32x32[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_32x32[wekua_id];
+        },
+        .@"64x64" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_64x64[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_64x64[wekua_id];
+        },
+        .@"128x128" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_128x128[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_128x128[wekua_id];
+        },
+        .@"256x256" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_256x256[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_256x256[wekua_id];
+        },
+    }
+
+    const packed_tensor_a = packed_tensors.packed_a;
+    const packed_tensor_b = packed_tensors.packed_b;
+
+    var A_slice_pitch: u64 = undefined;
+    var A_row_pitch: u64 = undefined;
+
+    var B_slice_pitch: u64 = undefined;
+    var B_row_pitch: u64 = undefined;
+
+    if (vectors_enabled) {
+        A_slice_pitch = packed_tensor_a.memory_layout.slice_pitch_for_vectors;
+        A_row_pitch = packed_tensor_a.memory_layout.row_pitch_for_vectors;
+
+        B_slice_pitch = packed_tensor_b.memory_layout.slice_pitch_for_vectors;
+        B_row_pitch = packed_tensor_b.memory_layout.row_pitch_for_vectors;
+    } else {
+        A_slice_pitch = packed_tensor_a.memory_layout.slice_pitch;
+        A_row_pitch = packed_tensor_a.memory_layout.row_pitch;
+
+        B_slice_pitch = packed_tensor_b.memory_layout.slice_pitch;
+        B_row_pitch = packed_tensor_b.memory_layout.row_pitch;
+    }
+
+    const prev_events = pipeline.prevEvents();
+
+    const setArg = cl.kernel.setArg;
+    const cl_mem_size = @sizeOf(cl.buffer.Mem);
+
+    try setArg(kernel, 0, cl_mem_size, @ptrCast(&a.buffer));
+    try setArg(kernel, 1, cl_mem_size, @ptrCast(&b.buffer));
+    try setArg(kernel, 2, cl_mem_size, @ptrCast(&c.buffer));
+
+    try setArg(kernel, 3, @sizeOf(u64), @ptrCast(&A_slice_pitch));
+    try setArg(kernel, 4, @sizeOf(u64), @ptrCast(&A_row_pitch));
+
+    try setArg(kernel, 5, @sizeOf(u64), @ptrCast(&B_slice_pitch));
+    try setArg(kernel, 6, @sizeOf(u64), @ptrCast(&B_row_pitch));
+
+    try setArg(kernel, 7, @sizeOf(u64), @ptrCast(&c.memory_layout.row_pitch));
+
+    try setArg(kernel, 6, @sizeOf(u64), @ptrCast(&packed_tensor_a.dimensions.shape[1]));
+
+    if (has_alpha) {
+        const alpha_val: T = alpha orelse if (comptime core.types.isComplex(T))
+            .{ .real = 1, .imag = 0 }
+        else
+            1;
+        try setArg(kernel, 8, @sizeOf(T), @ptrCast(&alpha_val));
+
+        if (has_beta) {
+            const beta_val = beta.?;
+            try setArg(kernel, 9, @sizeOf(T), @ptrCast(&beta_val));
+        }
+    }
+
+    var new_event: cl.event.Event = undefined;
+    try cl.kernel.enqueueNdRange(
+        command_queue.cl_command_queue,
+        kernel,
+        null,
+        global_work_items,
+        local_work_items,
+        prev_events,
+        &new_event,
+    );
+    errdefer tensor_module.helpers.releaseEvent(new_event);
+
+    try pipeline.append(&.{new_event});
+}
+
+pub fn gemm(
+    comptime T: type,
+    pipeline: *Pipeline,
+    alpha: ?T,
+    a: *Tensor(T),
+    op_a: Operation,
+    b: *Tensor(T),
+    op_b: Operation,
+    beta: ?T,
+    c: *Tensor(T),
+    packed_tensors: ?*PackedTensors(T),
+) TensorErrors!void {
+    try validateTensors(T, a, b, c, op_a, op_b);
+
+    if (packed_tensors) |v| {
+        try gemmWithPacking(
+            T,
+            pipeline,
+            a,
+            b,
+            c,
+            op_a,
+            op_b,
+            beta,
+            c,
+            v,
+        );
+    }else{
+        try gemmWithoutPacking(
+            T,
+            pipeline,
+            a,
+            b,
+            c,
+            op_a,
+            op_b,
+            alpha,
+            beta,
+            c,
+        );
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -1143,7 +1423,7 @@ test "pack - normal packing (A no_transpose) for all non-complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
@@ -1170,7 +1450,7 @@ test "pack - normal packing (A no_transpose) for all non-complex types" {
                 var k_size: u64 = a.dimensions.shape[1];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);
@@ -1219,7 +1499,7 @@ test "pack - transposed packing (A transpose) for all non-complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
@@ -1246,7 +1526,7 @@ test "pack - transposed packing (A transpose) for all non-complex types" {
                 var k_size: u64 = a.dimensions.shape[0];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);
@@ -1295,7 +1575,7 @@ test "pack - B packing with no_transpose for all non-complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
@@ -1322,7 +1602,7 @@ test "pack - B packing with no_transpose for all non-complex types" {
                 var k_size: u64 = a.dimensions.shape[1];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);
@@ -1371,7 +1651,7 @@ test "pack - B packing with transpose for all non-complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
@@ -1398,7 +1678,7 @@ test "pack - B packing with transpose for all non-complex types" {
                 var k_size: u64 = a.dimensions.shape[1];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);
@@ -1447,7 +1727,7 @@ test "pack - normal packing (A no_transpose) for complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
@@ -1474,7 +1754,7 @@ test "pack - normal packing (A no_transpose) for complex types" {
                 var k_size: u64 = a.dimensions.shape[1];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);
@@ -1526,7 +1806,7 @@ test "pack - transposed packing (A transpose) for complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
@@ -1553,7 +1833,7 @@ test "pack - transposed packing (A transpose) for complex types" {
                 var k_size: u64 = a.dimensions.shape[0];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);
@@ -1605,7 +1885,7 @@ test "pack - B packing with no_transpose for complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
@@ -1632,7 +1912,7 @@ test "pack - B packing with no_transpose for complex types" {
                 var k_size: u64 = a.dimensions.shape[1];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);
@@ -1684,7 +1964,7 @@ test "pack - B packing with transpose for complex types" {
 
     const n = 8;
     const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{ .vectors_enabled = false };
+    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
@@ -1711,7 +1991,7 @@ test "pack - B packing with transpose for complex types" {
                 var k_size: u64 = a.dimensions.shape[1];
                 k_size += k_size % 2;
 
-                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, false);
+                const pack_ctx = try PackedTensors(T).init(pipeline, c_mat, k_size, true);
                 defer pack_ctx.packed_a.release(pipeline);
                 defer pack_ctx.packed_b.release(pipeline);
                 defer pipeline.allocator.destroy(pack_ctx);

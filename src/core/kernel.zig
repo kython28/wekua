@@ -17,6 +17,7 @@ pub const KernelsID = enum(u16) {
     ToReal,
     AXPY,
     Identity,
+    PackGEMMTiles,
     GEMM,
     GEMMPack,
 
