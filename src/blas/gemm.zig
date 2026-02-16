@@ -2033,8 +2033,8 @@ test "pack - transposed packing (A transpose) for all non-complex types" {
                         for (0..bs) |tile_row| {
                             for (0..row_width) |tile_col| {
                                 const packed_idx = tr * tile_cols * tile_data + tc * tile_data + tile_row * row_width + tile_col;
-                                const src_row = tc * bs + tile_col;
-                                const src_col = tr * row_width + tile_row;
+                                const src_row = tc * row_width + tile_col;
+                                const src_col = tr * bs + tile_row;
 
                                 if (src_row < n and src_col < n) {
                                     try testing.expectEqual(a_buf[src_row * n + src_col], packed_a_buf[packed_idx]);
@@ -2112,8 +2112,8 @@ test "pack - B packing with no_transpose for all non-complex types" {
                         for (0..bs) |tile_row| {
                             for (0..row_width) |tile_col| {
                                 const packed_idx = tr * tile_cols * tile_data + tc * tile_data + tile_row * row_width + tile_col;
-                                const src_row = tc * bs + tile_col;
-                                const src_col = tr * row_width + tile_row;
+                                const src_row = tc * row_width + tile_col;
+                                const src_col = tr * bs + tile_row;
 
                                 if (src_row < n and src_col < n) {
                                     try testing.expectEqual(b_buf[src_row * n + src_col], packed_b_buf[packed_idx]);
@@ -2352,8 +2352,8 @@ test "pack - transposed packing (A transpose) for complex types" {
                         for (0..bs) |tile_row| {
                             for (0..row_width) |tile_col| {
                                 const packed_idx = tr * tile_cols * tile_data + tc * tile_data + tile_row * row_width + tile_col;
-                                const src_row = tc * bs + tile_col;
-                                const src_col = tr * row_width + tile_row;
+                                const src_row = tc * row_width + tile_col;
+                                const src_col = tr * bs + tile_row;
 
                                 if (src_row < n and src_col < n) {
                                     const expected = a_buf[src_row * n + src_col];
@@ -2434,8 +2434,8 @@ test "pack - B packing with no_transpose for complex types" {
                         for (0..bs) |tile_row| {
                             for (0..row_width) |tile_col| {
                                 const packed_idx = tr * tile_cols * tile_data + tc * tile_data + tile_row * row_width + tile_col;
-                                const src_row = tc * bs + tile_col;
-                                const src_col = tr * row_width + tile_row;
+                                const src_row = tc * row_width + tile_col;
+                                const src_col = tr * bs + tile_row;
 
                                 if (src_row < n and src_col < n) {
                                     const expected = b_buf[src_row * n + src_col];
