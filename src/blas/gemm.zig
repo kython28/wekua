@@ -772,11 +772,25 @@ fn gemmWithPacking(
     const packed_tensor_a = packed_tensors.packed_a;
     const packed_tensor_b = packed_tensors.packed_b;
 
-    const A_slice_pitch = packed_tensor_a.memory_layout.slice_pitch_for_vectors;
-    const A_row_pitch = packed_tensor_a.memory_layout.row_pitch_for_vectors;
+    var A_slice_pitch: u64 = undefined;
+    var A_row_pitch: u64 = undefined;
 
-    const B_slice_pitch = packed_tensor_b.memory_layout.slice_pitch_for_vectors;
-    const B_row_pitch = packed_tensor_b.memory_layout.row_pitch_for_vectors;
+    var B_slice_pitch: u64 = undefined;
+    var B_row_pitch: u64 = undefined;
+
+    if (vectors_enabled) {
+        A_slice_pitch = packed_tensor_a.memory_layout.slice_pitch_for_vectors;
+        A_row_pitch = packed_tensor_a.memory_layout.row_pitch_for_vectors;
+
+        B_slice_pitch = packed_tensor_b.memory_layout.slice_pitch_for_vectors;
+        B_row_pitch = packed_tensor_b.memory_layout.row_pitch_for_vectors;
+    }else{
+        A_slice_pitch = packed_tensor_a.memory_layout.slice_pitch;
+        A_row_pitch = packed_tensor_a.memory_layout.row_pitch;
+
+        B_slice_pitch = packed_tensor_b.memory_layout.slice_pitch;
+        B_row_pitch = packed_tensor_b.memory_layout.row_pitch;
+    }
 
     const prev_events = pipeline.prevEvents();
 

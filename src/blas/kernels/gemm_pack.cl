@@ -27,8 +27,8 @@ __kernel void pack(
     const ulong src_row = i * BLOCK_SIZE + tile_row;
     const ulong src_col = j * (BLOCK_SIZE * WK_VECTOR_WIDTH) + tile_col;
 #else
-    const ulong src_row = j * BLOCK_SIZE + tile_col;
-    const ulong src_col = i * (BLOCK_SIZE * WK_VECTOR_WIDTH) + tile_row;
+    const ulong src_row = j * (BLOCK_SIZE * WK_VECTOR_WIDTH) + tile_col;
+    const ulong src_col = i * BLOCK_SIZE + tile_row;
 #endif
     if (src_col >= src_cols || src_row >= src_rows) {
         return;
