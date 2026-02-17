@@ -183,14 +183,17 @@ fn run_wekua_test(
     try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, b, buf2);
     try wekua.tensor_module.memory.readFromBuffer(PreferredType, pipeline, c, buf3);
 
+    const packed_tensors = try wekua.blas.GemmPackedTensors(PreferredType).init(pipeline, c, size, true);
+    defer packed_tensors.deinit(pipeline);
+
     // Warmup: compile kernels
-    try wekua.blas.gemm(PreferredType, pipeline, 1.0, a, op_a, b, op_b, 0.0, c);
+    try wekua.blas.gemm(PreferredType, pipeline, 1.0, a, op_a, b, op_b, 0.0, c, packed_tensors);
     pipeline.waitAndCleanup();
 
     var total_diff: f64 = 0.0;
     const start_ts = std.time.microTimestamp();
     for (alphas, betas) |alpha, beta| {
-        try wekua.blas.gemm(PreferredType, pipeline, alpha, a, op_a, b, op_b, beta, c);
+        try wekua.blas.gemm(PreferredType, pipeline, alpha, a, op_a, b, op_b, beta, c, packed_tensors);
     }
     pipeline.waitAndCleanup();
 
@@ -212,7 +215,7 @@ const backends = .{
     // .{ "Wekua (C)", cl.device.Type.cpu, run_old_wekua_test },
     // .{ "Wekua (C) GPU", cl.device.Type.gpu, run_old_wekua_test },
     .{ "wekua (Zig)", cl.device.Type.cpu, run_wekua_test },
-    .{ "wekua (Zig) GPU", cl.device.Type.gpu, run_wekua_test },
+    // .{ "wekua (Zig) GPU", cl.device.Type.gpu, run_wekua_test },
 };
 
 const num_tests = operations.len * backends.len;
