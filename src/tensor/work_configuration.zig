@@ -13,9 +13,8 @@ pub const GemmAlgorithm = enum(u8) {
     @"16x16" = 3,
     @"32x32" = 4,
     @"64x64" = 5,
-    @"128x128" = 6,
-    @"256x256" = 7,
 };
+const MAX_BLOCK_SIZE = 64;
 
 global_work_items: [3]u64,
 global_work_items_without_vectors: [3]u64,
@@ -45,11 +44,6 @@ local_work_items_gemm_32x32: [][2]u64,
 global_work_items_gemm_64x64: [][2]u64,
 local_work_items_gemm_64x64: [][2]u64,
 
-global_work_items_gemm_128x128: [][2]u64,
-local_work_items_gemm_128x128: [][2]u64,
-
-global_work_items_gemm_256x256: [][2]u64,
-local_work_items_gemm_256x256: [][2]u64,
 
 pub fn init(
     self: *WorkConfiguration,
@@ -143,7 +137,7 @@ fn initGemm(
 
     var max_block_length: u16 = 0;
     comptime var block_length = 4;
-    inline while (block_length < 512) : (block_length *= 2) {
+    inline while (block_length < (MAX_BLOCK_SIZE * 2)) : (block_length *= 2) {
         const algorithm_name = std.fmt.comptimePrint("{0}x{0}", .{block_length});
         const global_field_name = std.fmt.comptimePrint("global_work_items_gemm_{s}", .{algorithm_name});
         const local_field_name = std.fmt.comptimePrint("local_work_items_gemm_{s}", .{algorithm_name});
@@ -161,17 +155,11 @@ fn initGemm(
         const type_index = core.types.getTypeId(T);
         comptime var block_length2 = 4;
         var algorithm: GemmAlgorithm = .generic;
-        inline while (block_length2 < 512) : (block_length2 *= 2) {
+        inline while (block_length2 < (MAX_BLOCK_SIZE * 2)) : (block_length2 *= 2) {
             const block_size = cmd.vector_widths[type_index] * block_length2 * @sizeOf(T);
             const blocks_fit_in_local_mem = switch (cmd.local_mem_type) {
                 .local => (block_size * 2 * 4 <= cmd.local_mem_size),
-                .global => blk: {
-                    const max_private_per_tile: u64 = switch (cmd.device_type) {
-                        .cpu => 256 * 1024,
-                        else => 16 * 1024,
-                    };
-                    break :blk (block_size * block_length2) <= max_private_per_tile;
-                },
+                .global => (block_size * block_length2) <= 16 * 1024
             };
 
             if (block_length2 <= max_block_length and blocks_fit_in_local_mem) {

@@ -32,8 +32,6 @@ inline fn getBlockSizeFromAlgorithm(algorithm: GemmAlgorithm) u16 {
         .@"16x16" => 16,
         .@"32x32" => 32,
         .@"64x64" => 64,
-        .@"128x128" => 128,
-        .@"256x256" => 256,
     };
 }
 
@@ -46,7 +44,7 @@ inline fn getAlgorithm(
         return .generic;
     }
 
-    comptime var block_size = 256;
+    comptime var block_size = 64;
     inline while (block_size >= 2) {
         const field_name = switch (block_size) {
             2 => "generic",
@@ -574,14 +572,6 @@ fn gemmWithoutPacking(
             global_work_items = &c.work_configuration.global_work_items_gemm_64x64[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_64x64[wekua_id];
         },
-        .@"128x128" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_128x128[wekua_id];
-            local_work_items = &c.work_configuration.local_work_items_gemm_128x128[wekua_id];
-        },
-        .@"256x256" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_256x256[wekua_id];
-            local_work_items = &c.work_configuration.local_work_items_gemm_256x256[wekua_id];
-        },
     }
 
     const setArg = cl.kernel.setArg;
@@ -758,14 +748,6 @@ fn gemmWithPacking(
         .@"64x64" => {
             global_work_items = &c.work_configuration.global_work_items_gemm_64x64[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_64x64[wekua_id];
-        },
-        .@"128x128" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_128x128[wekua_id];
-            local_work_items = &c.work_configuration.local_work_items_gemm_128x128[wekua_id];
-        },
-        .@"256x256" => {
-            global_work_items = &c.work_configuration.global_work_items_gemm_256x256[wekua_id];
-            local_work_items = &c.work_configuration.local_work_items_gemm_256x256[wekua_id];
         },
     }
 
