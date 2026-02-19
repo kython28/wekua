@@ -152,13 +152,23 @@ fn initGemm(
     }
 
     for (command_queues, 0..) |cmd, i| {
-        const type_index = core.types.getTypeId(T);
+        const type_id = core.types.getTypeId(T);
+
+        const vector_width = blk: {
+            if (comptime core.types.isComplex(T)) {
+                break :blk 1;
+            }else{
+                break :blk cmd.vector_widths[type_id];
+            }
+        };
+
+
         comptime var block_length2 = 4;
         var algorithm: GemmAlgorithm = .generic;
         inline while (block_length2 < (MAX_BLOCK_SIZE * 2)) : (block_length2 *= 2) {
-            const block_size = cmd.vector_widths[type_index] * block_length2 * @sizeOf(T);
+            const block_size = vector_width * block_length2 * @sizeOf(T);
             const blocks_fit_in_local_mem = switch (cmd.local_mem_type) {
-                .local => (block_size * 2 * 4 <= cmd.local_mem_size),
+                .local => (block_size * block_length2 * 2 <= cmd.local_mem_size),
                 .global => (block_size * block_length2) <= 16 * 1024
             };
 
@@ -168,18 +178,27 @@ fn initGemm(
                 const l_field_name = std.fmt.comptimePrint("local_work_items_gemm_{s}", .{algorithm_name});
                 const g_values = &@field(self, g_field_name)[i];
                 switch (cmd.local_mem_type) {
-                    .local => @memcpy(g_values, &self.global_work_items_gemm_generic),
+                    .local => {
+                        g_values[0] = gwi_h;
+                        g_values[1] = gwi_h;
+
+                        if ((block_length2 * block_length2) < cmd.max_work_group_size) {
+                            algorithm = @field(GemmAlgorithm, algorithm_name);
+                            @field(self, l_field_name)[i] = .{block_length2, block_length2};
+                        }
+                    },
                     .global => {
                         g_values[0] = gwi_h / block_length2;
                         g_values[1] = gwi_w / block_length2;
+
+                        utils.calculateWorkItems(
+                            g_values,
+                            &@field(self, l_field_name)[i],
+                            // cmd.max_work_group_size,
+                            @min(block_length2 * block_length2, cmd.max_work_group_size),
+                        );
                     },
                 }
-                algorithm = @field(GemmAlgorithm, algorithm_name);
-                utils.calculateWorkItems(
-                    g_values,
-                    &@field(self, l_field_name)[i],
-                    @min(block_length2 * block_length2, cmd.max_work_group_size),
-                );
             }
         }
         self.gemm_algorithm_per_device[i] = algorithm;
