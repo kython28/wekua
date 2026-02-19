@@ -277,7 +277,23 @@ __kernel void gemm(
     for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
         __attribute__((opencl_unroll_hint))
         for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-#if WK_VECTOR_WIDTH == 1
+#if WK_COMPLEX
+#if HAS_ALPHA
+            wk tmp_val = C_tmp_buffer[y * BLOCK_SIZE + x];
+            wk scaled;
+            COMPLEX_MUL(tmp_val, alpha, scaled);
+#if HAS_BETA
+            wk old_val = C[C_base + x];
+            wk beta_scaled;
+            COMPLEX_MUL(old_val, beta, beta_scaled);
+            C[C_base + x] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+#else
+            C[C_base + x] = scaled;
+#endif
+#else
+            C[C_base + x] = C_tmp_buffer[y * BLOCK_SIZE + x];
+#endif
+#elif WK_VECTOR_WIDTH == 1
 #if HAS_ALPHA
 #if HAS_BETA
             C[C_base + x] = alpha * C_tmp_buffer[y * BLOCK_SIZE + x] + beta * C[C_base + x];

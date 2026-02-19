@@ -42,7 +42,10 @@ __kernel void gemm(
     ulong A_base_index = A_packed_depth * A_slice_pitch + A_local_tile_index;
     ulong B_base_index = B_packed_depth * B_slice_pitch + B_local_tile_index;
 
-#if WK_VECTOR_WIDTH == 1
+#if WK_COMPLEX
+    COMPLEX_MUL_K(T)
+    wk C_acc = {0, 0};
+#elif WK_VECTOR_WIDTH == 1
     wk C_acc = 0;
 #else
     wk C_acc = (wk)(0);
@@ -59,7 +62,13 @@ __kernel void gemm(
 
         __attribute__((opencl_unroll_hint))
         for (ulong kk = 0; kk < BLOCK_SIZE; kk += 1) {
-            C_cc += A_tmp_buffer[A_tile_base_index + kk] * B_tmp_buffer[B_tile_base_index + kk];
+#if WK_COMPLEX
+            wk prod;
+            COMPLEX_MUL(A_tmp_buffer[A_tile_base_index + kk], B_tmp_buffer[B_tile_base_index + kk], prod);
+            C_acc.real += prod.real; C_acc.imag += prod.imag;
+#else
+            C_acc += A_tmp_buffer[A_tile_base_index + kk] * B_tmp_buffer[B_tile_base_index + kk];
+#endif
         }
 
         A_base_index += A_row_pitch;
@@ -69,7 +78,22 @@ __kernel void gemm(
 
 
     ulong C_base = i * C_row_pitch + j;
-#if WK_VECTOR_WIDTH == 1
+#if WK_COMPLEX
+#if HAS_ALPHA
+    wk scaled;
+    COMPLEX_MUL(C_acc, alpha, scaled);
+#if HAS_BETA
+    wk old_val = C[C_base];
+    wk beta_scaled;
+    COMPLEX_MUL(old_val, beta, beta_scaled);
+    C[C_base] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+#else
+    C[C_base] = scaled;
+#endif
+#else
+    C[C_base] = C_acc;
+#endif
+#elif WK_VECTOR_WIDTH == 1
 #if HAS_ALPHA
 #if HAS_BETA
     C[C_base] = alpha * C_acc + beta * C[C_base];

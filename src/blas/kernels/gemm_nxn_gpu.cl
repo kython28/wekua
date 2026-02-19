@@ -31,7 +31,10 @@ __kernel void gemm(
 
     const ulong A_local_tile_index = li * BLOCK_SIZE + lj;
     const ulong B_local_tile_index = lj * BLOCK_SIZE + li;
-#if WK_VECTOR_WIDTH == 1
+#if WK_COMPLEX
+    COMPLEX_MUL_K(T)
+    wk C_acc = {0, 0};
+#elif WK_VECTOR_WIDTH == 1
     wk C_acc = 0;
 #else
     wk C_acc = (wk)(0);
@@ -55,7 +58,13 @@ __kernel void gemm(
         ulong B_base_index = lj * BLOCK_SIZE;
         __attribute__((opencl_unroll_hint))
         for (ulong kk = 0; kk < BLOCK_SIZE; kk += 1) {
-            C_cc += A_tmp_buffer[A_base_index + kk] * B_tmp_buffer[B_base_index + kk];
+#if WK_COMPLEX
+            wk prod;
+            COMPLEX_MUL(A_tmp_buffer[A_base_index + kk], B_tmp_buffer[B_base_index + kk], prod);
+            C_acc.real += prod.real; C_acc.imag += prod.imag;
+#else
+            C_acc += A_tmp_buffer[A_base_index + kk] * B_tmp_buffer[B_base_index + kk];
+#endif
         }
 
         barrier(CLK_LOCAL_MEM_FENCE);
@@ -63,7 +72,22 @@ __kernel void gemm(
 
 
     ulong C_base = i * C_row_pitch + j;
-#if WK_VECTOR_WIDTH == 1
+#if WK_COMPLEX
+#if HAS_ALPHA
+    wk scaled;
+    COMPLEX_MUL(C_acc, alpha, scaled);
+#if HAS_BETA
+    wk old_val = C[C_base];
+    wk beta_scaled;
+    COMPLEX_MUL(old_val, beta, beta_scaled);
+    C[C_base] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+#else
+    C[C_base] = scaled;
+#endif
+#else
+    C[C_base] = C_acc;
+#endif
+#elif WK_VECTOR_WIDTH == 1
 #if HAS_ALPHA
 #if HAS_BETA
     C[C_base] = alpha * C_acc + beta * C[C_base];

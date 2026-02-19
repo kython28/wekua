@@ -46,6 +46,10 @@ __kernel void gemm(
     private wk B_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     private wk C_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE))) = {0};
 
+#if WK_COMPLEX
+    COMPLEX_MUL_K(T)
+#endif
+
     for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
         ulong base_index;
 #if A_TRANS
@@ -78,6 +82,48 @@ __kernel void gemm(
                     const wk B4 = B_tmp_buffer[base_index + 3];
 
                     base_index = y * BLOCK_SIZE + x;
+#if WK_COMPLEX
+                    wk prod, prev;
+
+                    COMPLEX_MUL(A1, B1, prod); prev = C_tmp_buffer[base_index];
+                    C_tmp_buffer[base_index] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A1, B2, prod); prev = C_tmp_buffer[base_index + 1];
+                    C_tmp_buffer[base_index + 1] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A1, B3, prod); prev = C_tmp_buffer[base_index + 2];
+                    C_tmp_buffer[base_index + 2] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A1, B4, prod); prev = C_tmp_buffer[base_index + 3];
+                    C_tmp_buffer[base_index + 3] = {prev.real + prod.real, prev.imag + prod.imag};
+
+                    base_index += BLOCK_SIZE;
+                    COMPLEX_MUL(A2, B1, prod); prev = C_tmp_buffer[base_index];
+                    C_tmp_buffer[base_index] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A2, B2, prod); prev = C_tmp_buffer[base_index + 1];
+                    C_tmp_buffer[base_index + 1] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A2, B3, prod); prev = C_tmp_buffer[base_index + 2];
+                    C_tmp_buffer[base_index + 2] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A2, B4, prod); prev = C_tmp_buffer[base_index + 3];
+                    C_tmp_buffer[base_index + 3] = {prev.real + prod.real, prev.imag + prod.imag};
+
+                    base_index += BLOCK_SIZE;
+                    COMPLEX_MUL(A3, B1, prod); prev = C_tmp_buffer[base_index];
+                    C_tmp_buffer[base_index] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A3, B2, prod); prev = C_tmp_buffer[base_index + 1];
+                    C_tmp_buffer[base_index + 1] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A3, B3, prod); prev = C_tmp_buffer[base_index + 2];
+                    C_tmp_buffer[base_index + 2] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A3, B4, prod); prev = C_tmp_buffer[base_index + 3];
+                    C_tmp_buffer[base_index + 3] = {prev.real + prod.real, prev.imag + prod.imag};
+
+                    base_index += BLOCK_SIZE;
+                    COMPLEX_MUL(A4, B1, prod); prev = C_tmp_buffer[base_index];
+                    C_tmp_buffer[base_index] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A4, B2, prod); prev = C_tmp_buffer[base_index + 1];
+                    C_tmp_buffer[base_index + 1] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A4, B3, prod); prev = C_tmp_buffer[base_index + 2];
+                    C_tmp_buffer[base_index + 2] = {prev.real + prod.real, prev.imag + prod.imag};
+                    COMPLEX_MUL(A4, B4, prod); prev = C_tmp_buffer[base_index + 3];
+                    C_tmp_buffer[base_index + 3] = {prev.real + prod.real, prev.imag + prod.imag};
+#else
                     C_tmp_buffer[base_index] += A1 * B1;
                     C_tmp_buffer[base_index + 1] += A1 * B2;
                     C_tmp_buffer[base_index + 2] += A1 * B3;
@@ -100,6 +146,7 @@ __kernel void gemm(
                     C_tmp_buffer[base_index + 1] += A4 * B2;
                     C_tmp_buffer[base_index + 2] += A4 * B3;
                     C_tmp_buffer[base_index + 3] += A4 * B4;
+#endif
                 }
             }
         }
@@ -110,7 +157,23 @@ __kernel void gemm(
     for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
         __attribute__((opencl_unroll_hint))
         for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-#if WK_VECTOR_WIDTH == 1
+#if WK_COMPLEX
+#if HAS_ALPHA
+            wk tmp_val = C_tmp_buffer[y * BLOCK_SIZE + x];
+            wk scaled;
+            COMPLEX_MUL(tmp_val, alpha, scaled);
+#if HAS_BETA
+            wk old_val = C[C_base + x];
+            wk beta_scaled;
+            COMPLEX_MUL(old_val, beta, beta_scaled);
+            C[C_base + x] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+#else
+            C[C_base + x] = scaled;
+#endif
+#else
+            C[C_base + x] = C_tmp_buffer[y * BLOCK_SIZE + x];
+#endif
+#elif WK_VECTOR_WIDTH == 1
 #if HAS_ALPHA
 #if HAS_BETA
             C[C_base + x] = alpha * C_tmp_buffer[y * BLOCK_SIZE + x] + beta * C[C_base + x];
