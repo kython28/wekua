@@ -9,4 +9,5 @@ pub const GemmOperation = gemm_module.Operation;
 test {
     _ = axpy_module;
     _ = gemm_module;
+    _ = @import("test_helpers.zig");
 }

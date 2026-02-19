@@ -899,223 +899,6 @@ fn castComplex(comptime T: type, real: anytype, imag: anytype) T {
     };
 }
 
-test "gemm - A * I = A for all non-complex types" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                // Fill A with known values
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // C = A * I
-                try gemm(T, pipeline, null, a, .no_transpose, ident, .no_transpose, null, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    try testing.expectEqual(castInt(T, i + 1), val);
-                }
-            }
-        }
-    }
-}
-
-test "gemm - I * A = A for all non-complex types" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // C = I * A
-                try gemm(T, pipeline, null, ident, .no_transpose, a, .no_transpose, null, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    try testing.expectEqual(castInt(T, i + 1), val);
-                }
-            }
-        }
-    }
-}
-
-test "gemm - alpha scaling with identity" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // C = 2 * A * I
-                try gemm(T, pipeline, 2, a, .no_transpose, ident, .no_transpose, null, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    try testing.expectEqual(castInt(T, (i + 1) * 2), val);
-                }
-            }
-        }
-    }
-}
-
-test "gemm - alpha and beta" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // Pre-fill C with known values (all 1s)
-                try fill.one(T, pipeline, c_mat);
-
-                // C = 2 * A * I + 3 * C_old = 2*A + 3*1
-                try gemm(T, pipeline, 2, a, .no_transpose, ident, .no_transpose, 3, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    // 2*(i+1) + 3*1
-                    try testing.expectEqual(castInt(T, (i + 1) * 2 + 3), val);
-                }
-            }
-        }
-    }
-}
-
 test "gemm - invalid shapes" {
     const allocator = testing.allocator;
 
@@ -1159,727 +942,367 @@ test "gemm - invalid shapes" {
     }
 }
 
-test "gemm - transpose operations" {
-    const allocator = testing.allocator;
+const test_helpers = @import("test_helpers.zig");
 
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+test "gemm cpu - all algorithms, non-complex" {
+    const allocator = testing.allocator;
+    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
     const pipeline = try Pipeline.init(command_queue);
     defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
+                // A*I: various sizes to exercise different algorithms
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 8, 24, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 32, 96, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 64, 128, .no_transpose, .no_transpose, false, null, null);
 
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
+                // I*B
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 7, 5, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 8, 24, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 96, 32, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 128, 64, .no_transpose, .no_transpose, false, null, null);
 
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
+                // Alpha scaling
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, @as(T, 2), null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, @as(T, 2), null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, @as(T, 2), null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, false, @as(T, 2), null);
 
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
+                // Alpha + Beta
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, false, @as(T, 2), @as(T, 3));
 
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
+                // Transpose op_a (A^T * I)
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .transpose, .no_transpose, false, null, null);
 
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
+                // Transpose op_b (A * I^T = A, exercises transpose kernel path)
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .transpose, false, null, null);
 
-                // C = A^T * I (transpose A)
-                try gemm(T, pipeline, null, a, .transpose, ident, .no_transpose, null, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                // A^T * I = A^T, so result[i][j] = A[j][i] = j*n + i + 1
-                for (0..n) |i| {
-                    for (0..n) |j| {
-                        const idx = i * n + j;
-                        try testing.expectEqual(castInt(T, j * n + i + 1), result[idx]);
-                    }
-                }
-
-                // C = I * A^T (transpose B which is identity, I^T = I, so C = A)
-                try gemm(T, pipeline, null, ident, .no_transpose, a, .transpose, null, c_mat, null);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                // I * A^T = A^T, so result[i][j] = A[j][i] = j*n + i + 1
-                for (0..n) |i| {
-                    for (0..n) |j| {
-                        const idx = i * n + j;
-                        try testing.expectEqual(castInt(T, j * n + i + 1), result[idx]);
-                    }
-                }
+                // Transpose on B side (I * B^T)
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 8, 24, .no_transpose, .transpose, false, null, null);
             }
         }
     }
 }
 
-test "gemm - A * I = A for complex types" {
+test "gemm cpu - all algorithms, complex" {
     const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
     const pipeline = try Pipeline.init(command_queue);
     defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
+                // A*I
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 32, 96, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 64, 128, .no_transpose, .no_transpose, false, null, null);
 
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
+                // I*B
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 7, 5, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, false, null, null);
 
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
+                // Alpha
+                const alpha_val: T = test_helpers.castComplex(T, 2, 0);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, alpha_val, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, alpha_val, null);
 
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
+                // Alpha + Beta
+                const beta_val: T = test_helpers.castComplex(T, 3, 0);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, alpha_val, beta_val);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, alpha_val, beta_val);
 
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castComplex(T, i + 1, 0);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // C = A * I
-                try gemm(T, pipeline, null, a, .no_transpose, ident, .no_transpose, null, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    const expected = castComplex(T, i + 1, 0);
-                    try testing.expectEqual(expected.real, val.real);
-                    try testing.expectEqual(expected.imag, val.imag);
-                }
+                // Transpose
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, false, null, null);
             }
         }
     }
 }
 
-test "gemm - alpha scaling with identity for complex types" {
+test "gemm cpu - all algorithms with packing, non-complex" {
     const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
     const pipeline = try Pipeline.init(command_queue);
     defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castComplex(T, i + 1, 0);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // C = {2, 0} * A * I
-                const alpha_val: T = castComplex(T, 2, 0);
-                try gemm(T, pipeline, alpha_val, a, .no_transpose, ident, .no_transpose, null, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    const expected = castComplex(T, (i + 1) * 2, 0);
-                    try testing.expectEqual(expected.real, val.real);
-                    try testing.expectEqual(expected.imag, val.imag);
-                }
-            }
-        }
-    }
-}
-
-test "gemm - alpha and beta for complex types" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 4;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castComplex(T, i + 1, 0);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // Pre-fill C with ones
-                try fill.one(T, pipeline, c_mat);
-
-                // C = {2, 0} * A * I + {3, 0} * C_old = 2*A + 3*1
-                const alpha_val: T = castComplex(T, 2, 0);
-                const beta_val: T = castComplex(T, 3, 0);
-                try gemm(T, pipeline, alpha_val, a, .no_transpose, ident, .no_transpose, beta_val, c_mat, null);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    // 2*(i+1) + 3*1
-                    const expected = castComplex(T, (i + 1) * 2 + 3, 0);
-                    try testing.expectEqual(expected.real, val.real);
-                    try testing.expectEqual(expected.imag, val.imag);
-                }
-            }
-        }
-    }
-}
-
-test "gemm with packing - A * I = A for all non-complex types" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
+                // A*I packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 8, 24, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 32, 96, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 64, 128, .no_transpose, .no_transpose, true, null, null);
 
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
+                // I*B packed
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 7, 5, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, true, null, null);
 
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
+                // Alpha + Beta packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, true, @as(T, 2), @as(T, 3));
 
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = A * I
-                try gemm(T, pipeline, null, a, .no_transpose, ident, .no_transpose, null, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    try testing.expectEqual(castInt(T, i + 1), val);
-                }
+                // Transpose packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, true, null, null);
             }
         }
     }
 }
 
-test "gemm with packing - I * A = A for all non-complex types" {
+test "gemm cpu - all algorithms with packing, complex" {
     const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
     const pipeline = try Pipeline.init(command_queue);
     defer pipeline.deinit();
-
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = I * A
-                try gemm(T, pipeline, null, ident, .no_transpose, a, .no_transpose, null, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    try testing.expectEqual(castInt(T, i + 1), val);
-                }
-            }
-        }
-    }
-}
-
-test "gemm with packing - alpha scaling with identity" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = 2 * A * I
-                try gemm(T, pipeline, 2, a, .no_transpose, ident, .no_transpose, null, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    try testing.expectEqual(castInt(T, (i + 1) * 2), val);
-                }
-            }
-        }
-    }
-}
-
-test "gemm with packing - alpha and beta" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // Pre-fill C with known values (all 1s)
-                try fill.one(T, pipeline, c_mat);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = 2 * A * I + 3 * C_old = 2*A + 3*1
-                try gemm(T, pipeline, 2, a, .no_transpose, ident, .no_transpose, 3, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    // 2*(i+1) + 3*1
-                    try testing.expectEqual(castInt(T, (i + 1) * 2 + 3), val);
-                }
-            }
-        }
-    }
-}
-
-test "gemm with packing - transpose operations" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
-    inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
-            if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
-
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
-
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
-
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castInt(T, i + 1);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = A^T * I (transpose A)
-                try gemm(T, pipeline, null, a, .transpose, ident, .no_transpose, null, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                // A^T * I = A^T, so result[i][j] = A[j][i] = j*n + i + 1
-                for (0..n) |i| {
-                    for (0..n) |j| {
-                        const idx = i * n + j;
-                        try testing.expectEqual(castInt(T, j * n + i + 1), result[idx]);
-                    }
-                }
-
-                // C = I * A^T (transpose B)
-                try gemm(T, pipeline, null, ident, .no_transpose, a, .transpose, null, c_mat, packed_tensors);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                // I * A^T = A^T, so result[i][j] = A[j][i] = j*n + i + 1
-                for (0..n) |i| {
-                    for (0..n) |j| {
-                        const idx = i * n + j;
-                        try testing.expectEqual(castInt(T, j * n + i + 1), result[idx]);
-                    }
-                }
-            }
-        }
-    }
-}
-
-test "gemm with packing - A * I = A for complex types" {
-    const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
-    defer context.deinit();
-
-    const command_queue = &context.command_queues[0];
-    const pipeline = try Pipeline.init(command_queue);
-    defer pipeline.deinit();
-
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
+                // A*I packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, true, null, null);
 
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
+                // I*B packed
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, true, null, null);
 
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
+                // Alpha + Beta packed
+                const alpha_val: T = test_helpers.castComplex(T, 2, 0);
+                const beta_val: T = test_helpers.castComplex(T, 3, 0);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, alpha_val, beta_val);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, alpha_val, beta_val);
 
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castComplex(T, i + 1, 0);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = A * I
-                try gemm(T, pipeline, null, a, .no_transpose, ident, .no_transpose, null, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    const expected = castComplex(T, i + 1, 0);
-                    try testing.expectEqual(expected.real, val.real);
-                    try testing.expectEqual(expected.imag, val.imag);
-                }
+                // Transpose packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, true, null, null);
             }
         }
     }
 }
 
-test "gemm with packing - alpha scaling with identity for complex types" {
+test "gemm gpu - all algorithms, non-complex" {
     const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
     const pipeline = try Pipeline.init(command_queue);
     defer pipeline.deinit();
 
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
-
     inline for (core.types.SUPPORTED_TYPES) |T| {
-        if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
+        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
+                // A*I
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 8, 24, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 32, 96, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 64, 128, .no_transpose, .no_transpose, false, null, null);
 
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
+                // I*B
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 7, 5, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 8, 24, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 96, 32, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 128, 64, .no_transpose, .no_transpose, false, null, null);
 
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
+                // Alpha
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, @as(T, 2), null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, @as(T, 2), null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, @as(T, 2), null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, false, @as(T, 2), null);
 
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
+                // Alpha + Beta
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, @as(T, 2), @as(T, 3));
 
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castComplex(T, i + 1, 0);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = {2, 0} * A * I
-                const alpha_val: T = castComplex(T, 2, 0);
-                try gemm(T, pipeline, alpha_val, a, .no_transpose, ident, .no_transpose, null, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    const expected = castComplex(T, (i + 1) * 2, 0);
-                    try testing.expectEqual(expected.real, val.real);
-                    try testing.expectEqual(expected.imag, val.imag);
-                }
+                // Transpose
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .transpose, false, null, null);
             }
         }
     }
 }
 
-test "gemm with packing - alpha and beta for complex types" {
+test "gemm gpu - all algorithms, complex" {
     const allocator = testing.allocator;
-
-    const context = try core.Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
     const pipeline = try Pipeline.init(command_queue);
     defer pipeline.deinit();
 
-    const n = 8;
-    const shape = [_]u64{ n, n };
-    const config = tensor_module.CreateConfig{};
+    inline for (core.types.SUPPORTED_TYPES) |T| {
+        if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
+            if (command_queue.isTypeSupported(T)) {
+                // A*I
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 32, 96, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 64, 128, .no_transpose, .no_transpose, false, null, null);
+
+                // I*B
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 7, 5, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, false, null, null);
+
+                // Alpha + Beta
+                const alpha_val: T = test_helpers.castComplex(T, 2, 0);
+                const beta_val: T = test_helpers.castComplex(T, 3, 0);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, false, alpha_val, beta_val);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, false, alpha_val, beta_val);
+
+                // Transpose
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .transpose, .no_transpose, false, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, false, null, null);
+            }
+        }
+    }
+}
+
+test "gemm gpu - all algorithms with packing, non-complex" {
+    const allocator = testing.allocator;
+    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    inline for (core.types.SUPPORTED_TYPES) |T| {
+        if (!(comptime core.types.isComplex(T)) and @typeInfo(T) == .float) {
+            if (command_queue.isTypeSupported(T)) {
+                // A*I packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 8, 24, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 32, 96, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 64, 128, .no_transpose, .no_transpose, true, null, null);
+
+                // I*B packed
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 7, 5, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 48, 16, .no_transpose, .no_transpose, true, null, null);
+
+                // Alpha + Beta packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, @as(T, 2), @as(T, 3));
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, true, @as(T, 2), @as(T, 3));
+
+                // Transpose packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, true, null, null);
+            }
+        }
+    }
+}
+
+test "gemm gpu - all algorithms with packing, complex" {
+    const allocator = testing.allocator;
+    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
 
     inline for (core.types.SUPPORTED_TYPES) |T| {
         if (comptime core.types.isComplex(T) and @typeInfo(core.types.getType(T)) == .float) {
             if (command_queue.isTypeSupported(T)) {
-                const a = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer a.release(pipeline);
+                // A*I packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 5, 7, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 24, 8, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 16, 48, .no_transpose, .no_transpose, true, null, null);
 
-                const ident = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer ident.release(pipeline);
+                // I*B packed
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 20, 12, .no_transpose, .no_transpose, true, null, null);
 
-                const c_mat = try Tensor(T).alloc(context, pipeline, &shape, config);
-                defer c_mat.release(pipeline);
+                // Alpha + Beta packed
+                const alpha_val: T = test_helpers.castComplex(T, 2, 0);
+                const beta_val: T = test_helpers.castComplex(T, 3, 0);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .no_transpose, .no_transpose, true, alpha_val, beta_val);
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 12, 20, .no_transpose, .no_transpose, true, alpha_val, beta_val);
 
-                const a_buf = try allocator.alloc(T, n * n);
-                defer allocator.free(a_buf);
-
-                for (a_buf, 0..) |*val, i| {
-                    val.* = castComplex(T, i + 1, 0);
-                }
-
-                try memory.readFromBuffer(T, pipeline, a, a_buf);
-                try identity_fn(T, pipeline, ident);
-
-                // Pre-fill C with ones
-                try fill.one(T, pipeline, c_mat);
-
-                const packed_tensors = try PackedTensors(T).init(pipeline, c_mat, n, true);
-                defer packed_tensors.deinit(pipeline);
-
-                // C = {2, 0} * A * I + {3, 0} * C_old = 2*A + 3*1
-                const alpha_val: T = castComplex(T, 2, 0);
-                const beta_val: T = castComplex(T, 3, 0);
-                try gemm(T, pipeline, alpha_val, a, .no_transpose, ident, .no_transpose, beta_val, c_mat, packed_tensors);
-
-                const result = try allocator.alloc(T, n * n);
-                defer allocator.free(result);
-
-                try memory.writeToBuffer(T, pipeline, c_mat, result);
-                pipeline.waitAndCleanup();
-
-                for (result, 0..) |val, i| {
-                    // 2*(i+1) + 3*1
-                    const expected = castComplex(T, (i + 1) * 2 + 3, 0);
-                    try testing.expectEqual(expected.real, val.real);
-                    try testing.expectEqual(expected.imag, val.imag);
-                }
+                // Transpose packed
+                try test_helpers.testGemmATimesIdentity(T, context, pipeline, 6, 10, .transpose, .no_transpose, true, null, null);
+                try test_helpers.testGemmIdentityTimesB(T, context, pipeline, 10, 6, .no_transpose, .transpose, true, null, null);
             }
         }
     }
