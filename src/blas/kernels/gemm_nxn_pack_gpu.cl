@@ -36,9 +36,11 @@ __kernel void gemm(
     local wk A_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     local wk B_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
 
-    const ulong local_tile_index = li * BLOCK_SIZE + lj;
-    ulong A_base_index = A_packed_depth * A_slice_pitch + local_tile_index;
-    ulong B_base_index = B_packed_depth * B_slice_pitch + local_tile_index;
+    const ulong A_local_tile_index = li * BLOCK_SIZE + lj;
+    const ulong B_local_tile_index = lj * BLOCK_SIZE + li;
+
+    ulong A_base_index = A_packed_depth * A_slice_pitch + A_local_tile_index;
+    ulong B_base_index = B_packed_depth * B_slice_pitch + B_local_tile_index;
 
 #if WK_VECTOR_WIDTH == 1
     wk C_acc = 0;
@@ -47,8 +49,8 @@ __kernel void gemm(
 #endif
 
     for (ulong k = 0; k < cols; k += 1) {
-        A_tmp_buffer[local_tile_index] = A_packed[A_base_index];
-        B_tmp_buffer[local_tile_index] = B_packed[B_base_index];
+        A_tmp_buffer[A_local_tile_index] = A_packed[A_base_index];
+        B_tmp_buffer[B_local_tile_index] = B_packed[B_base_index];
 
         barrier(CLK_LOCAL_MEM_FENCE);
 
