@@ -11,15 +11,18 @@ const Tensor = tensor_module.Tensor;
 const TensorErrors = tensor_module.Errors;
 const GemmAlgorithm = tensor_module.GemmAlgorithm;
 
-const GEMM_KERNEL: []const u8 = @embedFile("kernels/generic_gemm.cl");
+const GEMM_2x2_KERNEL: []const u8 = @embedFile("kernels/gemm_2x2.cl");
 const GEMM_NXN_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn.cl");
 const GEMM_NXN_OUTER_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
 
+const GEMM_2x2_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_2x2_gpu.cl");
 const GEMM_NXN_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
 
-const GEMM_PACK_TILES_KERNEL: []const u8 = @embedFile("kernels/gemm_pack.cl");
+const GEMM_2x2_PACK_KERNEL: []const u8 = @embedFile("kernels/gemm_2x2_pack.cl");
 const GEMM_NXN_PACK_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack.cl");
 const GEMM_NXN_PACK_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack_gpu.cl");
+
+const GEMM_PACK_TILES_KERNEL: []const u8 = @embedFile("kernels/gemm_pack.cl");
 
 pub const Operation = enum(u8) {
     no_transpose = 0,
@@ -29,7 +32,7 @@ pub const Operation = enum(u8) {
 
 inline fn getBlockSizeFromAlgorithm(algorithm: GemmAlgorithm) u16 {
     return switch (algorithm) {
-        .generic => 2,
+        .@"2x2" => 2,
         .@"4x4" => 4,
         .@"8x8" => 8,
         .@"16x16" => 16,
@@ -44,10 +47,7 @@ inline fn getAlgorithm(
 ) GemmAlgorithm {
     comptime var block_size = 64;
     inline while (block_size >= 2) {
-        const field_name = switch (block_size) {
-            2 => "generic",
-            else => std.fmt.comptimePrint("{0}x{0}", .{block_size}),
-        };
+        const field_name = std.fmt.comptimePrint("{0}x{0}", .{block_size});
         const field_value = @field(GemmAlgorithm, field_name);
         if ((k_size % block_size) == 0 and @intFromEnum(default_algorithm) >= @intFromEnum(field_value)) {
             return field_value;
@@ -386,7 +386,7 @@ fn getGemmKernelWithoutPacking(
     defer allocator.free(extra_args);
 
     const kernel_source: []const u8 = switch (algorithm) {
-        .generic => GEMM_KERNEL,
+        .@"2x2" => GEMM_2x2_KERNEL,
         else => switch (command_queue.local_mem_type) {
             .local => GEMM_NXN_GPU_KERNEL,
             .global => blk: {
@@ -544,11 +544,14 @@ fn gemmWithoutPacking(
     const prev_events = pipeline.prevEvents();
     const wekua_id = command_queue.wekua_id;
 
-    var global_work_items: []const u64 = &c.work_configuration.global_work_items_gemm_generic;
-    var local_work_items: []const u64 = &c.work_configuration.local_work_items_gemm_generic[wekua_id];
+    var global_work_items: []const u64 = &.{};
+    var local_work_items: []const u64 = &.{};
 
     switch (algorithm) {
-        .generic => {},
+        .@"2x2" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_2x2[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_2x2[wekua_id];
+        },
         .@"4x4" => {
             global_work_items = &c.work_configuration.global_work_items_gemm_4x4[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_4x4[wekua_id];
@@ -726,11 +729,14 @@ fn gemmWithPacking(
         algorithm,
     );
 
-    var global_work_items: []const u64 = &c.work_configuration.global_work_items_gemm_generic;
-    var local_work_items: []const u64 = &c.work_configuration.local_work_items_gemm_generic[wekua_id];
+    var global_work_items: []const u64 = &.{};
+    var local_work_items: []const u64 = &.{};
 
     switch (algorithm) {
-        .generic => {},
+        .@"2x2" => {
+            global_work_items = &c.work_configuration.global_work_items_gemm_2x2[wekua_id];
+            local_work_items = &c.work_configuration.local_work_items_gemm_2x2[wekua_id];
+        },
         .@"4x4" => {
             global_work_items = &c.work_configuration.global_work_items_gemm_4x4[wekua_id];
             local_work_items = &c.work_configuration.local_work_items_gemm_4x4[wekua_id];

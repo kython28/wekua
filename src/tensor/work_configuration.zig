@@ -7,7 +7,7 @@ const CommandQueue = core.CommandQueue;
 
 
 pub const GemmAlgorithm = enum(u8) {
-    generic = 0,
+    @"2x2" = 0,
     @"4x4" = 1,
     @"8x8" = 2,
     @"16x16" = 3,
@@ -26,8 +26,8 @@ local_work_items: [][3]u64,
 local_work_items_without_vectors: [][3]u64,
 
 gemm_algorithm_per_device: []GemmAlgorithm,
-global_work_items_gemm_generic: [2]u64,
-local_work_items_gemm_generic: [][2]u64,
+global_work_items_gemm_2x2: [][2]u64,
+local_work_items_gemm_2x2: [][2]u64,
 
 global_work_items_gemm_4x4: [][2]u64,
 local_work_items_gemm_4x4: [][2]u64,
@@ -114,29 +114,15 @@ fn initGemm(
     padded_penultimate_size: u64,
     last_size: u64,
 ) error{OutOfMemory}!void {
-    const local_work_items_gemm = try arena_allocator.alloc([2]u64, command_queues.len);
-    self.local_work_items_gemm_generic = local_work_items_gemm;
-
     const gemm_algorithm_per_device = try arena_allocator.alloc(GemmAlgorithm, command_queues.len);
-    @memset(gemm_algorithm_per_device, GemmAlgorithm.generic);
+    @memset(gemm_algorithm_per_device, GemmAlgorithm.@"2x2");
     self.gemm_algorithm_per_device = gemm_algorithm_per_device;
 
     const gwi_h = padded_penultimate_size;
     const gwi_w = (last_size + (last_size % 2));
 
-    self.global_work_items_gemm_generic[0] = gwi_h / 2;
-    self.global_work_items_gemm_generic[1] = gwi_w / 2;
-
-    for (command_queues, local_work_items_gemm) |cmd, *lw_gemm| {
-        utils.calculateWorkItems(
-            &self.global_work_items_gemm_generic,
-            lw_gemm,
-            cmd.max_work_group_size,
-        );
-    }
-
     var max_block_length: u16 = 0;
-    comptime var block_length = 4;
+    comptime var block_length = 2;
     inline while (block_length < (MAX_BLOCK_SIZE * 2)) : (block_length *= 2) {
         const algorithm_name = std.fmt.comptimePrint("{0}x{0}", .{block_length});
         const global_field_name = std.fmt.comptimePrint("global_work_items_gemm_{s}", .{algorithm_name});
@@ -162,9 +148,8 @@ fn initGemm(
             }
         };
 
-
-        comptime var block_length2 = 4;
-        var algorithm: GemmAlgorithm = .generic;
+        comptime var block_length2 = 2;
+        var algorithm: GemmAlgorithm = .@"2x2";
         inline while (block_length2 < (MAX_BLOCK_SIZE * 2)) : (block_length2 *= 2) {
             const block_size = vector_width * block_length2 * @sizeOf(T);
             const blocks_fit_in_local_mem = switch (cmd.local_mem_type) {
