@@ -46,6 +46,10 @@ __kernel void gemm(
     private wk B_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     private wk C_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE))) = {0};
 
+#if WK_COMPLEX
+    COMPLEX_MUL_K(T)
+#endif
+
     for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
         ulong base_index;
 #if A_TRANS
@@ -60,14 +64,23 @@ __kernel void gemm(
         FILL_TRANSPOSED_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
 #endif
 
-#if WK_VECTOR_WIDTH <= 8
+#if WK_VECTOR_WIDTH <= 8 || WK_COMPLEX
         for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
             for (ulong x = 0; x < BLOCK_SIZE; x += 2) {
 #if WK_VECTOR_WIDTH == 1
+
+#if WK_COMPLEX
+                wk C11 = {0, 0};
+                wk C12 = {0, 0};
+                wk C21 = {0, 0};
+                wk C22 = {0, 0};
+#else
                 wk C11 = 0;
                 wk C12 = 0;
                 wk C21 = 0;
                 wk C22 = 0;
+#endif
+
 #else
                 wk C11 = (wk)(0);
                 wk C12 = (wk)(0);
@@ -89,17 +102,55 @@ __kernel void gemm(
                     const wk B12 = B_tmp_buffer[base_index + BLOCK_SIZE];
                     const wk B22 = B_tmp_buffer[base_index + BLOCK_SIZE + 1];
 
+#if WK_COMPLEX
+                    wk prod;
+
+                    COMPLEX_MUL(A11, B11, prod);
+                    C11.real += prod.real; C11.imag += prod.imag;
+                    COMPLEX_MUL(A12, B21, prod);
+                    C11.real += prod.real; C11.imag += prod.imag;
+
+                    COMPLEX_MUL(A11, B12, prod);
+                    C12.real += prod.real; C12.imag += prod.imag;
+                    COMPLEX_MUL(A12, B22, prod);
+                    C12.real += prod.real; C12.imag += prod.imag;
+
+                    COMPLEX_MUL(A21, B11, prod);
+                    C21.real += prod.real; C21.imag += prod.imag;
+                    COMPLEX_MUL(A22, B21, prod);
+                    C21.real += prod.real; C21.imag += prod.imag;
+
+                    COMPLEX_MUL(A21, B12, prod);
+                    C22.real += prod.real; C22.imag += prod.imag;
+                    COMPLEX_MUL(A22, B22, prod);
+                    C22.real += prod.real; C22.imag += prod.imag;
+#else
                     C11 = A11 * B11 + A12 * B21 + C11;
                     C12 = A11 * B12 + A12 * B22 + C12;
                     C21 = A21 * B11 + A22 * B21 + C21;
                     C22 = A21 * B12 + A22 * B22 + C22;
+#endif
                 }
 
                 base_index = y * BLOCK_SIZE + x;
+#if WK_COMPLEX
+                wk prev_value = C_tmp_buffer[base_index];
+                C_tmp_buffer[base_index] = {prev_value.real + C11.real, prev_value.imag + C11.imag};
+
+                prev_value = C_tmp_buffer[base_index + 1];
+                C_tmp_buffer[base_index + 1] = {prev_value.real + C12.real, prev_value.imag + C12.imag};
+
+                prev_value = C_tmp_buffer[base_index + BLOCK_SIZE];
+                C_tmp_buffer[base_index + BLOCK_SIZE] = {prev_value.real + C21.real, prev_value.imag + C21.imag};
+                
+                prev_value = C_tmp_buffer[base_index + BLOCK_SIZE + 1];
+                C_tmp_buffer[base_index + BLOCK_SIZE + 1] = {prev_value.real + C22.real, prev_value.imag + C22.imag};
+#else
                 C_tmp_buffer[base_index] += C11;
                 C_tmp_buffer[base_index + 1] += C12;
                 C_tmp_buffer[base_index + BLOCK_SIZE] += C21;
                 C_tmp_buffer[base_index + BLOCK_SIZE + 1] += C22;
+#endif
             }
         }
 #else

@@ -37,8 +37,8 @@ __kernel void gemm(
     const ulong B_base_index = j * B_slice_pitch;
 
 #if WK_COMPLEX
-
     COMPLEX_MUL_K(T)
+#endif
 
     for (ulong k = 0; k < cols; k += 1) {
         ulong base_index = A_base_index + k * A_row_pitch;
@@ -64,124 +64,23 @@ __kernel void gemm(
             tile_index += BLOCK_SIZE;
         }
 
+#if WK_VECTOR_WIDTH <= 8 || WK_COMPLEX
         for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
             for (ulong x = 0; x < BLOCK_SIZE; x += 2) {
+#if WK_VECTOR_WIDTH == 1
+
+#if WK_COMPLEX
                 wk C11 = {0, 0};
                 wk C12 = {0, 0};
                 wk C21 = {0, 0};
                 wk C22 = {0, 0};
-
-                __attribute__((opencl_unroll_hint))
-                for (ulong z = 0; z < BLOCK_SIZE; z += 2) {
-                    base_index = y * BLOCK_SIZE + z;
-                    const wk A11 = A_tmp_buffer[base_index];
-                    const wk A12 = A_tmp_buffer[base_index + 1];
-                    const wk A21 = A_tmp_buffer[base_index + BLOCK_SIZE];
-                    const wk A22 = A_tmp_buffer[base_index + BLOCK_SIZE + 1];
-
-                    base_index = x * BLOCK_SIZE + z;
-                    const wk B11 = B_tmp_buffer[base_index];
-                    const wk B21 = B_tmp_buffer[base_index + 1];
-                    const wk B12 = B_tmp_buffer[base_index + BLOCK_SIZE];
-                    const wk B22 = B_tmp_buffer[base_index + BLOCK_SIZE + 1];
-
-                    wk prod;
-
-                    COMPLEX_MUL(A11, B11, prod);
-                    C11.real += prod.real; C11.imag += prod.imag;
-                    COMPLEX_MUL(A12, B21, prod);
-                    C11.real += prod.real; C11.imag += prod.imag;
-
-                    COMPLEX_MUL(A11, B12, prod);
-                    C12.real += prod.real; C12.imag += prod.imag;
-                    COMPLEX_MUL(A12, B22, prod);
-                    C12.real += prod.real; C12.imag += prod.imag;
-
-                    COMPLEX_MUL(A21, B11, prod);
-                    C21.real += prod.real; C21.imag += prod.imag;
-                    COMPLEX_MUL(A22, B21, prod);
-                    C21.real += prod.real; C21.imag += prod.imag;
-
-                    COMPLEX_MUL(A21, B12, prod);
-                    C22.real += prod.real; C22.imag += prod.imag;
-                    COMPLEX_MUL(A22, B22, prod);
-                    C22.real += prod.real; C22.imag += prod.imag;
-                }
-
-                base_index = y * BLOCK_SIZE + x;
-                C_tmp_buffer[base_index].real += C11.real;
-                C_tmp_buffer[base_index].imag += C11.imag;
-                C_tmp_buffer[base_index + 1].real += C12.real;
-                C_tmp_buffer[base_index + 1].imag += C12.imag;
-                C_tmp_buffer[base_index + BLOCK_SIZE].real += C21.real;
-                C_tmp_buffer[base_index + BLOCK_SIZE].imag += C21.imag;
-                C_tmp_buffer[base_index + BLOCK_SIZE + 1].real += C22.real;
-                C_tmp_buffer[base_index + BLOCK_SIZE + 1].imag += C22.imag;
-            }
-        }
-    }
-
-    ulong C_base = C_row * C_row_pitch + C_col;
-    __attribute__((opencl_unroll_hint))
-    for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-        __attribute__((opencl_unroll_hint))
-        for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-#if HAS_ALPHA
-#if HAS_BETA
-            wk tmp_val = C_tmp_buffer[y * BLOCK_SIZE + x];
-            wk scaled;
-            COMPLEX_MUL(tmp_val, alpha, scaled);
-            wk old_val = C[C_base + x];
-            wk beta_scaled;
-            COMPLEX_MUL(old_val, beta, beta_scaled);
-            C[C_base + x] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
 #else
-            wk tmp_val = C_tmp_buffer[y * BLOCK_SIZE + x];
-            wk scaled;
-            COMPLEX_MUL(tmp_val, alpha, scaled);
-            C[C_base + x] = (wks){ scaled.real, scaled.imag };
-#endif
-#else
-            C[C_base + x] = (wks){ C_tmp_buffer[y * BLOCK_SIZE + x].real, C_tmp_buffer[y * BLOCK_SIZE + x].imag };
-#endif
-        }
-        C_base += C_row_pitch;
-    }
-
-#else
-
-    for (ulong k = 0; k < cols; k += 1) {
-        ulong base_index = A_base_index + k * A_row_pitch;
-        ulong tile_index = 0;
-
-        for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-            __attribute__((opencl_unroll_hint))
-            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-                A_tmp_buffer[tile_index + x] = A_packed[base_index + x];
-            }
-            base_index += BLOCK_SIZE;
-            tile_index += BLOCK_SIZE;
-        }
-
-        base_index = B_base_index + k * B_row_pitch;
-        tile_index = 0;
-        for (ulong y = 0; y < BLOCK_SIZE; y += 1) {
-            __attribute__((opencl_unroll_hint))
-            for (ulong x = 0; x < BLOCK_SIZE; x += 1) {
-                B_tmp_buffer[tile_index + x] = B_packed[base_index + x];
-            }
-            base_index += BLOCK_SIZE;
-            tile_index += BLOCK_SIZE;
-        }
-
-#if WK_VECTOR_WIDTH <= 8 || BLOCK_SIZE == 2
-        for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
-            for (ulong x = 0; x < BLOCK_SIZE; x += 2) {
-#if WK_VECTOR_WIDTH == 1
                 wk C11 = 0;
                 wk C12 = 0;
                 wk C21 = 0;
                 wk C22 = 0;
+#endif
+
 #else
                 wk C11 = (wk)(0);
                 wk C12 = (wk)(0);
@@ -203,17 +102,55 @@ __kernel void gemm(
                     const wk B12 = B_tmp_buffer[base_index + BLOCK_SIZE];
                     const wk B22 = B_tmp_buffer[base_index + BLOCK_SIZE + 1];
 
+#if WK_COMPLEX
+                    wk prod;
+
+                    COMPLEX_MUL(A11, B11, prod);
+                    C11.real += prod.real; C11.imag += prod.imag;
+                    COMPLEX_MUL(A12, B21, prod);
+                    C11.real += prod.real; C11.imag += prod.imag;
+
+                    COMPLEX_MUL(A11, B12, prod);
+                    C12.real += prod.real; C12.imag += prod.imag;
+                    COMPLEX_MUL(A12, B22, prod);
+                    C12.real += prod.real; C12.imag += prod.imag;
+
+                    COMPLEX_MUL(A21, B11, prod);
+                    C21.real += prod.real; C21.imag += prod.imag;
+                    COMPLEX_MUL(A22, B21, prod);
+                    C21.real += prod.real; C21.imag += prod.imag;
+
+                    COMPLEX_MUL(A21, B12, prod);
+                    C22.real += prod.real; C22.imag += prod.imag;
+                    COMPLEX_MUL(A22, B22, prod);
+                    C22.real += prod.real; C22.imag += prod.imag;
+#else
                     C11 = A11 * B11 + A12 * B21 + C11;
                     C12 = A11 * B12 + A12 * B22 + C12;
                     C21 = A21 * B11 + A22 * B21 + C21;
                     C22 = A21 * B12 + A22 * B22 + C22;
+#endif
                 }
 
                 base_index = y * BLOCK_SIZE + x;
+#if WK_COMPLEX
+                wk prev_value = C_tmp_buffer[base_index];
+                C_tmp_buffer[base_index] = {prev_value.real + C11.real, prev_value.imag + C11.imag};
+
+                prev_value = C_tmp_buffer[base_index + 1];
+                C_tmp_buffer[base_index + 1] = {prev_value.real + C12.real, prev_value.imag + C12.imag};
+
+                prev_value = C_tmp_buffer[base_index + BLOCK_SIZE];
+                C_tmp_buffer[base_index + BLOCK_SIZE] = {prev_value.real + C21.real, prev_value.imag + C21.imag};
+                
+                prev_value = C_tmp_buffer[base_index + BLOCK_SIZE + 1];
+                C_tmp_buffer[base_index + BLOCK_SIZE + 1] = {prev_value.real + C22.real, prev_value.imag + C22.imag};
+#else
                 C_tmp_buffer[base_index] += C11;
                 C_tmp_buffer[base_index + 1] += C12;
                 C_tmp_buffer[base_index + BLOCK_SIZE] += C21;
                 C_tmp_buffer[base_index + BLOCK_SIZE + 1] += C22;
+#endif
             }
         }
 #else

@@ -11,12 +11,15 @@ const Tensor = tensor_module.Tensor;
 const TensorErrors = tensor_module.Errors;
 const GemmAlgorithm = tensor_module.GemmAlgorithm;
 
-const gemm_Kernel: []const u8 = @embedFile("kernels/generic_gemm.cl");
-const gemm_nxn_Kernel: []const u8 = @embedFile("kernels/gemm_nxn.cl");
-const gemm_nxn_outer_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
-const gemm_nxn_gpu_Kernel: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
-const gemm_pack_tiles_Kernel: []const u8 = @embedFile("kernels/gemm_pack.cl");
-const gemm_nxn_pack_kernel: []const u8 = @embedFile("kernels/gemm_nxn_pack.cl");
+const GEMM_KERNEL: []const u8 = @embedFile("kernels/generic_gemm.cl");
+const GEMM_NXN_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn.cl");
+const GEMM_NXN_OUTER_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
+
+const GEMM_NXN_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
+
+const GEMM_PACK_TILES_KERNEL: []const u8 = @embedFile("kernels/gemm_pack.cl");
+const GEMM_NXN_PACK_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack.cl");
+const GEMM_NXN_PACK_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack_gpu.cl");
 
 pub const Operation = enum(u8) {
     no_transpose = 0,
@@ -36,14 +39,9 @@ inline fn getBlockSizeFromAlgorithm(algorithm: GemmAlgorithm) u16 {
 }
 
 inline fn getAlgorithm(
-    comptime T: type,
     default_algorithm: GemmAlgorithm,
     k_size: u64,
 ) GemmAlgorithm {
-    if (comptime core.types.isComplex(T)) {
-        return .generic;
-    }
-
     comptime var block_size = 64;
     inline while (block_size >= 2) {
         const field_name = switch (block_size) {
@@ -105,7 +103,6 @@ pub fn PackedTensors(comptime T: type) type {
             }
 
             const recommended_algorithm = getAlgorithm(
-                T,
                 result_tensor.work_configuration.gemm_algorithm_per_device[wekua_id],
                 padded_k_size,
             );
@@ -210,7 +207,7 @@ pub fn PackedTensors(comptime T: type) type {
                 },
                 &kernel,
                 &program,
-                gemm_pack_tiles_Kernel,
+                GEMM_PACK_TILES_KERNEL,
             );
 
             kernels_set.kernels.?[kernel_index] = kernel;
@@ -354,7 +351,7 @@ fn getGemmKernelWithoutPacking(
         num_algorithms * kernels_per_algorithm,
     );
 
-    const algorithm = getAlgorithm(T, default_algorithm, k_size);
+    const algorithm = getAlgorithm(default_algorithm, k_size);
     algorithm_ptr.* = algorithm;
 
     var kernel_index: usize = @intFromEnum(algorithm) * kernels_per_algorithm;
@@ -389,25 +386,25 @@ fn getGemmKernelWithoutPacking(
     defer allocator.free(extra_args);
 
     const kernel_source: []const u8 = switch (algorithm) {
-        .generic => gemm_Kernel,
+        .generic => GEMM_KERNEL,
         else => switch (command_queue.local_mem_type) {
-            .local => gemm_nxn_gpu_Kernel,
+            .local => GEMM_NXN_GPU_KERNEL,
             .global => blk: {
                 if (op_a == .no_transpose and op_b == .transpose) {
-                    break :blk gemm_nxn_Kernel;
+                    break :blk GEMM_NXN_KERNEL;
                 } else if (op_a == .transpose and op_b == .no_transpose) {
-                    break :blk gemm_nxn_outer_Kernel;
+                    break :blk GEMM_NXN_OUTER_KERNEL;
                 } else if (op_a == .transpose and op_b == .transpose) {
                     if (a_row_pitch > b_row_pitch) {
-                        break :blk gemm_nxn_Kernel;
+                        break :blk GEMM_NXN_KERNEL;
                     } else {
-                        break :blk gemm_nxn_outer_Kernel;
+                        break :blk GEMM_NXN_OUTER_KERNEL;
                     }
                 } else {
                     if (a_row_pitch > b_row_pitch) {
-                        break :blk gemm_nxn_outer_Kernel;
+                        break :blk GEMM_NXN_OUTER_KERNEL;
                     } else {
-                        break :blk gemm_nxn_Kernel;
+                        break :blk GEMM_NXN_KERNEL;
                     }
                 }
             },
@@ -665,6 +662,11 @@ fn getGemmKernelWithPacking(
     );
     defer allocator.free(extra_args);
 
+    const source_code = switch (command_queue.local_mem_type) {
+        .global => GEMM_NXN_PACK_KERNEL,
+        .local => GEMM_NXN_PACK_GPU_KERNEL,
+    };
+
     try KernelsSet.compileKernel(
         T,
         command_queue,
@@ -675,7 +677,7 @@ fn getGemmKernelWithPacking(
         },
         &kernel,
         &program,
-        gemm_nxn_pack_kernel,
+        source_code,
     );
 
     kernels_set.kernels.?[kernel_index] = kernel;
