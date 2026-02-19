@@ -6,8 +6,12 @@ __kernel void gemm(
 
     __global wks *const restrict C,
 
+    const ulong A_slice_pitch,
     const ulong A_row_pitch,
+
+    const ulong B_slice_pitch,
     const ulong B_row_pitch,
+
     const ulong C_row_pitch,
 
     const ulong cols
@@ -19,18 +23,14 @@ __kernel void gemm(
 #endif
 #endif
 ) {
-    const ulong i = get_global_id(0) << 1;
-    const ulong j = get_global_id(1) << 1;
+    const ulong i = get_global_id(0);
+    const ulong j = get_global_id(1);
 
-#if A_TRANS == 0
-    const ulong row_A = i*A_row_pitch;
-    const ulong next_row_A = row_A + A_row_pitch;
-#endif
+    const ulong C_row = i << 1;
+    const ulong C_col = j << 1;
 
-#if B_TRANS
-    const ulong row_B = j*B_row_pitch;
-    const ulong next_row_B = row_B + B_row_pitch;
-#endif
+    ulong A_base_index = i * A_slice_pitch;
+    ulong B_base_index = j * B_slice_pitch;
 
 #if WK_COMPLEX
     wk C11 = {0, 0};
@@ -52,35 +52,15 @@ __kernel void gemm(
 #endif
 
     for (ulong k=0; k<cols; k += 2) {
-#if A_TRANS
-        const ulong A_index = k*A_row_pitch + i;
-        const ulong A_index2 = A_index + A_row_pitch;
+        const wk A11 = A[A_base_index];
+        const wk A12 = A[A_base_index + 1];
+        const wk A21 = A[A_base_index + 2];
+        const wk A22 = A[A_base_index + 3];
 
-        const wk A11 = A[A_index];
-        const wk A21 = A[A_index + 1];
-        const wk A12 = A[A_index2];
-        const wk A22 = A[A_index2 + 1];
-#else
-        const wk A11 = A[row_A + k];
-        const wk A12 = A[row_A + k + 1];
-        const wk A21 = A[next_row_A + k];
-        const wk A22 = A[next_row_A + k + 1];
-#endif
-
-#if B_TRANS
-        const wk B11 = B[row_B + k];
-        const wk B21 = B[row_B + k + 1];
-        const wk B12 = B[next_row_B + k];
-        const wk B22 = B[next_row_B + k + 1];
-#else
-        const ulong B_index = k*B_row_pitch + j;
-        const ulong B_index2 = B_index + B_row_pitch;
-
-        const wk B11 = B[B_index];
-        const wk B12 = B[B_index + 1];
-        const wk B21 = B[B_index2];
-        const wk B22 = B[B_index2 + 1];
-#endif
+        const wk B11 = B[B_base_index];
+        const wk B21 = B[B_base_index + 1];
+        const wk B12 = B[B_base_index + 2];
+        const wk B22 = B[B_base_index + 3];
 
 #if WK_COMPLEX
         wk prod;
@@ -110,9 +90,12 @@ __kernel void gemm(
         C21 = A21 * B11 + A22 * B21 + C21;
         C22 = A21 * B12 + A22 * B22 + C22;
 #endif
+
+        A_base_index += A_row_pitch;
+        B_base_index += B_row_pitch;
     }
 
-    const ulong C_index = i*C_row_pitch + j;
+    const ulong C_index = C_row * C_row_pitch + C_col;
     const ulong C_index2 = C_index + C_row_pitch;
 
 #if WK_COMPLEX

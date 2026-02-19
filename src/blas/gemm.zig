@@ -15,12 +15,11 @@ const GEMM_2x2_KERNEL: []const u8 = @embedFile("kernels/gemm_2x2.cl");
 const GEMM_NXN_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn.cl");
 const GEMM_NXN_OUTER_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
 
-const GEMM_2x2_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_2x2_gpu.cl");
 const GEMM_NXN_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
+const GEMM_NXN_PACK_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack_gpu.cl");
 
 const GEMM_2x2_PACK_KERNEL: []const u8 = @embedFile("kernels/gemm_2x2_pack.cl");
 const GEMM_NXN_PACK_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack.cl");
-const GEMM_NXN_PACK_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack_gpu.cl");
 
 const GEMM_PACK_TILES_KERNEL: []const u8 = @embedFile("kernels/gemm_pack.cl");
 
@@ -386,7 +385,10 @@ fn getGemmKernelWithoutPacking(
     defer allocator.free(extra_args);
 
     const kernel_source: []const u8 = switch (algorithm) {
-        .@"2x2" => GEMM_2x2_KERNEL,
+        .@"2x2" => switch (command_queue.local_mem_type) {
+            .local => GEMM_NXN_GPU_KERNEL,
+            .global => GEMM_2x2_KERNEL,
+        },
         else => switch (command_queue.local_mem_type) {
             .local => GEMM_NXN_GPU_KERNEL,
             .global => blk: {
@@ -666,7 +668,10 @@ fn getGemmKernelWithPacking(
     defer allocator.free(extra_args);
 
     const source_code = switch (command_queue.local_mem_type) {
-        .global => GEMM_NXN_PACK_KERNEL,
+        .global => switch (algorithm) {
+            .@"2x2" => GEMM_2x2_PACK_KERNEL,
+            else => GEMM_NXN_PACK_KERNEL,
+        },
         .local => GEMM_NXN_PACK_GPU_KERNEL,
     };
 
