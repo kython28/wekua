@@ -1,7 +1,7 @@
 #include "wekua.h"
 
 __kernel void tanh_dev(
-    __constant const wk *const restrict input,
+    __global const wk *const restrict input,
     __global wk *const restrict derivative
 ) {
     const ulong index = get_global_id(0);

@@ -2,7 +2,7 @@
 
 __kernel void adagrad_kernel(
     __global wk *const restrict x,
-    __constant const wk *const restrict gradients,
+    __global const wk *const restrict gradients,
     __global wk *const restrict gradients_history,
     const wk lr
 ) {

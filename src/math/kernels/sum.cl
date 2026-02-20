@@ -1,7 +1,7 @@
 #include "wekua.h"
 
 __kernel void sum_kernel(
-    __constant const wk *const restrict x,
+    __global const wk *const restrict x,
     __global wks *const restrict y,
 
     const ulong row_pitch,

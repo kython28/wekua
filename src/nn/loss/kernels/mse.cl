@@ -1,8 +1,8 @@
 #include "wekua.h"
 
 __kernel void mse_kernel(
-    __constant const wk *const restrict output,
-    __constant const wk *const restrict expected,
+    __global const wk *const restrict output,
+    __global const wk *const restrict expected,
     __global wk *const restrict error_tensor
 
 #if CALC_DEV

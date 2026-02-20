@@ -1,7 +1,7 @@
 #include "wekua.h"
 
 __kernel void to_real(
-	__constant const wks *restrict const src,
+	__global const wks *restrict const src,
     __global wks *restrict const dst,
 
 	const ulong src_row_pitch,

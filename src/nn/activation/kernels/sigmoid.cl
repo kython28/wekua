@@ -18,7 +18,7 @@ __kernel void sigmoid(
 }
 
 __kernel void sigmoid_dev(
-    __constant const wk *const restrict output,
+    __global const wk *const restrict output,
     __global wk *const restrict derivative
 ) {
     const ulong index = get_global_id(0);

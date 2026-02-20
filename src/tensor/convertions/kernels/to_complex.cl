@@ -1,7 +1,7 @@
 #include "wekua.h"
 
 __kernel void to_complex(
-	__constant const wks *const restrict src,
+	__global const wks *const restrict src,
     __global wks *const restrict dst,
 
 	const ulong src_row_pitch,

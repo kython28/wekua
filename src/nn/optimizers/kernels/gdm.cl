@@ -2,7 +2,7 @@
 
 __kernel void gdm_kernel(
     __global wk *const restrict x,
-    __constant const wk *const restrict gradients,
+    __global const wk *const restrict gradients,
     __global wk *const restrict velocities,
     const wk lr,
     const wk beta
