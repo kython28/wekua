@@ -85,8 +85,44 @@ pub fn PackedTensors(comptime T: type) type {
                 return tensor_module.Errors.InvalidValue;
             }
 
+            const wekua_id = pipeline.command_queue.wekua_id;
+            return initInternal(
+                pipeline,
+                shape[0],
+                shape[1],
+                k_size,
+                result_tensor.work_configuration.gemm_algorithm_per_device[wekua_id],
+                vectors_enabled,
+            );
+        }
+
+        pub fn initWithDimensions(
+            pipeline: *Pipeline,
+            n_size: u64,
+            m_size: u64,
+            k_size: u64,
+            recommended_algorithm: GemmAlgorithm,
+            vectors_enabled: bool,
+        ) TensorErrors!*Self {
+            return initInternal(
+                pipeline,
+                n_size,
+                m_size,
+                k_size,
+                recommended_algorithm,
+                vectors_enabled,
+            );
+        }
+
+        fn initInternal(
+            pipeline: *Pipeline,
+            n_size: u64,
+            m_size: u64,
+            k_size: u64,
+            default_algorithm: GemmAlgorithm,
+            vectors_enabled: bool,
+        ) TensorErrors!*Self {
             const command_queue = pipeline.command_queue;
-            const wekua_id = command_queue.wekua_id;
 
             const vector_width: u64 = @intCast(command_queue.vector_widths[core.types.getTypeId(T)]);
             var padded_k_size = k_size;
@@ -101,13 +137,10 @@ pub fn PackedTensors(comptime T: type) type {
             }
 
             const recommended_algorithm = getAlgorithm(
-                result_tensor.work_configuration.gemm_algorithm_per_device[wekua_id],
+                default_algorithm,
                 padded_k_size,
             );
             const block_size = getBlockSizeFromAlgorithm(recommended_algorithm);
-
-            const n_size = shape[0];
-            const m_size = shape[1];
 
             const padded_n_size = n_size + (n_size % block_size);
             const padded_m_size = m_size + (m_size % block_size);
@@ -118,7 +151,7 @@ pub fn PackedTensors(comptime T: type) type {
                 col_size *= vector_width;
             }
 
-            const context = result_tensor.context;
+            const context = command_queue.context;
             const packed_a = try TensorT.alloc(
                 context,
                 pipeline,

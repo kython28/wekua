@@ -52,6 +52,7 @@ pub fn Linear(
     const Activation = activation_module.Activation(T);
 
     const SubType = core.types.getType(T);
+    const GemmPackedTensors = blas.GemmPackedTensors(T);
 
     const LinearCache = struct {
         outputs: []*TensorT,
@@ -61,6 +62,11 @@ pub fn Linear(
         gradients: []*TensorT,
         bias_gradients: []*TensorT,
         bias_gradients_lis: []u64,
+
+        // Pre-allocated packed tensors for GEMM
+        forward_packed: []*GemmPackedTensors,
+        grad_packed: []*GemmPackedTensors,
+        sensitivity_packed: []*GemmPackedTensors,
     };
 
     return struct {
@@ -297,6 +303,65 @@ pub fn Linear(
                 slots_created += 1;
             }
 
+            // Pre-allocate packed tensors for GEMM
+            const num_layers = self.weights.len;
+
+            const forward_packed = try self.allocator.alloc(*GemmPackedTensors, num_layers);
+            errdefer self.allocator.free(forward_packed);
+
+            var forward_packed_created: usize = 0;
+            errdefer {
+                for (forward_packed[0..forward_packed_created]) |fp| fp.deinit(pipeline);
+            }
+
+            for (self.weights, outputs, forward_packed) |w, o, *fp| {
+                fp.* = try GemmPackedTensors.init(pipeline, o, w.dimensions.shape[1], true);
+                forward_packed_created += 1;
+            }
+
+            const grad_packed = try self.allocator.alloc(*GemmPackedTensors, num_layers);
+            errdefer self.allocator.free(grad_packed);
+
+            var grad_packed_created: usize = 0;
+            errdefer {
+                for (grad_packed[0..grad_packed_created]) |gp| gp.deinit(pipeline);
+            }
+
+            for (gradients, grad_packed) |g, *gp| {
+                gp.* = try GemmPackedTensors.init(pipeline, g, number_of_elements, true);
+                grad_packed_created += 1;
+            }
+
+            const sensitivity_packed = try self.allocator.alloc(*GemmPackedTensors, num_layers);
+            errdefer self.allocator.free(sensitivity_packed);
+
+            var sensitivity_packed_created: usize = 0;
+            errdefer {
+                for (sensitivity_packed[0..sensitivity_packed_created]) |sp| sp.deinit(pipeline);
+            }
+
+            const wekua_id = command_queue.wekua_id;
+            for (0..num_layers) |i| {
+                if (i > 0) {
+                    sensitivity_packed[i] = try GemmPackedTensors.init(
+                        pipeline,
+                        sensitivities[i - 1],
+                        self.weights[i].dimensions.shape[0],
+                        true,
+                    );
+                } else {
+                    sensitivity_packed[0] = try GemmPackedTensors.initWithDimensions(
+                        pipeline,
+                        number_of_elements,
+                        self.weights[0].dimensions.shape[1],
+                        self.weights[0].dimensions.shape[0],
+                        outputs[0].work_configuration.gemm_algorithm_per_device[wekua_id],
+                        true,
+                    );
+                }
+                sensitivity_packed_created += 1;
+            }
+
             const cache = try self.allocator.create(LinearCache);
             cache.* = .{
                 .outputs = outputs,
@@ -305,6 +370,9 @@ pub fn Linear(
                 .gradients = gradients,
                 .bias_gradients = bias_gradients,
                 .bias_gradients_lis = bias_gradients_lis,
+                .forward_packed = forward_packed,
+                .grad_packed = grad_packed,
+                .sensitivity_packed = sensitivity_packed,
             };
 
             return cache;
@@ -336,12 +404,19 @@ pub fn Linear(
                 s.release(pipeline);
             }
 
+            for (cache_data.forward_packed) |fp| fp.deinit(pipeline);
+            for (cache_data.grad_packed) |gp| gp.deinit(pipeline);
+            for (cache_data.sensitivity_packed) |sp| sp.deinit(pipeline);
+
             allocator.free(cache_data.outputs);
             allocator.free(cache_data.sensitivities);
             allocator.free(cache_data.acti_derivatives);
             allocator.free(cache_data.gradients);
             allocator.free(cache_data.bias_gradients);
             allocator.free(cache_data.bias_gradients_lis);
+            allocator.free(cache_data.forward_packed);
+            allocator.free(cache_data.grad_packed);
+            allocator.free(cache_data.sensitivity_packed);
 
             allocator.destroy(cache_data);
         }
@@ -420,7 +495,7 @@ pub fn Linear(
 
             const activation_layer = self.activation;
 
-            for (self.weights, outputs_cached, 0..) |weight, output, index| {
+            for (self.weights, outputs_cached, linear_cache.forward_packed, 0..) |weight, output, fwd_pt, index| {
                 try blas.gemm(
                     T,
                     pipeline,
@@ -431,6 +506,7 @@ pub fn Linear(
                     .transpose,
                     null,
                     output,
+                    fwd_pt,
                 );
 
                 // TODO: avoid this repeated condition
@@ -552,6 +628,7 @@ pub fn Linear(
                     .no_transpose,
                     null,
                     grads[index],
+                    cache_data.grad_packed[index],
                 );
 
                 if (bias_enabled) {
@@ -571,6 +648,15 @@ pub fn Linear(
                     break :blk input_sensitivity orelse return;
                 };
 
+                const sensitivity_pt: ?*GemmPackedTensors = blk: {
+                    if (index == 0) {
+                        if (input_sensitivity) |is_tensor| {
+                            if (!is_tensor.flags.vectors_enabled) break :blk null;
+                        }
+                    }
+                    break :blk cache_data.sensitivity_packed[index];
+                };
+
                 try blas.gemm(
                     T,
                     pipeline,
@@ -581,6 +667,7 @@ pub fn Linear(
                     .no_transpose,
                     null,
                     next_sensitivity,
+                    sensitivity_pt,
                 );
 
                 if (index == 0) break;
@@ -604,4 +691,9 @@ pub fn Linear(
             return cache_data.bias_gradients;
         }
     };
+}
+
+test {
+    std.testing.refAllDecls(Linear(f32));
+    std.testing.refAllDecls(Linear(f64));
 }
