@@ -1,3 +1,4 @@
+const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("core");
@@ -82,4 +83,9 @@ pub fn Tanh(comptime T: type) type {
             try pipeline.append(&.{new_event});
         }
     };
+}
+
+test {
+    std.testing.refAllDecls(Tanh(f32));
+    std.testing.refAllDecls(Tanh(f64));
 }

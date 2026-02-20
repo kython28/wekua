@@ -1,3 +1,4 @@
+const std = @import("std");
 pub const linear_module = @import("linear.zig");
 pub const sequential_module = @import("sequential.zig");
 
@@ -137,4 +138,7 @@ test {
     _ = linear_module;
     _ = sequential_module;
     _ = cache_module;
+
+    std.testing.refAllDecls(Layer(f32));
+    std.testing.refAllDecls(Layer(f64));
 }

@@ -47,11 +47,11 @@ pub fn Adagrad(comptime T: type) type {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
-            var gradient_histories_array = std.ArrayList(*TensorT).init(allocator);
-            errdefer gradient_histories_array.deinit();
+            var gradient_histories_array: std.ArrayList(*TensorT) = .empty;
+            errdefer gradient_histories_array.deinit(allocator);
 
-            var bias_gradient_histories_array = std.ArrayList(*TensorT).init(allocator);
-            errdefer bias_gradient_histories_array.deinit();
+            var bias_gradient_histories_array: std.ArrayList(*TensorT) = .empty;
+            errdefer bias_gradient_histories_array.deinit(allocator);
 
             var items_created: usize = 0;
             errdefer {
@@ -75,19 +75,19 @@ pub fn Adagrad(comptime T: type) type {
                     const bv = try TensorT.alloc(context, pipeline, w.dimensions.shape[0..1], .{});
                     errdefer bv.release(pipeline);
 
-                    try gradient_histories_array.append(v);
+                    try gradient_histories_array.append(allocator, v);
                     errdefer _ = gradient_histories_array.pop();
 
-                    try bias_gradient_histories_array.append(bv);
+                    try bias_gradient_histories_array.append(allocator, bv);
 
                     items_created += 1;
                 }
             }
 
-            const gradient_histories = try gradient_histories_array.toOwnedSlice();
+            const gradient_histories = try gradient_histories_array.toOwnedSlice(allocator);
             errdefer allocator.free(gradient_histories);
 
-            const bias_gradient_histories = try bias_gradient_histories_array.toOwnedSlice();
+            const bias_gradient_histories = try bias_gradient_histories_array.toOwnedSlice(allocator);
             errdefer allocator.free(bias_gradient_histories);
 
             self.* = .{
@@ -222,4 +222,9 @@ pub fn Adagrad(comptime T: type) type {
             self.allocator.destroy(self);
         }
     };
+}
+
+test {
+    std.testing.refAllDecls(Adagrad(f32));
+    std.testing.refAllDecls(Adagrad(f64));
 }

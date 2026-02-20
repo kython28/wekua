@@ -284,3 +284,8 @@ pub fn Sequential(comptime T: type) type {
         }
     };
 }
+
+test {
+    std.testing.refAllDecls(Sequential(f32));
+    std.testing.refAllDecls(Sequential(f64));
+}

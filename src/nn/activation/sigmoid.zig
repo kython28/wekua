@@ -1,3 +1,4 @@
+const std = @import("std");
 const cl = @import("opencl");
 
 const core = @import("core");
@@ -135,4 +136,9 @@ pub fn Sigmoid(comptime T: type) type {
             try pipeline.append(&.{new_event});
         }
     };
+}
+
+test {
+    std.testing.refAllDecls(Sigmoid(f32));
+    std.testing.refAllDecls(Sigmoid(f64));
 }

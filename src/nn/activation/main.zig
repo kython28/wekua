@@ -1,3 +1,4 @@
+const std = @import("std");
 const sigmoid_module = @import("sigmoid.zig");
 const tanh_module = @import("tanh.zig");
 pub const Sigmoid = sigmoid_module.Sigmoid;
@@ -60,4 +61,7 @@ pub fn Activation(comptime T: type) type {
 test {
     _ = sigmoid_module;
     _ = tanh_module;
+
+    std.testing.refAllDecls(Activation(f32));
+    std.testing.refAllDecls(Activation(f64));
 }

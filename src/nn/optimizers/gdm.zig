@@ -48,11 +48,11 @@ pub fn GDM(comptime T: type) type {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
 
-            var velocities_array = std.ArrayList(*TensorT).init(allocator);
-            errdefer velocities_array.deinit();
+            var velocities_array: std.ArrayList(*TensorT) = .empty;
+            errdefer velocities_array.deinit(allocator);
 
-            var bias_velocities_array = std.ArrayList(*TensorT).init(allocator);
-            errdefer bias_velocities_array.deinit();
+            var bias_velocities_array: std.ArrayList(*TensorT) = .empty;
+            errdefer bias_velocities_array.deinit(allocator);
 
             var velocities_created: usize = 0;
             errdefer {
@@ -76,19 +76,19 @@ pub fn GDM(comptime T: type) type {
                     const bv = try TensorT.alloc(context, pipeline, w.dimensions.shape[0..1], .{});
                     errdefer bv.release(pipeline);
 
-                    try velocities_array.append(v);
+                    try velocities_array.append(allocator, v);
                     errdefer _ = velocities_array.pop();
 
-                    try bias_velocities_array.append(bv);
+                    try bias_velocities_array.append(allocator, bv);
 
                     velocities_created += 1;
                 }
             }
 
-            const velocities = try velocities_array.toOwnedSlice();
+            const velocities = try velocities_array.toOwnedSlice(allocator);
             errdefer allocator.free(velocities);
 
-            const bias_velocities = try bias_velocities_array.toOwnedSlice();
+            const bias_velocities = try bias_velocities_array.toOwnedSlice(allocator);
             errdefer allocator.free(bias_velocities);
 
             self.* = .{
@@ -225,4 +225,9 @@ pub fn GDM(comptime T: type) type {
             allocator.destroy(self);
         }
     };
+}
+
+test {
+    std.testing.refAllDecls(GDM(f32));
+    std.testing.refAllDecls(GDM(f64));
 }

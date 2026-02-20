@@ -1,3 +1,4 @@
+const std = @import("std");
 const core = @import("core");
 const Pipeline = core.Pipeline;
 
@@ -58,4 +59,7 @@ test {
     _ = gdm_module;
     _ = adagrad_module;
     _ = rmsprop_module;
+
+    std.testing.refAllDecls(Optimizer(f32));
+    std.testing.refAllDecls(Optimizer(f64));
 }

@@ -74,3 +74,8 @@ pub fn Cache(comptime T: type) type {
         }
     };
 }
+
+test {
+    std.testing.refAllDecls(Cache(f32));
+    std.testing.refAllDecls(Cache(f64));
+}

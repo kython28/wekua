@@ -101,3 +101,8 @@ pub fn GD(comptime T: type) type {
         }
     };
 }
+
+test {
+    std.testing.refAllDecls(GD(f32));
+    std.testing.refAllDecls(GD(f64));
+}
