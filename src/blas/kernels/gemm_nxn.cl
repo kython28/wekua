@@ -53,7 +53,7 @@ __kernel void gemm(
     for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
         ulong base_index;
 #if A_TRANS
-        FILL_TRANSPOSED_TILE(A_tmp_buffer, A, i, k, A_row_pitch)
+        FILL_TRANSPOSED_TILE(A_tmp_buffer, A, k, i, A_row_pitch)
 #else
         FILL_TILE(A_tmp_buffer, A, i, k, A_row_pitch)
 #endif
@@ -61,7 +61,7 @@ __kernel void gemm(
 #if B_TRANS
         FILL_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
 #else
-        FILL_TRANSPOSED_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
+        FILL_TRANSPOSED_TILE(B_tmp_buffer, B, k, j, B_row_pitch)
 #endif
 
 #if WK_VECTOR_WIDTH <= 8 || WK_COMPLEX
@@ -135,16 +135,20 @@ __kernel void gemm(
                 base_index = y * BLOCK_SIZE + x;
 #if WK_COMPLEX
                 wk prev_value = C_tmp_buffer[base_index];
-                C_tmp_buffer[base_index] = {prev_value.real + C11.real, prev_value.imag + C11.imag};
+                prev_value.real += C11.real; prev_value.imag += C11.imag;
+                C_tmp_buffer[base_index] = prev_value;
 
                 prev_value = C_tmp_buffer[base_index + 1];
-                C_tmp_buffer[base_index + 1] = {prev_value.real + C12.real, prev_value.imag + C12.imag};
+                prev_value.real += C12.real; prev_value.imag += C12.imag;
+                C_tmp_buffer[base_index + 1] = prev_value;
 
                 prev_value = C_tmp_buffer[base_index + BLOCK_SIZE];
-                C_tmp_buffer[base_index + BLOCK_SIZE] = {prev_value.real + C21.real, prev_value.imag + C21.imag};
+                prev_value.real += C21.real; prev_value.imag += C21.imag;
+                C_tmp_buffer[base_index + BLOCK_SIZE] = prev_value;
                 
                 prev_value = C_tmp_buffer[base_index + BLOCK_SIZE + 1];
-                C_tmp_buffer[base_index + BLOCK_SIZE + 1] = {prev_value.real + C22.real, prev_value.imag + C22.imag};
+                prev_value.real += C22.real; prev_value.imag += C22.imag;
+                C_tmp_buffer[base_index + BLOCK_SIZE + 1] = prev_value;
 #else
                 C_tmp_buffer[base_index] += C11;
                 C_tmp_buffer[base_index + 1] += C12;

@@ -53,6 +53,7 @@ pub fn init(
     depth: u64,
     penultimate_size: u64,
     padded_penultimate_size: u64,
+    row_pitch: u64,
     number_of_elements: u64,
     number_of_vectors: u64,
     last_size: u64,
@@ -103,7 +104,7 @@ pub fn init(
         utils.calculateWorkItems(global_work_items_without_vectors, wm, cmd.max_work_group_size);
     }
 
-    try self.initGemm(T, arena_allocator, command_queues, padded_penultimate_size, last_size);
+    try self.initGemm(T, arena_allocator, command_queues, padded_penultimate_size, row_pitch);
 }
 
 fn initGemm(
@@ -112,14 +113,13 @@ fn initGemm(
     arena_allocator: std.mem.Allocator,
     command_queues: []CommandQueue,
     padded_penultimate_size: u64,
-    last_size: u64,
+    row_pitch: u64,
 ) error{OutOfMemory}!void {
     const gemm_algorithm_per_device = try arena_allocator.alloc(GemmAlgorithm, command_queues.len);
-    @memset(gemm_algorithm_per_device, GemmAlgorithm.@"2x2");
     self.gemm_algorithm_per_device = gemm_algorithm_per_device;
 
     const gwi_h = padded_penultimate_size;
-    const gwi_w = (last_size + (last_size % 2));
+    const gwi_w = row_pitch;
 
     var max_block_length: u16 = 0;
     comptime var block_length = 2;
@@ -165,7 +165,7 @@ fn initGemm(
                 switch (cmd.local_mem_type) {
                     .local => {
                         g_values[0] = gwi_h;
-                        g_values[1] = gwi_h;
+                        g_values[1] = gwi_w;
 
                         if ((block_length2 * block_length2) < cmd.max_work_group_size) {
                             algorithm = @field(GemmAlgorithm, algorithm_name);
@@ -182,11 +182,13 @@ fn initGemm(
                             // cmd.max_work_group_size,
                             @min(block_length2 * block_length2, cmd.max_work_group_size),
                         );
+
+                        algorithm = @field(GemmAlgorithm, algorithm_name);
                     },
                 }
             }
         }
-        self.gemm_algorithm_per_device[i] = algorithm;
+        gemm_algorithm_per_device[i] = algorithm;
     }
 }
 

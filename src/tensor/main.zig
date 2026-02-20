@@ -228,6 +228,7 @@ pub fn Tensor(comptime T: type) type {
                 depth,
                 penultimate_size,
                 padded_penultimate_size,
+                row_pitch,
                 number_of_elements,
                 number_of_vectors,
                 last_size,

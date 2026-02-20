@@ -135,16 +135,20 @@ __kernel void gemm(
                 base_index = y * BLOCK_SIZE + x;
 #if WK_COMPLEX
                 wk prev_value = C_tmp_buffer[base_index];
-                C_tmp_buffer[base_index] = {prev_value.real + C11.real, prev_value.imag + C11.imag};
+                prev_value.real += C11.real; prev_value.imag += C11.imag;
+                C_tmp_buffer[base_index] = prev_value;
 
                 prev_value = C_tmp_buffer[base_index + 1];
-                C_tmp_buffer[base_index + 1] = {prev_value.real + C12.real, prev_value.imag + C12.imag};
+                prev_value.real += C12.real; prev_value.imag += C12.imag;
+                C_tmp_buffer[base_index + 1] = prev_value;
 
                 prev_value = C_tmp_buffer[base_index + BLOCK_SIZE];
-                C_tmp_buffer[base_index + BLOCK_SIZE] = {prev_value.real + C21.real, prev_value.imag + C21.imag};
+                prev_value.real += C21.real; prev_value.imag += C21.imag;
+                C_tmp_buffer[base_index + BLOCK_SIZE] = prev_value;
                 
                 prev_value = C_tmp_buffer[base_index + BLOCK_SIZE + 1];
-                C_tmp_buffer[base_index + BLOCK_SIZE + 1] = {prev_value.real + C22.real, prev_value.imag + C22.imag};
+                prev_value.real += C22.real; prev_value.imag += C22.imag;
+                C_tmp_buffer[base_index + BLOCK_SIZE + 1] = prev_value;
 #else
                 C_tmp_buffer[base_index] += C11;
                 C_tmp_buffer[base_index + 1] += C12;

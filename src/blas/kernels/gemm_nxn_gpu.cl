@@ -48,9 +48,9 @@ __kernel void gemm(
 #endif
 
 #if B_TRANS
-        B_tmp_buffer[B_local_tile_index] = B[j * B_row_pitch + k + lj];
+        B_tmp_buffer[B_local_tile_index] = B[j * B_row_pitch + k + li];
 #else
-        B_tmp_buffer[B_local_tile_index] = B[(k + lj) * B_row_pitch + j];
+        B_tmp_buffer[B_local_tile_index] = B[(k + li) * B_row_pitch + j];
 #endif
         barrier(CLK_LOCAL_MEM_FENCE);
 

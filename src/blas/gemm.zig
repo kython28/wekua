@@ -13,7 +13,6 @@ const GemmAlgorithm = tensor_module.GemmAlgorithm;
 
 const GEMM_2x2_KERNEL: []const u8 = @embedFile("kernels/gemm_2x2.cl");
 const GEMM_NXN_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn.cl");
-const GEMM_NXN_OUTER_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_outer.cl");
 
 const GEMM_NXN_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_gpu.cl");
 const GEMM_NXN_PACK_GPU_KERNEL: []const u8 = @embedFile("kernels/gemm_nxn_pack_gpu.cl");
@@ -107,11 +106,11 @@ pub fn PackedTensors(comptime T: type) type {
             );
             const block_size = getBlockSizeFromAlgorithm(recommended_algorithm);
 
-            const m_size = shape[0];
-            const n_size = shape[1];
+            const n_size = shape[0];
+            const m_size = shape[1];
 
-            const padded_m_size = m_size + (m_size % block_size);
             const padded_n_size = n_size + (n_size % block_size);
+            const padded_m_size = m_size + (m_size % block_size);
 
             const row_size = padded_k_size / block_size;
             var col_size: u64 = @as(u64, block_size) * block_size;
@@ -123,7 +122,7 @@ pub fn PackedTensors(comptime T: type) type {
             const packed_a = try TensorT.alloc(
                 context,
                 pipeline,
-                &.{ padded_m_size / block_size, row_size, col_size },
+                &.{ padded_n_size / block_size, row_size, col_size },
                 .{ .vectors_enabled = vectors_enabled },
             );
             errdefer packed_a.release(pipeline);
@@ -131,7 +130,7 @@ pub fn PackedTensors(comptime T: type) type {
             const packed_b = try TensorT.alloc(
                 context,
                 pipeline,
-                &.{ padded_n_size / block_size, row_size, col_size },
+                &.{ padded_m_size / block_size, row_size, col_size },
                 .{ .vectors_enabled = vectors_enabled },
             );
             errdefer packed_b.release(pipeline);
@@ -334,11 +333,7 @@ fn getGemmKernelWithoutPacking(
     has_beta: bool,
     op_a: Operation,
     op_b: Operation,
-    default_algorithm: GemmAlgorithm,
-    a_row_pitch: u64,
-    b_row_pitch: u64,
-    k_size: u64,
-    algorithm_ptr: *GemmAlgorithm,
+    algorithm: GemmAlgorithm,
 ) TensorErrors!cl.kernel.Kernel {
     const SUPPORTED_TYPES = core.types.SUPPORTED_TYPES;
     const num_algorithms = std.meta.fields(GemmAlgorithm).len;
@@ -349,9 +344,6 @@ fn getGemmKernelWithoutPacking(
         .GEMM,
         num_algorithms * kernels_per_algorithm,
     );
-
-    const algorithm = getAlgorithm(default_algorithm, k_size);
-    algorithm_ptr.* = algorithm;
 
     var kernel_index: usize = @intFromEnum(algorithm) * kernels_per_algorithm;
     kernel_index += @intFromBool(vectors_enabled) * (2 * 2 * 2 * 2 * SUPPORTED_TYPES.len);
@@ -391,25 +383,7 @@ fn getGemmKernelWithoutPacking(
         },
         else => switch (command_queue.local_mem_type) {
             .local => GEMM_NXN_GPU_KERNEL,
-            .global => blk: {
-                if (op_a == .no_transpose and op_b == .transpose) {
-                    break :blk GEMM_NXN_KERNEL;
-                } else if (op_a == .transpose and op_b == .no_transpose) {
-                    break :blk GEMM_NXN_OUTER_KERNEL;
-                } else if (op_a == .transpose and op_b == .transpose) {
-                    if (a_row_pitch > b_row_pitch) {
-                        break :blk GEMM_NXN_KERNEL;
-                    } else {
-                        break :blk GEMM_NXN_OUTER_KERNEL;
-                    }
-                } else {
-                    if (a_row_pitch > b_row_pitch) {
-                        break :blk GEMM_NXN_OUTER_KERNEL;
-                    } else {
-                        break :blk GEMM_NXN_KERNEL;
-                    }
-                }
-            },
+            .global => GEMM_NXN_KERNEL,
         },
     };
 
@@ -494,11 +468,10 @@ fn gemmWithoutPacking(
     const has_beta = (beta != null);
 
     var vectors_enabled: bool = a.flags.vectors_enabled and b.flags.vectors_enabled;
-    const perfect_for_outer_product = (op_a == .transpose and op_b == .no_transpose and command_queue.local_mem_type == .global);
     if ((comptime core.types.isComplex(T)) or command_queue.vector_widths[core.types.getTypeId(T)] == 1) {
         vectors_enabled = false;
     } else {
-        vectors_enabled &= ((op_a == .no_transpose and op_b == .transpose) or perfect_for_outer_product);
+        vectors_enabled &= (op_a == .no_transpose and op_b == .transpose);
     }
 
     var k_size: u64 = undefined;
@@ -509,12 +482,10 @@ fn gemmWithoutPacking(
         k_size += k_size % 2;
     }
 
-    if (perfect_for_outer_product and k_size < 4 and vectors_enabled) {
-        vectors_enabled = false;
-
-        k_size = a.dimensions.shape[1 - @intFromEnum(op_a)];
-        k_size += k_size % 2;
-    }
+    const algorithm = getAlgorithm(
+        c.work_configuration.gemm_algorithm_per_device[command_queue.wekua_id],
+        k_size,
+    );
 
     var a_row_pitch: u64 = undefined;
     var b_row_pitch: u64 = undefined;
@@ -527,7 +498,6 @@ fn gemmWithoutPacking(
         b_row_pitch = b.memory_layout.row_pitch;
     }
 
-    var algorithm: GemmAlgorithm = undefined;
     const kernel = try getGemmKernelWithoutPacking(
         T,
         command_queue,
@@ -536,11 +506,7 @@ fn gemmWithoutPacking(
         has_beta,
         op_a,
         op_b,
-        c.work_configuration.gemm_algorithm_per_device[command_queue.wekua_id],
-        a_row_pitch,
-        b_row_pitch,
-        k_size,
-        &algorithm,
+        algorithm,
     );
 
     const prev_events = pipeline.prevEvents();
@@ -616,7 +582,6 @@ fn gemmWithoutPacking(
 
     try pipeline.append(&.{new_event});
 }
-
 
 fn getGemmKernelWithPacking(
     comptime T: type,
@@ -779,7 +744,7 @@ fn gemmWithPacking(
 
         B_slice_pitch = packed_tensor_b.memory_layout.slice_pitch_for_vectors;
         B_row_pitch = packed_tensor_b.memory_layout.row_pitch_for_vectors;
-    }else{
+    } else {
         A_slice_pitch = packed_tensor_a.memory_layout.slice_pitch;
         A_row_pitch = packed_tensor_a.memory_layout.row_pitch;
 
@@ -946,7 +911,7 @@ const test_helpers = @import("test_helpers.zig");
 
 test "gemm cpu - all algorithms, non-complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
@@ -1009,7 +974,7 @@ test "gemm cpu - all algorithms, non-complex" {
 
 test "gemm cpu - all algorithms, complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
@@ -1055,7 +1020,7 @@ test "gemm cpu - all algorithms, complex" {
 
 test "gemm cpu - all algorithms with packing, non-complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
@@ -1097,7 +1062,7 @@ test "gemm cpu - all algorithms with packing, non-complex" {
 
 test "gemm cpu - all algorithms with packing, complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .cpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .cpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
@@ -1134,7 +1099,7 @@ test "gemm cpu - all algorithms with packing, complex" {
 
 test "gemm gpu - all algorithms, non-complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .gpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
@@ -1189,7 +1154,7 @@ test "gemm gpu - all algorithms, non-complex" {
 
 test "gemm gpu - all algorithms, complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .gpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
@@ -1231,7 +1196,7 @@ test "gemm gpu - all algorithms, complex" {
 
 test "gemm gpu - all algorithms with packing, non-complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .gpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];
@@ -1273,7 +1238,7 @@ test "gemm gpu - all algorithms with packing, non-complex" {
 
 test "gemm gpu - all algorithms with packing, complex" {
     const allocator = testing.allocator;
-    const context = core.Context.initFromDeviceType(allocator, null, .gpu) catch return;
+    const context = core.Context.initFromBestDevice(allocator, null, .gpu) catch return;
     defer context.deinit();
 
     const command_queue = &context.command_queues[0];

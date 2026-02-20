@@ -51,7 +51,7 @@ __kernel void gemm(
     wk C22 = (wk)(0);
 #endif
 
-    for (ulong k=0; k<cols; k += 2) {
+    for (ulong k=0; k<cols; k += 1) {
         const wk A11 = A[A_base_index];
         const wk A12 = A[A_base_index + 1];
         const wk A21 = A[A_base_index + 2];
