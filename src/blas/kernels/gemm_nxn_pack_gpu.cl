@@ -51,14 +51,12 @@ __kernel void gemm(
     wk C_acc = (wk)(0);
 #endif
 
+    const ulong A_tile_base_index = li * BLOCK_SIZE;
+    const ulong B_tile_base_index = lj * BLOCK_SIZE;
     for (ulong k = 0; k < cols; k += 1) {
         A_tmp_buffer[A_local_tile_index] = A_packed[A_base_index];
         B_tmp_buffer[B_local_tile_index] = B_packed[B_base_index];
-
         barrier(CLK_LOCAL_MEM_FENCE);
-
-        ulong A_tile_base_index = li * BLOCK_SIZE;
-        ulong B_tile_base_index = lj * BLOCK_SIZE;
 
         __attribute__((opencl_unroll_hint))
         for (ulong kk = 0; kk < BLOCK_SIZE; kk += 1) {
@@ -77,7 +75,7 @@ __kernel void gemm(
     }
 
 
-    ulong C_base = i * C_row_pitch + j;
+    const ulong C_base = i * C_row_pitch + j;
 #if WK_COMPLEX
 #if HAS_ALPHA
     wk scaled;
