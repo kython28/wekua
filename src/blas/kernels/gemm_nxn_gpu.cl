@@ -19,11 +19,11 @@ __kernel void gemm(
 #endif
 #endif
 ) {
-    const ulong i = get_global_id(0);
-    const ulong j = get_global_id(1);
+    const ulong i = get_global_id(0) << 1;
+    const ulong j = get_global_id(1) << 1;
 
-    const ulong li = get_local_id(0);
-    const ulong lj = get_local_id(1);
+    const ulong li = get_local_id(0) << 1;
+    const ulong lj = get_local_id(1) << 1;
 
     local wk A_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     local wk B_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
@@ -31,81 +31,191 @@ __kernel void gemm(
 
     const ulong A_local_tile_index = li * BLOCK_SIZE + lj;
     const ulong B_local_tile_index = lj * BLOCK_SIZE + li;
+
 #if WK_COMPLEX
+    wk C11 = {0, 0};
+    wk C12 = {0, 0};
+    wk C21 = {0, 0};
+    wk C22 = {0, 0};
+
     COMPLEX_MUL_K(T)
-    wk C_acc = {0, 0};
 #elif WK_VECTOR_WIDTH == 1
-    wk C_acc = 0;
+    wk C11 = 0;
+    wk C12 = 0;
+    wk C21 = 0;
+    wk C22 = 0;
 #else
-    wk C_acc = (wk)(0);
+    wk C11 = (wk)(0);
+    wk C12 = (wk)(0);
+    wk C21 = (wk)(0);
+    wk C22 = (wk)(0);
 #endif
 
+
+    const ulong A_base_index = li * BLOCK_SIZE;
+    const ulong B_base_index = lj * BLOCK_SIZE;
     for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
+        ulong base_index;
 #if A_TRANS
-        A_tmp_buffer[A_local_tile_index] = A[(k + lj) * A_row_pitch + i];
+        base_index = (k + lj) * A_row_pitch + i;
+        A_tmp_buffer[A_local_tile_index] = A[base_index];
+        A_tmp_buffer[A_local_tile_index + 1] = A[base_index + A_row_pitch];
+        A_tmp_buffer[A_local_tile_index + BLOCK_SIZE] = A[base_index + 1];
+        A_tmp_buffer[A_local_tile_index + BLOCK_SIZE + 1] = A[base_index + A_row_pitch + 1];
 #else
-        A_tmp_buffer[A_local_tile_index] = A[i * A_row_pitch + k + lj];
+        base_index = i * A_row_pitch + k + lj;
+        A_tmp_buffer[A_local_tile_index] = A[base_index];
+        A_tmp_buffer[A_local_tile_index + 1] = A[base_index + 1];
+        A_tmp_buffer[A_local_tile_index + BLOCK_SIZE] = A[base_index + A_row_pitch];
+        A_tmp_buffer[A_local_tile_index + BLOCK_SIZE + 1] = A[base_index + A_row_pitch + 1];
 #endif
 
 #if B_TRANS
-        B_tmp_buffer[B_local_tile_index] = B[j * B_row_pitch + k + li];
+        base_index = j * B_row_pitch + k + li;
+        B_tmp_buffer[B_local_tile_index] = B[base_index];
+        B_tmp_buffer[B_local_tile_index + 1] = B[base_index + 1];
+        B_tmp_buffer[B_local_tile_index + BLOCK_SIZE] = B[base_index + B_row_pitch];
+        B_tmp_buffer[B_local_tile_index + BLOCK_SIZE + 1] = B[base_index + B_row_pitch + 1];
 #else
-        B_tmp_buffer[B_local_tile_index] = B[(k + li) * B_row_pitch + j];
+        base_index = (k + li) * B_row_pitch + j;
+        B_tmp_buffer[B_local_tile_index] = B[base_index];
+        B_tmp_buffer[B_local_tile_index + 1] = B[base_index + B_row_pitch];
+        B_tmp_buffer[B_local_tile_index + BLOCK_SIZE] = B[base_index + 1];
+        B_tmp_buffer[B_local_tile_index + BLOCK_SIZE + 1] = B[base_index + B_row_pitch + 1];
 #endif
         barrier(CLK_LOCAL_MEM_FENCE);
 
-        ulong A_base_index = li * BLOCK_SIZE;
-        ulong B_base_index = lj * BLOCK_SIZE;
         __attribute__((opencl_unroll_hint))
-        for (ulong kk = 0; kk < BLOCK_SIZE; kk += 1) {
+        for (ulong kk = 0; kk < BLOCK_SIZE; kk += 2) {
+            const wk A11 = A_tmp_buffer[A_base_index + kk];
+            const wk A12 = A_tmp_buffer[A_base_index + kk + 1];
+            const wk A21 = A_tmp_buffer[A_base_index + BLOCK_SIZE + kk];
+            const wk A22 = A_tmp_buffer[A_base_index + BLOCK_SIZE + kk + 1];
+
+            const wk B11 = B_tmp_buffer[B_base_index + kk];
+            const wk B21 = B_tmp_buffer[B_base_index + kk + 1];
+            const wk B12 = B_tmp_buffer[B_base_index + BLOCK_SIZE + kk];
+            const wk B22 = B_tmp_buffer[B_base_index + BLOCK_SIZE + kk + 1];
+
 #if WK_COMPLEX
             wk prod;
-            COMPLEX_MUL(A_tmp_buffer[A_base_index + kk], B_tmp_buffer[B_base_index + kk], prod);
-            C_acc.real += prod.real; C_acc.imag += prod.imag;
+
+            COMPLEX_MUL(A11, B11, prod);
+            C11.real += prod.real; C11.imag += prod.imag;
+            COMPLEX_MUL(A12, B21, prod);
+            C11.real += prod.real; C11.imag += prod.imag;
+
+            COMPLEX_MUL(A11, B12, prod);
+            C12.real += prod.real; C12.imag += prod.imag;
+            COMPLEX_MUL(A12, B22, prod);
+            C12.real += prod.real; C12.imag += prod.imag;
+
+            COMPLEX_MUL(A21, B11, prod);
+            C21.real += prod.real; C21.imag += prod.imag;
+            COMPLEX_MUL(A22, B21, prod);
+            C21.real += prod.real; C21.imag += prod.imag;
+
+            COMPLEX_MUL(A21, B12, prod);
+            C22.real += prod.real; C22.imag += prod.imag;
+            COMPLEX_MUL(A22, B22, prod);
+            C22.real += prod.real; C22.imag += prod.imag;
 #else
-            C_acc += A_tmp_buffer[A_base_index + kk] * B_tmp_buffer[B_base_index + kk];
+            C11 = A11 * B11 + A12 * B21 + C11;
+            C12 = A11 * B12 + A12 * B22 + C12;
+            C21 = A21 * B11 + A22 * B21 + C21;
+            C22 = A21 * B12 + A22 * B22 + C22;
 #endif
         }
 
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-
-    ulong C_base = i * C_row_pitch + j;
+    const ulong C_index = i*C_row_pitch + j;
+    const ulong C_index2 = C_index + C_row_pitch;
 #if WK_COMPLEX
 #if HAS_ALPHA
-    wk scaled;
-    COMPLEX_MUL(C_acc, alpha, scaled);
 #if HAS_BETA
-    wk old_val = C[C_base];
+    wk scaled;
+    wk old_val;
     wk beta_scaled;
+
+    COMPLEX_MUL(C11, alpha, scaled);
+    old_val = C[C_index];
     COMPLEX_MUL(old_val, beta, beta_scaled);
-    C[C_base] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+    C[C_index] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+
+    COMPLEX_MUL(C12, alpha, scaled);
+    old_val = C[C_index + 1];
+    COMPLEX_MUL(old_val, beta, beta_scaled);
+    C[C_index + 1] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+
+    COMPLEX_MUL(C21, alpha, scaled);
+    old_val = C[C_index2];
+    COMPLEX_MUL(old_val, beta, beta_scaled);
+    C[C_index2] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
+
+    COMPLEX_MUL(C22, alpha, scaled);
+    old_val = C[C_index2 + 1];
+    COMPLEX_MUL(old_val, beta, beta_scaled);
+    C[C_index2 + 1] = (wks){ scaled.real + beta_scaled.real, scaled.imag + beta_scaled.imag };
 #else
-    C[C_base] = scaled;
+    wk scaled;
+
+    COMPLEX_MUL(C11, alpha, scaled);
+    C[C_index] = scaled;
+
+    COMPLEX_MUL(C12, alpha, scaled);
+    C[C_index + 1] = scaled;
+
+    COMPLEX_MUL(C21, alpha, scaled);
+    C[C_index2] = scaled;
+
+    COMPLEX_MUL(C22, alpha, scaled);
+    C[C_index2 + 1] = scaled;
 #endif
 #else
-    C[C_base] = C_acc;
+    C[C_index] = C11;
+    C[C_index + 1] = C12;
+    C[C_index2] = C21;
+    C[C_index2 + 1] = C22;
 #endif
 #elif WK_VECTOR_WIDTH == 1
 #if HAS_ALPHA
 #if HAS_BETA
-    C[C_base] = alpha * C_acc + beta * C[C_base];
+    C[C_index] = alpha*C11 + beta*C[C_index];
+    C[C_index + 1] = alpha*C12 + beta*C[C_index + 1];
+    C[C_index2] = alpha*C21 + beta*C[C_index2];
+    C[C_index2 + 1] = alpha*C22 + beta*C[C_index2 + 1];
 #else
-    C[C_base] = alpha * C_acc;
+    C[C_index] = alpha*C11;
+    C[C_index + 1] = alpha*C12;
+    C[C_index2] = alpha*C21;
+    C[C_index2 + 1] = alpha*C22;
 #endif
 #else
-    C[C_base] = C_acc;
+    C[C_index] = C11;
+    C[C_index + 1] = C12;
+    C[C_index2] = C21;
+    C[C_index2 + 1] = C22;
 #endif
 #else
 #if HAS_ALPHA
 #if HAS_BETA
-    C[C_base] = alpha * sum(C_acc) + beta * C[C_base];
+    C[C_index] = alpha*sum(C11) + beta*C[C_index];
+    C[C_index + 1] = alpha*sum(C12) + beta*C[C_index + 1];
+    C[C_index2] = alpha*sum(C21) + beta*C[C_index2];
+    C[C_index2 + 1] = alpha*sum(C22) + beta*C[C_index2 + 1];
 #else
-    C[C_base] = alpha * sum(C_acc);
+    C[C_index] = alpha*sum(C11);
+    C[C_index + 1] = alpha*sum(C12);
+    C[C_index2] = alpha*sum(C21);
+    C[C_index2 + 1] = alpha*sum(C22);
 #endif
 #else
-    C[C_base] = sum(C_acc);
+    C[C_index] = sum(C11);
+    C[C_index + 1] = sum(C12);
+    C[C_index2] = sum(C21);
+    C[C_index2 + 1] = sum(C22);
 #endif
 #endif
 }

@@ -215,7 +215,7 @@ const backends = .{
     // .{ "Wekua (C)", cl.device.Type.cpu, run_old_wekua_test },
     // .{ "Wekua (C) GPU", cl.device.Type.gpu, run_old_wekua_test },
     .{ "wekua (Zig)", cl.device.Type.cpu, run_wekua_test },
-    // .{ "wekua (Zig) GPU", cl.device.Type.gpu, run_wekua_test },
+    .{ "wekua (Zig) GPU", cl.device.Type.gpu, run_wekua_test },
 };
 
 const num_tests = operations.len * backends.len;

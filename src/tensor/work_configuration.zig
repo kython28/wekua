@@ -164,12 +164,12 @@ fn initGemm(
                 const g_values = &@field(self, g_field_name)[i];
                 switch (cmd.local_mem_type) {
                     .local => {
-                        g_values[0] = gwi_h;
-                        g_values[1] = gwi_w;
+                        g_values[0] = gwi_h / 2;
+                        g_values[1] = gwi_w / 2;
 
-                        if ((block_length2 * block_length2) < cmd.max_work_group_size) {
+                        if (((block_length2 * block_length2) / 4) < cmd.max_work_group_size) {
                             algorithm = @field(GemmAlgorithm, algorithm_name);
-                            @field(self, l_field_name)[i] = .{block_length2, block_length2};
+                            @field(self, l_field_name)[i] = .{block_length2 / 2, block_length2 / 2};
                         }
                     },
                     .global => {
