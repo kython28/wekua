@@ -1,3 +1,65 @@
+/**
+ * =============================================================================
+ * GEMM 2x2 — CPU GEMM with fixed 2x2 micro-kernel, unpacked inputs
+ * =============================================================================
+ *
+ * Minimal GEMM kernel for CPU devices. Each work-item computes a 2x2 block
+ * of the output matrix C using 4 register accumulators (C11, C12, C21, C22).
+ * Reads directly from global memory without local memory or intermediate
+ * buffers. Supports optional transpose on A and/or B via compile-time flags.
+ *
+ * Computes: C = alpha * op(A) * op(B) + beta * C
+ * where op(X) = X or X^T depending on A_TRANS / B_TRANS flags.
+ *
+ * COMPILE-TIME PARAMETERS
+ * -----------------------
+ * A_TRANS          - 0: A is row-major, 1: A is transposed
+ * B_TRANS          - 0: B is column-major access, 1: B is row-major
+ * HAS_ALPHA        - 0: alpha=1 (omitted), 1: alpha scaling is applied
+ * HAS_BETA         - 0: no beta term, 1: beta * C_old is added (requires HAS_ALPHA)
+ * WK_COMPLEX       - 0: scalar/vector types, 1: complex arithmetic
+ * WK_VECTOR_WIDTH  - SIMD vector width (1, 2, 4, 8, 16)
+ *
+ * KERNEL PARAMETERS
+ * -----------------
+ * A                - Input matrix A (__global, read-only)
+ * B                - Input matrix B (__global, read-only)
+ * C                - Output matrix C (__global, read-write, scalar type wks)
+ * A_row_pitch      - Elements per row in A
+ * B_row_pitch      - Elements per row in B
+ * C_row_pitch      - Elements per row in C
+ * cols             - Shared dimension K (number of columns of op(A) / rows of op(B))
+ * alpha            - Scalar multiplier (conditional on HAS_ALPHA)
+ * beta             - Scalar multiplier for existing C (conditional on HAS_BETA)
+ *
+ * NDRANGE (2D)
+ * ------------
+ * dim 0 (i)  - Output row index / 2  (each WI covers 2 rows)
+ * dim 1 (j)  - Output column index / 2  (each WI covers 2 columns)
+ * Global IDs are shifted << 1 to get the actual row/column.
+ *
+ * ALGORITHM
+ * ---------
+ * 1. Map work-item to 2x2 output block at (i, j) via global_id << 1
+ * 2. Pre-compute row offsets for non-transposed matrix access
+ * 3. Loop k in steps of 2: load a 2x2 sub-block from each of A and B
+ *    - A_TRANS=0: rows are contiguous, columns advance with k
+ *    - A_TRANS=1: columns are contiguous, rows advance with k
+ *    - B_TRANS=0: columns advance with k (column-major access pattern)
+ *    - B_TRANS=1: rows are contiguous, columns advance with k
+ * 4. Accumulate 2x2 matrix product into register accumulators
+ * 5. Write back to C with optional alpha/beta scaling
+ *
+ * MEMORY ACCESS PATTERN
+ * ---------------------
+ * All reads from global memory. Row offsets for A (non-transposed) and B
+ * (transposed) are pre-computed outside the loop to avoid redundant
+ * multiplications. For vectorized types (WK_VECTOR_WIDTH > 1), the final
+ * result uses sum() to reduce vectors to scalars before writing to C.
+ *
+ * =============================================================================
+ */
+
 #include "wekua.h"
 
 __kernel void gemm(
@@ -19,9 +81,13 @@ __kernel void gemm(
 #endif
 #endif
 ) {
+    // Each work-item computes a 2x2 block; shift IDs to get top-left corner
     const ulong i = get_global_id(0) << 1;
     const ulong j = get_global_id(1) << 1;
 
+    // Pre-compute row base offsets outside the loop to avoid repeated multiplies.
+    // A non-transposed: rows i and i+1 are at fixed offsets.
+    // B transposed: rows j and j+1 of B^T correspond to columns j and j+1 of B.
 #if A_TRANS == 0
     const ulong row_A = i*A_row_pitch;
     const ulong next_row_A = row_A + A_row_pitch;
@@ -51,7 +117,10 @@ __kernel void gemm(
     wk C22 = (wk)(0);
 #endif
 
+    // Loop k in steps of 2 to feed the 2x2 micro-kernel with pairs of k-elements
     for (ulong k=0; k<cols; k += 2) {
+        // A_TRANS=1: A is stored transposed, so row k of A^T is column k of A.
+        // Two consecutive k-values live in adjacent rows of the stored matrix.
 #if A_TRANS
         const ulong A_index = k*A_row_pitch + i;
         const ulong A_index2 = A_index + A_row_pitch;
@@ -67,6 +136,10 @@ __kernel void gemm(
         const wk A22 = A[next_row_A + k + 1];
 #endif
 
+        // B_TRANS=1: B is stored transposed, read row j of B^T (= column j of B).
+        // B_TRANS=0: B is row-major; row k of B contains column elements for C.
+        // Note: B11/B12/B21/B22 naming matches the 2x2 sub-block of op(B),
+        // where B_ij means row i, col j of the effective (possibly transposed) B.
 #if B_TRANS
         const wk B11 = B[row_B + k];
         const wk B21 = B[row_B + k + 1];

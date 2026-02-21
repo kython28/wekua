@@ -1,5 +1,80 @@
+/**
+ * =============================================================================
+ * GEMM NxN — CPU GEMM with configurable block size, unpacked inputs
+ * =============================================================================
+ *
+ * General-purpose CPU GEMM kernel supporting any BLOCK_SIZE (4, 8, 16, 32, 64).
+ * Each work-item computes one BLOCK_SIZE x BLOCK_SIZE tile of C using private
+ * memory buffers for A, B, and C tiles. Two micro-kernel variants are selected
+ * at compile time based on vector width:
+ *   - 2x2 micro-kernel: used when WK_VECTOR_WIDTH <= 8 or WK_COMPLEX
+ *   - 4x4 micro-kernel: used when WK_VECTOR_WIDTH > 8 (e.g., 16-wide vectors)
+ *     to better utilize wide SIMD registers
+ *
+ * Computes: C = alpha * op(A) * op(B) + beta * C
+ *
+ * COMPILE-TIME PARAMETERS
+ * -----------------------
+ * BLOCK_SIZE        - Tile dimension (4, 8, 16, 32, 64)
+ * STRIDE            - log2(BLOCK_SIZE), used for bit-shift addressing
+ * A_TRANS           - 0: A is row-major, 1: A is transposed
+ * B_TRANS           - 0: B is column-major access, 1: B is row-major
+ * HAS_ALPHA         - 0: alpha=1 (omitted), 1: alpha scaling is applied
+ * HAS_BETA          - 0: no beta term, 1: beta * C_old is added
+ * WK_COMPLEX        - 0: scalar/vector types, 1: complex arithmetic
+ * WK_VECTOR_WIDTH   - SIMD vector width (1, 2, 4, 8, 16)
+ * WK_CACHE_LINE_SIZE - Alignment for private tile buffers
+ *
+ * KERNEL PARAMETERS
+ * -----------------
+ * A                - Input matrix A (__global, read-only)
+ * B                - Input matrix B (__global, read-only)
+ * C                - Output matrix C (__global, read-write, scalar type wks)
+ * A_row_pitch      - Elements per row in A
+ * B_row_pitch      - Elements per row in B
+ * C_row_pitch      - Elements per row in C
+ * cols             - Shared dimension K (padded to multiple of BLOCK_SIZE)
+ * alpha            - Scalar multiplier (conditional on HAS_ALPHA)
+ * beta             - Scalar multiplier for existing C (conditional on HAS_BETA)
+ *
+ * NDRANGE (2D)
+ * ------------
+ * dim 0 (i)  - Output tile-row index  (actual row = global_id(0) << STRIDE)
+ * dim 1 (j)  - Output tile-col index  (actual col = global_id(1) << STRIDE)
+ *
+ * ALGORITHM
+ * ---------
+ * 1. Map work-item to output tile at (i, j) via global_id << STRIDE
+ * 2. Allocate private A_tmp, B_tmp, C_tmp buffers (BLOCK_SIZE^2 each)
+ * 3. Loop k from 0 to cols in steps of BLOCK_SIZE:
+ *    a. Load A tile using FILL_TILE (normal) or FILL_TRANSPOSED_TILE (transposed)
+ *    b. Load B tile — B is always stored transposed in B_tmp_buffer so that the
+ *       micro-kernel reads B columns as contiguous rows (better cache behavior)
+ *    c. Run nested micro-kernel loops over the tile:
+ *       - 2x2 path: y+=2, x+=2, z+=2 inner loop
+ *       - 4x4 path: y+=4, x+=4, z+=4 inner loop (16 accumulators)
+ *    d. Accumulate partial results into C_tmp_buffer
+ * 4. Write C_tmp_buffer to global C with optional alpha/beta scaling
+ *
+ * MEMORY ACCESS PATTERN
+ * ---------------------
+ * Private memory (registers/stack): A_tmp, B_tmp, C_tmp buffers.
+ * Global memory: sequential tile loads via FILL_TILE macros, final write-back.
+ * No local memory is used — this kernel targets CPU devices where private
+ * memory maps to registers/L1 cache efficiently.
+ *
+ * =============================================================================
+ */
+
 #include "wekua.h"
 
+/**
+ * FILL_TILE — Load a BLOCK_SIZE x BLOCK_SIZE tile from global memory (row-major)
+ *
+ * Copies a contiguous block of the source matrix into a private tile buffer.
+ * Used for A when A_TRANS=0, and for B when B_TRANS=1 (B^T is row-major in
+ * the output column direction).
+ */
 #define FILL_TILE(tile, values, row_index, col_index, row_pitch) \
     base_index = row_index * row_pitch + col_index; \
     for (ulong y = 0; y < BLOCK_SIZE; y += 1) { \
@@ -10,6 +85,15 @@
         base_index += row_pitch; \
     }
 
+/**
+ * FILL_TRANSPOSED_TILE — Load a tile while transposing it
+ *
+ * Reads from the source matrix with transposed access (stepping by row_pitch
+ * in the inner loop) and writes into the tile in row-major order. Used for:
+ * - A when A_TRANS=1: reads column-wise from the stored A
+ * - B when B_TRANS=0: transposes B so the micro-kernel can read B columns
+ *   as contiguous rows, which improves spatial locality
+ */
 #define FILL_TRANSPOSED_TILE(tile, values, row_index, col_index, row_pitch) \
     for (ulong y = 0; y < BLOCK_SIZE; y += 1) { \
         base_index = row_index * row_pitch + col_index + y; \
@@ -52,18 +136,27 @@ __kernel void gemm(
 
     for (ulong k = 0; k < cols; k += BLOCK_SIZE) {
         ulong base_index;
+        // A_TRANS=1: A is stored transposed, so we read it transposed to get the
+        // correct orientation. A_TRANS=0: normal row-major read.
 #if A_TRANS
         FILL_TRANSPOSED_TILE(A_tmp_buffer, A, k, i, A_row_pitch)
 #else
         FILL_TILE(A_tmp_buffer, A, i, k, A_row_pitch)
 #endif
 
+        // B is ALWAYS stored transposed in B_tmp_buffer regardless of B_TRANS.
+        // This ensures the micro-kernel reads B columns as contiguous memory.
+        // B_TRANS=1: B is already transposed in memory, use normal FILL_TILE.
+        // B_TRANS=0: B is row-major, transpose during load.
 #if B_TRANS
         FILL_TILE(B_tmp_buffer, B, j, k, B_row_pitch)
 #else
         FILL_TRANSPOSED_TILE(B_tmp_buffer, B, k, j, B_row_pitch)
 #endif
 
+        // Select micro-kernel size based on vector width:
+        // - 2x2: for narrow vectors (<=8) or complex types; 4 accumulators
+        // - 4x4: for wide vectors (>8), 16 accumulators to better fill SIMD lanes
 #if WK_VECTOR_WIDTH <= 8 || WK_COMPLEX
         for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
             for (ulong x = 0; x < BLOCK_SIZE; x += 2) {
@@ -90,12 +183,14 @@ __kernel void gemm(
 
                 __attribute__((opencl_unroll_hint))
                 for (ulong z = 0; z < BLOCK_SIZE; z += 2) {
+                    // A is row-major in A_tmp: row y at offset y*BLOCK_SIZE
                     base_index = y * BLOCK_SIZE + z;
                     const wk A11 = A_tmp_buffer[base_index];
                     const wk A12 = A_tmp_buffer[base_index + 1];
                     const wk A21 = A_tmp_buffer[base_index + BLOCK_SIZE];
                     const wk A22 = A_tmp_buffer[base_index + BLOCK_SIZE + 1];
 
+                    // B is transposed in B_tmp: "row x" holds column x of original B
                     base_index = x * BLOCK_SIZE + z;
                     const wk B11 = B_tmp_buffer[base_index];
                     const wk B21 = B_tmp_buffer[base_index + 1];
@@ -132,6 +227,7 @@ __kernel void gemm(
 #endif
                 }
 
+                // Accumulate 2x2 result into the full C tile
                 base_index = y * BLOCK_SIZE + x;
 #if WK_COMPLEX
                 wk prev_value = C_tmp_buffer[base_index];
@@ -157,6 +253,9 @@ __kernel void gemm(
 #endif
             }
         }
+        // 4x4 micro-kernel: 16 accumulators for WK_VECTOR_WIDTH > 8.
+        // With 16-wide vectors, a 4x4 micro-kernel does 4*4*4 = 64 MADs per
+        // inner iteration, giving better arithmetic intensity per register load.
 #else
         for (ulong y = 0; y < BLOCK_SIZE; y += 4) {
             for (ulong x = 0; x < BLOCK_SIZE; x += 4) {

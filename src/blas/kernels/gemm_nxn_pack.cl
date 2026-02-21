@@ -1,3 +1,68 @@
+/**
+ * =============================================================================
+ * GEMM NxN PACK — CPU GEMM with configurable block size, packed inputs
+ * =============================================================================
+ *
+ * Same tile-based CPU kernel as gemm_nxn.cl but reads from pre-packed buffers.
+ * No FILL_TILE macros or A_TRANS/B_TRANS branching needed — the packing step
+ * already arranged tiles in the correct orientation. Each work-item loads
+ * tiles sequentially from the packed layout into private buffers.
+ *
+ * Two micro-kernel variants are selected at compile time:
+ *   - 2x2: for WK_VECTOR_WIDTH <= 8 or WK_COMPLEX
+ *   - 4x4: for WK_VECTOR_WIDTH > 8
+ *
+ * Computes: C = alpha * A_packed * B_packed + beta * C
+ *
+ * COMPILE-TIME PARAMETERS
+ * -----------------------
+ * BLOCK_SIZE        - Tile dimension (4, 8, 16, 32, 64)
+ * STRIDE            - log2(BLOCK_SIZE), used for bit-shift addressing
+ * HAS_ALPHA         - 0: alpha=1 (omitted), 1: alpha scaling is applied
+ * HAS_BETA          - 0: no beta term, 1: beta * C_old is added
+ * WK_COMPLEX        - 0: scalar/vector types, 1: complex arithmetic
+ * WK_VECTOR_WIDTH   - SIMD vector width (1, 2, 4, 8, 16)
+ * WK_CACHE_LINE_SIZE - Alignment for private tile buffers
+ *
+ * KERNEL PARAMETERS
+ * -----------------
+ * A_packed         - Packed matrix A (__global, read-only)
+ * B_packed         - Packed matrix B (__global, read-only)
+ * C                - Output matrix C in row-major layout (__global, read-write)
+ * A_slice_pitch    - Stride between tile-groups of A (one per output tile-row)
+ * A_row_pitch      - Stride between consecutive k-tiles within an A tile-group
+ * B_slice_pitch    - Stride between tile-groups of B (one per output tile-col)
+ * B_row_pitch      - Stride between consecutive k-tiles within a B tile-group
+ * C_row_pitch      - Elements per row in output C
+ * cols             - Number of k-tiles to iterate over
+ * alpha            - Scalar multiplier (conditional on HAS_ALPHA)
+ * beta             - Scalar multiplier for existing C (conditional on HAS_BETA)
+ *
+ * NDRANGE (2D)
+ * ------------
+ * dim 0 (i)  - Tile-row index  (actual row = i << STRIDE)
+ * dim 1 (j)  - Tile-col index  (actual col = j << STRIDE)
+ *
+ * ALGORITHM
+ * ---------
+ * 1. Map work-item to output tile via (i << STRIDE, j << STRIDE)
+ * 2. Compute base addresses: A_base = i * A_slice_pitch, B_base = j * B_slice_pitch
+ * 3. Loop k from 0 to cols in steps of 1:
+ *    a. Copy BLOCK_SIZE^2 elements from packed A into private A_tmp_buffer
+ *    b. Copy BLOCK_SIZE^2 elements from packed B into private B_tmp_buffer
+ *    c. Run micro-kernel (2x2 or 4x4) over the tile, accumulate into C_tmp_buffer
+ * 4. Write C_tmp_buffer to global C with optional alpha/beta scaling
+ *
+ * MEMORY ACCESS PATTERN
+ * ---------------------
+ * Packed data is stored as contiguous tiles of BLOCK_SIZE^2 elements.
+ * slice_pitch jumps between tile-groups (different output tile-rows/cols).
+ * row_pitch jumps between k-tiles within a tile-group.
+ * Sequential loads from packed buffers have good spatial locality.
+ *
+ * =============================================================================
+ */
+
 #include "wekua.h"
 
 __kernel void gemm(
@@ -33,6 +98,7 @@ __kernel void gemm(
     private wk B_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     private wk C_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE))) = {0};
 
+    // slice_pitch selects the tile-group for this output tile-row (A) or tile-col (B)
     const ulong A_base_index = i * A_slice_pitch;
     const ulong B_base_index = j * B_slice_pitch;
 
@@ -40,7 +106,9 @@ __kernel void gemm(
     COMPLEX_MUL_K(T)
 #endif
 
+    // Loop over k-tiles; each k-step loads one packed BLOCK_SIZE^2 tile from A and B
     for (ulong k = 0; k < cols; k += 1) {
+        // row_pitch advances to the next k-tile within the tile-group
         ulong base_index = A_base_index + k * A_row_pitch;
         ulong tile_index = 0;
 
@@ -64,6 +132,7 @@ __kernel void gemm(
             tile_index += BLOCK_SIZE;
         }
 
+        // Micro-kernel: 2x2 for narrow vectors/complex, 4x4 for wide vectors (>8)
 #if WK_VECTOR_WIDTH <= 8 || WK_COMPLEX
         for (ulong y = 0; y < BLOCK_SIZE; y += 2) {
             for (ulong x = 0; x < BLOCK_SIZE; x += 2) {

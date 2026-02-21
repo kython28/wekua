@@ -1,3 +1,71 @@
+/**
+ * =============================================================================
+ * GEMM NxN PACK GPU — GPU GEMM with local memory, packed inputs
+ * =============================================================================
+ *
+ * Combines pre-packed tile layout with GPU local memory tiling and 2x2 register
+ * tiling. No A_TRANS/B_TRANS branching — packing already handled transpose.
+ * Each workgroup processes one output tile of BLOCK_SIZE x BLOCK_SIZE, with
+ * each work-item computing a 2x2 sub-block.
+ *
+ * Computes: C = alpha * A_packed * B_packed + beta * C
+ *
+ * COMPILE-TIME PARAMETERS
+ * -----------------------
+ * BLOCK_SIZE        - Tile dimension (2, 4, 8, 16, 32, 64)
+ * HAS_ALPHA         - 0: alpha=1 (omitted), 1: alpha scaling is applied
+ * HAS_BETA          - 0: no beta term, 1: beta * C_old is added
+ * WK_COMPLEX        - 0: scalar/vector types, 1: complex arithmetic
+ * WK_VECTOR_WIDTH   - SIMD vector width (1, 2, 4, 8, 16)
+ * WK_CACHE_LINE_SIZE - Alignment for local tile buffers
+ *
+ * KERNEL PARAMETERS
+ * -----------------
+ * A_packed         - Packed matrix A (__global, read-only)
+ * B_packed         - Packed matrix B (__global, read-only)
+ * C                - Output matrix C in row-major layout (__global, read-write)
+ * A_slice_pitch    - Stride between tile-groups of A (one per output tile-row)
+ * A_row_pitch      - Stride between consecutive k-tiles within an A tile-group
+ * B_slice_pitch    - Stride between tile-groups of B (one per output tile-col)
+ * B_row_pitch      - Stride between consecutive k-tiles within a B tile-group
+ * C_row_pitch      - Elements per row in output C
+ * cols             - Number of k-tiles to iterate over
+ * alpha            - Scalar multiplier (conditional on HAS_ALPHA)
+ * beta             - Scalar multiplier for existing C (conditional on HAS_BETA)
+ *
+ * NDRANGE (2D)
+ * ------------
+ * dim 0  - Row tile index / 2  (global_size = M / 2, local_size = BLOCK_SIZE / 2)
+ * dim 1  - Col tile index / 2  (global_size = N / 2, local_size = BLOCK_SIZE / 2)
+ * Each work-item maps to a 2x2 output block at (global_id(0)<<1, global_id(1)<<1).
+ *
+ * ALGORITHM
+ * ---------
+ * 1. Compute packed_depth from global output coordinates:
+ *    A_packed_depth = tile-row of this workgroup, B_packed_depth = tile-col
+ * 2. Compute base addresses into packed buffers using slice_pitch and
+ *    local tile indices
+ * 3. Loop k from 0 to cols:
+ *    a. Each WI loads 4 elements from packed A and B into local memory
+ *       - A: row-major in local memory (A_local_tile_index = li*BS + lj)
+ *       - B: transposed in local memory (B_local_tile_index = lj*BS + li)
+ *    b. barrier(CLK_LOCAL_MEM_FENCE)
+ *    c. Inner loop kk += 2: 2x2 micro-kernel over local tiles
+ *    d. Advance base indices by row_pitch to next k-tile
+ *    e. barrier(CLK_LOCAL_MEM_FENCE)
+ * 4. Write 2x2 result to C with optional alpha/beta scaling
+ *
+ * MEMORY ACCESS PATTERN
+ * ---------------------
+ * Packed tiles are stored contiguously in memory. Each WI reads 4 elements
+ * at packed_base + local offsets, which are spatially close for good
+ * coalescing. B is stored transposed in local memory for contiguous column
+ * access by the micro-kernel. Two barriers per k-step separate load and
+ * compute phases.
+ *
+ * =============================================================================
+ */
+
 #include "wekua.h"
 
 __kernel void gemm(
@@ -24,21 +92,29 @@ __kernel void gemm(
 #endif
 #endif
 ) {
+    // 2x2 register tiling: each WI covers 2 rows and 2 columns
     const ulong i = get_global_id(0) << 1;
     const ulong j = get_global_id(1) << 1;
 
     const ulong li = get_local_id(0) << 1;
     const ulong lj = get_local_id(1) << 1;
 
+    // packed_depth = which tile-group this workgroup belongs to.
+    // Equivalent to floor(i / BLOCK_SIZE) — identifies the tile-row (A) or tile-col (B)
+    // in the packed layout. slice_pitch * packed_depth jumps to that tile-group.
     const ulong A_packed_depth = (i - i % BLOCK_SIZE) / BLOCK_SIZE;
     const ulong B_packed_depth = (j - j % BLOCK_SIZE) / BLOCK_SIZE;
 
     local wk A_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
     local wk B_tmp_buffer[BLOCK_SIZE * BLOCK_SIZE] __attribute__((aligned(WK_CACHE_LINE_SIZE)));
 
+    // A: row-major in local memory
     const ulong A_local_tile_index = li * BLOCK_SIZE + lj;
+    // B: transposed in local memory for contiguous column access in micro-kernel
     const ulong B_local_tile_index = lj * BLOCK_SIZE + li;
 
+    // Base index into packed buffer: slice selects tile-group, local index selects
+    // this WI's 2x2 loading position within the tile
     ulong A_base_index = A_packed_depth * A_slice_pitch + A_local_tile_index;
     ulong B_base_index = B_packed_depth * B_slice_pitch + B_local_tile_index;
 
@@ -61,9 +137,12 @@ __kernel void gemm(
     wk C22 = (wk)(0);
 #endif
 
+    // Pre-compute row bases in local memory for the micro-kernel
     const ulong A_tile_base_index = li * BLOCK_SIZE;
     const ulong B_tile_base_index = lj * BLOCK_SIZE;
     for (ulong k = 0; k < cols; k += 1) {
+        // --- Collaborative tile loading from packed buffers ---
+        // Each WI loads its 2x2 block at A_local_tile_index / B_local_tile_index
         A_tmp_buffer[A_local_tile_index] = A_packed[A_base_index];
         A_tmp_buffer[A_local_tile_index + 1] = A_packed[A_base_index + 1];
         A_tmp_buffer[A_local_tile_index + BLOCK_SIZE] = A_packed[A_base_index + BLOCK_SIZE];
@@ -73,8 +152,10 @@ __kernel void gemm(
         B_tmp_buffer[B_local_tile_index + 1] = B_packed[B_base_index + 1];
         B_tmp_buffer[B_local_tile_index + BLOCK_SIZE] = B_packed[B_base_index + BLOCK_SIZE];
         B_tmp_buffer[B_local_tile_index + BLOCK_SIZE + 1] = B_packed[B_base_index + BLOCK_SIZE + 1];
+        // Ensure all WIs have finished loading before computing
         barrier(CLK_LOCAL_MEM_FENCE);
 
+        // Inner loop: step by 2 to feed the 2x2 micro-kernel with pairs of k-elements
         __attribute__((opencl_unroll_hint))
         for (ulong kk = 0; kk < BLOCK_SIZE; kk += 2) {
             const wk A11 = A_tmp_buffer[A_tile_base_index + kk];
@@ -117,8 +198,10 @@ __kernel void gemm(
 #endif
         }
 
+        // Advance to the next k-tile within the packed tile-group
         A_base_index += A_row_pitch;
         B_base_index += B_row_pitch;
+        // Ensure all WIs are done computing before next iteration overwrites local tiles
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 

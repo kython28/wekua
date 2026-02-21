@@ -1,3 +1,61 @@
+/**
+ * =============================================================================
+ * GEMM 2x2 PACK — CPU GEMM with fixed 2x2 micro-kernel, packed inputs
+ * =============================================================================
+ *
+ * Same 2x2 micro-kernel as gemm_2x2.cl but reads from pre-packed tile buffers
+ * instead of raw row-major matrices. Because the packing step has already
+ * handled any transpose, there is no A_TRANS/B_TRANS branching.
+ *
+ * Computes: C = alpha * A_packed * B_packed + beta * C
+ *
+ * COMPILE-TIME PARAMETERS
+ * -----------------------
+ * HAS_ALPHA        - 0: alpha=1 (omitted), 1: alpha scaling is applied
+ * HAS_BETA         - 0: no beta term, 1: beta * C_old is added (requires HAS_ALPHA)
+ * WK_COMPLEX       - 0: scalar/vector types, 1: complex arithmetic
+ * WK_VECTOR_WIDTH  - SIMD vector width (1, 2, 4, 8, 16)
+ *
+ * KERNEL PARAMETERS
+ * -----------------
+ * A                - Packed matrix A (__global, read-only)
+ * B                - Packed matrix B (__global, read-only)
+ * C                - Output matrix C in row-major layout (__global, read-write)
+ * A_slice_pitch    - Stride between tile-groups of A (one per output tile-row)
+ * A_row_pitch      - Stride between consecutive k-tiles within an A tile-group
+ * B_slice_pitch    - Stride between tile-groups of B (one per output tile-col)
+ * B_row_pitch      - Stride between consecutive k-tiles within a B tile-group
+ * C_row_pitch      - Elements per row in the output matrix C
+ * cols             - Number of k-tiles to iterate over
+ * alpha            - Scalar multiplier (conditional on HAS_ALPHA)
+ * beta             - Scalar multiplier for existing C (conditional on HAS_BETA)
+ *
+ * NDRANGE (2D)
+ * ------------
+ * dim 0 (i)  - Tile-row index (maps to 2 output rows via C_row = i << 1)
+ * dim 1 (j)  - Tile-col index (maps to 2 output cols via C_col = j << 1)
+ *
+ * ALGORITHM
+ * ---------
+ * 1. Map work-item to packed tile-groups: A_base = i * A_slice_pitch,
+ *    B_base = j * B_slice_pitch
+ * 2. Loop k from 0 to cols in steps of 1 (each k is one pre-packed 2x2 tile):
+ *    a. Load 4 elements from A_packed (A11, A12, A21, A22) sequentially
+ *    b. Load 4 elements from B_packed (B11, B21, B12, B22)
+ *    c. Accumulate 2x2 product into C11..C22 registers
+ *    d. Advance base indices by row_pitch to the next k-tile
+ * 3. Write back to C at row-major position with optional alpha/beta scaling
+ *
+ * MEMORY ACCESS PATTERN
+ * ---------------------
+ * Packed buffers are laid out so that each 2x2 tile is 4 contiguous elements.
+ * The loop advances by row_pitch per k-step, which is the stride between
+ * consecutive k-tiles within a slice. No transpose branching is needed because
+ * the packing kernel already arranged the data in the correct orientation.
+ *
+ * =============================================================================
+ */
+
 #include "wekua.h"
 
 __kernel void gemm(
@@ -29,6 +87,8 @@ __kernel void gemm(
     const ulong C_row = i << 1;
     const ulong C_col = j << 1;
 
+    // slice_pitch selects the tile-group for this work-item's output tile-row/col.
+    // Each tile-group contains all k-tiles for one row (A) or column (B) of tiles.
     ulong A_base_index = i * A_slice_pitch;
     ulong B_base_index = j * B_slice_pitch;
 
@@ -51,7 +111,9 @@ __kernel void gemm(
     wk C22 = (wk)(0);
 #endif
 
+    // Loop over k-tiles; each k-step is one packed 2x2 tile (4 contiguous elements)
     for (ulong k=0; k<cols; k += 1) {
+        // Packed layout: [A11, A12, A21, A22] — row-major within the 2x2 tile
         const wk A11 = A[A_base_index];
         const wk A12 = A[A_base_index + 1];
         const wk A21 = A[A_base_index + 2];
@@ -91,6 +153,7 @@ __kernel void gemm(
         C22 = A21 * B12 + A22 * B22 + C22;
 #endif
 
+        // Advance to the next k-tile within the tile-group
         A_base_index += A_row_pitch;
         B_base_index += B_row_pitch;
     }
