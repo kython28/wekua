@@ -17,6 +17,7 @@ pub const transpose = @import("transpose.zig").transpose;
 pub const convertions = @import("convertions/main.zig");
 pub const identity = @import("identity.zig").identity;
 pub const print = @import("print.zig").print;
+pub const serialization = @import("serialization.zig");
 
 const WorkConfiguration = @import("work_configuration.zig");
 pub const GemmAlgorithm = WorkConfiguration.GemmAlgorithm;
