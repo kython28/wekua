@@ -9,12 +9,6 @@ pub const WekuaFileHeader = extern struct {
     version: u8 = 0x00,
 };
 
-pub const TensorMetadata = extern struct {
-    type_index: u8,
-    ndim: u8,
-    reserved: u16 = 0,
-};
-
 pub const ValidationError = error{
     InvalidMagic,
     InvalidContentType,

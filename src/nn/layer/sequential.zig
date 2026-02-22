@@ -44,6 +44,8 @@ pub fn Sequential(comptime T: type) type {
             return Layer{
                 .vtable = .{
                     .deinit = &layer_deinit,
+                    .dumpToFile = &layerDumpToFile,
+                    .loadFromFile = &layerLoadFromFile,
                     .getCachedOutput = &getCachedOutput,
                     .getWeights = &getWeights,
                     .getBias = &getBias,
@@ -62,6 +64,22 @@ pub fn Sequential(comptime T: type) type {
         fn layer_deinit(ptr: *anyopaque, pipeline: *Pipeline) void {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.deinit(pipeline);
+        }
+
+        fn layerDumpToFile(ptr: *const anyopaque, pipeline: *Pipeline, file: std.fs.File) Layer.DumpToFileErrors!void {
+            const self: *const Self = @ptrCast(@alignCast(ptr));
+
+            for (self.layers.items) |l| {
+                try l.dumpToFile(pipeline, file);
+            }
+        }
+
+        fn layerLoadFromFile(ptr: *const anyopaque, pipeline: *Pipeline, file: std.fs.File) Layer.LoadFromFileErrors!void {
+            const self: *const Self = @ptrCast(@alignCast(ptr));
+
+            for (self.layers.items) |l| {
+                try l.loadFromFile(pipeline, file);
+            }
         }
 
         pub fn deinit(self: *Self, pipeline: *Pipeline) void {
@@ -283,6 +301,115 @@ pub fn Sequential(comptime T: type) type {
             return cache_data.bias_gradients;
         }
     };
+}
+
+const testing = std.testing;
+const cl = @import("opencl");
+const memory = tensor_module.memory;
+
+const linear_module = @import("linear.zig");
+
+test "sequential layer serialization round-trip" {
+    const allocator = testing.allocator;
+    const Context = core.Context;
+
+    const context = try Context.initFromDeviceType(allocator, null, cl.device.Type.all);
+    defer context.deinit();
+
+    const command_queue = &context.command_queues[0];
+    const pipeline = try Pipeline.init(command_queue);
+    defer pipeline.deinit();
+
+    const tmp_path = "/tmp/wekua_test_sequential_serial.wkt";
+    defer std.fs.cwd().deleteFile(tmp_path) catch {};
+
+    // Create source sequential with 2 linear layers
+    const src_seq = try Sequential(f32).init(allocator);
+    defer src_seq.deinit(pipeline);
+
+    {
+        const l1 = try linear_module.Linear(f32).init(context, pipeline, 2, 4, null, .{});
+        errdefer l1.deinit(pipeline);
+        try src_seq.append(l1);
+    }
+    {
+        const l2 = try linear_module.Linear(f32).init(context, pipeline, 4, 1, null, .{});
+        errdefer l2.deinit(pipeline);
+        try src_seq.append(l2);
+    }
+
+    const src_layer = src_seq.layer();
+
+    // Dump to file
+    try src_layer.dump(pipeline, tmp_path);
+
+    // Create destination sequential with same architecture
+    const dst_seq = try Sequential(f32).init(allocator);
+    defer dst_seq.deinit(pipeline);
+
+    {
+        const l1 = try linear_module.Linear(f32).init(context, pipeline, 2, 4, null, .{});
+        errdefer l1.deinit(pipeline);
+        try dst_seq.append(l1);
+    }
+    {
+        const l2 = try linear_module.Linear(f32).init(context, pipeline, 4, 1, null, .{});
+        errdefer l2.deinit(pipeline);
+        try dst_seq.append(l2);
+    }
+
+    const dst_layer = dst_seq.layer();
+
+    // Load from file
+    try dst_layer.load(pipeline, tmp_path);
+
+    // Compare all weights
+    const src_weights = src_layer.getWeights();
+    const dst_weights = dst_layer.getWeights();
+
+    try testing.expectEqual(src_weights.len, dst_weights.len);
+
+    for (src_weights, dst_weights) |sw, dw| {
+        const num_elements = sw.dimensions.number_of_elements_without_padding;
+
+        const src_buf = try allocator.alloc(f32, num_elements);
+        defer allocator.free(src_buf);
+        const dst_buf = try allocator.alloc(f32, num_elements);
+        defer allocator.free(dst_buf);
+
+        try memory.writeToBuffer(f32, pipeline, sw, src_buf);
+        try memory.writeToBuffer(f32, pipeline, dw, dst_buf);
+        pipeline.waitAndCleanup();
+
+        for (src_buf, dst_buf) |expected, actual| {
+            try testing.expectEqual(expected, actual);
+        }
+    }
+
+    // Compare all biases
+    const src_bias = src_layer.getBias().?;
+    const dst_bias = dst_layer.getBias().?;
+
+    try testing.expectEqual(src_bias.len, dst_bias.len);
+
+    for (src_bias, dst_bias) |sb, db| {
+        const s = sb.?;
+        const d = db.?;
+        const num_elements = s.dimensions.number_of_elements_without_padding;
+
+        const src_buf = try allocator.alloc(f32, num_elements);
+        defer allocator.free(src_buf);
+        const dst_buf = try allocator.alloc(f32, num_elements);
+        defer allocator.free(dst_buf);
+
+        try memory.writeToBuffer(f32, pipeline, s, src_buf);
+        try memory.writeToBuffer(f32, pipeline, d, dst_buf);
+        pipeline.waitAndCleanup();
+
+        for (src_buf, dst_buf) |expected, actual| {
+            try testing.expectEqual(expected, actual);
+        }
+    }
 }
 
 test {

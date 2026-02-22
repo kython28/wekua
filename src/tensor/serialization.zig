@@ -4,7 +4,12 @@ const Pipeline = core.Pipeline;
 
 const file_header = core.file_header;
 const WekuaFileHeader = file_header.WekuaFileHeader;
-const TensorMetadata = file_header.TensorMetadata;
+
+pub const TensorMetadata = extern struct {
+    type_index: u8,
+    ndim: u8,
+    reserved: u16 = 0,
+};
 
 const tensor_module = @import("main.zig");
 const Tensor = tensor_module.Tensor;
