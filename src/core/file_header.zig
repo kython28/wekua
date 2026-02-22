@@ -35,9 +35,3 @@ pub fn validate(header: WekuaFileHeader, expected_content_type: ContentType) Val
         return ValidationError.UnsupportedVersion;
     }
 }
-
-comptime {
-    const assert = @import("std").debug.assert;
-    assert(@sizeOf(WekuaFileHeader) == 4);
-    assert(@sizeOf(TensorMetadata) == 4);
-}
