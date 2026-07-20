@@ -95,7 +95,7 @@ pub fn LinkedList(comptime T: type) type {
             return &new_node.data;
         }
 
-        pub fn pop_node(self: *Self) ?*Node {
+        pub fn popNode(self: *Self) ?*Node {
             const tail = self.tail;
             if (tail) |t| {
                 const prev_node = t.prev;
@@ -116,13 +116,13 @@ pub fn LinkedList(comptime T: type) type {
         }
 
         pub fn pop(self: *Self) ?T {
-            const node = self.pop_node() orelse return null;
+            const node = self.popNode() orelse return null;
             const value = node.data;
             node.deinit(self.allocator);
             return value;
         }
 
-        pub fn popleft_node(self: *Self) ?*Node {
+        pub fn popleftNode(self: *Self) ?*Node {
             const head = self.head;
             if (head) |h| {
                 const next_node = h.next;
@@ -143,13 +143,13 @@ pub fn LinkedList(comptime T: type) type {
         }
 
         pub fn popleft(self: *Self) ?T {
-            const node = self.popleft_node() orelse return null;
+            const node = self.popleftNode() orelse return null;
             const value = node.data;
             node.deinit(self.allocator);
             return value;
         }
 
-        pub fn destroy_node(self: *Self, allocator: std.mem.Allocator, node: *Node) void {
+        pub fn destroyNode(self: *Self, allocator: std.mem.Allocator, node: *Node) void {
             const prev_node = node.prev;
             const next_node = node.next;
 
