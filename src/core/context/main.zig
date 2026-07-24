@@ -17,6 +17,8 @@ pub const VTable = struct {
     ) void,
 
     createCommandQueue: *const fn (ctx_ptr: *anyopaque) CommandQueue,
+
+    deinit: *const fn (ctx_ptr: *anyopaque) void,
 };
 
 ptr: *anyopaque,
