@@ -6,15 +6,13 @@ const Context = @import("context/main.zig");
 pub const ReadCommand = struct {
     buf: *anyopaque,
     offset: usize,
-    ptr: *anyopaque,
-    len: usize,
+    dst: []u8,
 };
 
 pub const WriteCommand = struct {
     buf: *anyopaque,
     offset: usize,
-    ptr: *const anyopaque,
-    len: usize,
+    src: []const u8,
 };
 
 pub const ReadRectCommand = struct {
@@ -26,7 +24,7 @@ pub const ReadRectCommand = struct {
     buffer_slice_pitch: usize,
     host_row_pitch: usize,
     host_slice_pitch: usize,
-    ptr: *anyopaque,
+    dst: []u8,
 };
 
 pub const WriteRectCommand = struct {
@@ -38,7 +36,7 @@ pub const WriteRectCommand = struct {
     buffer_slice_pitch: usize,
     host_row_pitch: usize,
     host_slice_pitch: usize,
-    ptr: *const anyopaque,
+    src: []const u8,
 };
 
 pub const CopyCommand = struct {

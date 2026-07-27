@@ -5,6 +5,8 @@ const sync = @import("sync/main.zig");
 const Semaphore = sync.Semaphore;
 const Mutex = sync.Mutex;
 
+const CommandQueue = @import("command_queue.zig");
+
 const c = @cImport({
     switch (builtin.os.tag) {
         .linux => @cInclude("sched.h"),
@@ -141,6 +143,8 @@ pub const Slot = struct {
     /// Function called by the worker thread. A null callback signals the worker
     /// to shut down.
     callback: ?*const fn ([]const usize) void,
+
+    command_queue: *CommandQueue,
 
     /// Argument buffer passed verbatim to `callback`.
     args: [MAX_ARGS]usize,
@@ -286,6 +290,8 @@ fn worker(self: *Workers) void {
 
         const callback = slot.callback orelse return;
         callback(&slot.args);
+
+        slot.command_queue.decreaseCounter();
     }
 }
 

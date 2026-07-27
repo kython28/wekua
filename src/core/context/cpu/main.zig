@@ -19,14 +19,14 @@ pub const Error = error {
     UnableDetectTarget,
     UnableSetupWorkers,
     InvalidConfig,
-} || std.mem.Allocator.Error;
+} || std.mem.Allocator.Error || std.Io.Cancelable;
 
 allocator: std.mem.Allocator,
 buffer_allocator: std.mem.Allocator,
 workers: Workers,
 target: std.Target,
 
-pub fn init(config: Config) Error!*CpuContext {
+pub fn init(io: std.Io, config: Config) Error!*CpuContext {
     const ctx = try config.allocator.create(CpuContext);
     errdefer config.allocator.destroy(ctx);
 
@@ -34,7 +34,10 @@ pub fn init(config: Config) Error!*CpuContext {
         .allocator = config.allocator,
         .buffer_allocator = config.buffer_allocator orelse config.allocator,
         .workers = undefined,
-        .target = detectTarget(config.allocator) catch return error.UnableDetectTarget,
+        .target = detectTarget(io) catch |e| switch (e) {
+            error.Canceled => return error.Canceled,
+            else => return e,
+        },
     };
 
     try ctx.workers.init(config.allocator, config.workers_count, config.work_slots);
@@ -57,12 +60,7 @@ fn deinit(ptr: *anyopaque) void {
     self.allocator.destroy(self);
 }
 
-fn detectTarget(allocator: std.mem.Allocator) std.zig.system.DetectError!std.Target {
-    var pool = std.Io.Threaded.init(allocator);
-    defer pool.deinit();
-
-    const io = pool.io();
-
+fn detectTarget(io: std.Io) std.zig.system.DetectError!std.Target {
     const query = std.Target.Query{
         .cpu_model = .native,
         .cpu_arch = builtin.cpu.arch,
@@ -81,7 +79,7 @@ fn alloc(ctx_ptr: *anyopaque, len: usize) ?*anyopaque {
     return null;
 }
 
-fn free(ctx_ptr: *anyopaque, buf: *anyopaque, len: usize) void {
+fn free(ctx_ptr: *anyopaque, buf: *anyopaque) void {
     _ = ctx_ptr;
     _ = buf;
     _ = len;

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const CommandQueue = @import("../command_queue.zig");
+const Buffer = @import("../buffer.zig");
 
 pub const AllocError = std.mem.Allocator.Error;
 
@@ -13,7 +14,6 @@ pub const VTable = struct {
     free: *const fn (
         ctx_ptr: *anyopaque,
         buf: *anyopaque,
-        len: usize,
     ) void,
 
     createCommandQueue: *const fn (ctx_ptr: *anyopaque) CommandQueue,
@@ -24,12 +24,13 @@ pub const VTable = struct {
 ptr: *anyopaque,
 vtable: VTable,
 
-pub inline fn alloc(self: *Context, len: usize) AllocError!*anyopaque {
-    return self.vtable.alloc(self.ptr, len) orelse return AllocError.OutOfMemory;
+pub inline fn alloc(self: *Context, comptime T: type, len: usize) AllocError!*Buffer(T) {
+    const ptr = self.vtable.alloc(self.ptr, len) orelse return AllocError.OutOfMemory;
+    return @ptrCast(ptr);
 }
 
-pub inline fn free(self: *Context, ptr: *anyopaque, len: usize) void {
-    self.vtable.free(self.ptr, ptr, len);
+pub inline fn free(self: *Context, comptime T: type, ptr: *Buffer(T)) void {
+    self.vtable.free(self.ptr, @ptrCast(ptr));
 }
 
 pub inline fn createCommandQueue(self: *Context) CommandQueue {
