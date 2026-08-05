@@ -136,14 +136,17 @@ const MAX_ARGS = 30;
 
 /// Unit of work queued to the worker pool.
 ///
-/// A slot contains the function to execute and the raw `usize` arguments that
-/// will be passed to it. The caller is responsible for ensuring the argument
-/// layout matches what `callback` expects.
+/// A slot contains the function to execute, the command queue whose pending
+/// counter must be decremented after execution, and the raw `usize` arguments
+/// that will be passed to it. The caller is responsible for ensuring the
+/// argument layout matches what `callback` expects.
 pub const Slot = struct {
     /// Function called by the worker thread. A null callback signals the worker
     /// to shut down.
     callback: ?*const fn ([]const usize) void,
 
+    /// Command queue that owns this work unit. The worker invokes
+    /// `decreaseCounter()` on it after the callback returns.
     command_queue: *CommandQueue,
 
     /// Argument buffer passed verbatim to `callback`.
@@ -159,21 +162,18 @@ slots: []Slot,
 /// themselves (see `reserverd_slots`).
 sem: Semaphore,
 
-/// Mutex that protects the producer side of the ring buffer: `producer_index`,
-/// `reserverd_slots`, and the batch push logic.
 mutex: Mutex,
 
 /// Index read atomically by workers to claim the next slot. Kept on its own
 /// cache line to avoid false sharing.
 consumer_index: std.atomic.Value(usize) align(std.atomic.cache_line),
 
-/// Index where the next slot will be written by the producer. Only mutated
-/// while holding `mutex`.
+/// Index where the next slot will be written by the producer.
 producer_index: usize,
 
 /// Number of slots reserved by producers plus the worker threads themselves.
 /// Initialized to the worker count so every worker can always be signaled
-/// with a shutdown slot. Only mutated while holding `mutex`.
+/// with a shutdown slot.
 reserverd_slots: u16,
 
 
@@ -241,10 +241,9 @@ pub fn init(
 
 /// Shut down the worker pool and free its resources.
 ///
-/// Must be called exactly once. It acquires `mutex`, pushes one reserved
-/// shutdown slot (a zeroed `Slot`) per worker, wakes them with the lock-free
-/// semaphore, then joins every thread and frees the thread and slot buffers
-/// using `allocator`.
+/// Must be called exactly once. It pushes one reserved shutdown slot (a
+/// zeroed `Slot`) per worker, wakes them with the lock-free semaphore, then
+/// joins every thread and frees the thread and slot buffers using `allocator`.
 pub fn deinit(self: *Workers, allocator: std.mem.Allocator) void {
     {
         self.mutex.lock();
@@ -274,7 +273,8 @@ pub fn deinit(self: *Workers, allocator: std.mem.Allocator) void {
 /// Loops forever waiting on the semaphore, claims the next slot using an
 /// atomic fetch-and-add on `consumer_index`, and executes its callback. A
 /// slot whose `callback` is null terminates the loop and lets the thread
-/// exit.
+/// exit. After a successful callback the worker notifies the slot's command
+/// queue by calling `decreaseCounter()`.
 fn worker(self: *Workers) void {
     const sem = &self.sem;
     const consumer_index = &self.consumer_index;
@@ -295,21 +295,10 @@ fn worker(self: *Workers) void {
     }
 }
 
-/// Acquire the producer-side mutex.
-pub fn lock(self: *Workers) void {
-    self.mutex.lock();
-}
-
-/// Release the producer-side mutex.
-pub fn unlock(self: *Workers) void {
-    self.mutex.unlock();
-}
-
 /// Wake up to `num` sleeping workers using the lock-free semaphore.
 ///
-/// This operation is lock-free and does not require holding `lock`. It is
-/// usually called after pushing one or more slots so workers can start
-/// consuming them.
+/// This operation is lock-free. It is usually called after pushing one or
+/// more slots so workers can start consuming them.
 pub fn wakeup(self: *Workers, num: u16) void {
     self.sem.up(num);
 }
@@ -320,7 +309,7 @@ pub fn wakeup(self: *Workers, num: u16) void {
 /// index and the local producer index, both masked to the buffer size.
 /// When both indices are equal the buffer is considered empty, therefore
 /// the full capacity is reported.
-pub fn getRemainingCapacity(self: *Workers) u16 {
+fn getRemainingCapacity(self: *Workers) u16 {
     const slots_capacity = self.slots.len;
     const mask = slots_capacity - 1;
     var consumer_index = self.consumer_index.load(.acquire) & mask;
@@ -340,10 +329,12 @@ pub fn getRemainingCapacity(self: *Workers) u16 {
 
 /// Reserve one slot for later use.
 ///
-/// Must be called while holding `lock`. Decreases the available capacity
-/// by one so a subsequent `push` can still succeed even if the buffer
-/// becomes full.
+/// Decreases the available capacity by one so a subsequent `push` can still
+/// succeed even if the buffer becomes full.
 pub fn acquire(self: *Workers) error{OutOfSlots}!void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
     if (self.getRemainingCapacity() < self.reserverd_slots) {
         return error.OutOfSlots;
     }
@@ -352,17 +343,17 @@ pub fn acquire(self: *Workers) error{OutOfSlots}!void {
 }
 
 /// Release a previously reserved slot.
-///
-/// Must be called while holding `lock`.
 pub fn release(self: *Workers) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
     self.reserverd_slots -= 1;
 }
 
 /// Push up to `slots.len` work units into the ring buffer.
 ///
-/// Must be called while holding `lock`. The function copies the slots into
-/// the buffer, advances `producer_index`, and returns the number of slots
-/// actually pushed.
+/// The function copies the slots into the buffer, advances
+/// `producer_index`, and returns the number of slots actually pushed.
 ///
 /// * If there is enough free capacity, all `slots` are copied into the buffer.
 /// * If capacity is smaller than `slots.len`, only the prefix that fits is copied.
@@ -371,7 +362,10 @@ pub fn release(self: *Workers) void {
 ///
 /// Returns the number of slots actually pushed. The caller is responsible
 /// for waking the corresponding number of workers with `wakeup`.
-pub fn push(self: *Workers, use_reserved: bool, slots: []const Slot) u16 {
+pub fn push(self: *Workers, slots: []const Slot) u16 {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
     const rem_capacity = self.getRemainingCapacity();
 
     const workers_slots = self.slots;
@@ -380,7 +374,7 @@ pub fn push(self: *Workers, use_reserved: bool, slots: []const Slot) u16 {
 
     if (rem_capacity <= self.reserverd_slots) {
         @branchHint(.unlikely);
-        if (!use_reserved or rem_capacity == 0) {
+        if (rem_capacity == 0) {
             return 0;
         }
 
