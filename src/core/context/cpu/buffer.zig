@@ -1,12 +1,72 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Workers = @import("workers.zig");
 const CommandQueue = @import("command_queue.zig");
 
 const MIN_BUFFER_SIZE_PER_WORKER = 25 * 1024 * 1024;
 
+const CANARY_VALUE: usize = switch (builtin.cpu.arch) {
+    .x86_64, .aarch64 => 0xDEADBEEFCAFEBABE,
+    else => 0xDEADBEEF,
+};
 
-buf: []u8,
+pub const Canary = usize;
+pub const BufferHeader = extern struct {
+    len: usize,
+    canary: Canary,
+};
+
+pub fn alloc(allocator: std.mem.Allocator, len: usize) ?[*]u8 {
+    const buf = allocator.alloc(u8, len + @sizeOf(BufferHeader) + @sizeOf(Canary)) catch return null;
+    const hdr: *BufferHeader = std.mem.bytesAsValue(BufferHeader, buf[0..@sizeOf(BufferHeader)]);
+    hdr.* = BufferHeader{
+        .len = len,
+        .canary = CANARY_VALUE,
+    };
+
+    const offset = @sizeOf(BufferHeader) + len;
+    const prol_canary: *usize = std.mem.bytesAsValue(usize, buf[offset .. offset + @sizeOf(usize)]);
+    prol_canary.* = CANARY_VALUE;
+
+    return buf.ptr;
+}
+
+pub fn free(allocator: std.mem.Allocator, buf: [*]u8) void {
+    const hdr: *BufferHeader = std.mem.bytesAsValue(BufferHeader, buf[0..@sizeOf(BufferHeader)]);
+    if (hdr.canary != CANARY_VALUE) {
+        @panic("free: header canary mismatch (buffer header corrupted or wrong pointer)");
+    }
+
+    const len = hdr.len;
+    const buf_len = @sizeOf(BufferHeader) + len;
+    const prol_canary: *usize = std.mem.bytesAsValue(usize, buf[buf_len .. buf_len + @sizeOf(usize)]);
+    if (prol_canary.* != CANARY_VALUE) {
+        @panic("free: trailer canary mismatch (buffer overrun or wrong length in header)");
+    }
+
+    const slice = buf[0 .. buf_len + @sizeOf(usize)];
+    allocator.free(slice);
+}
+
+fn getSlice(buf: [*]u8) []u8 {
+    const hdr: *BufferHeader = std.mem.bytesAsValue(BufferHeader, buf[0..@sizeOf(BufferHeader)]);
+    if (hdr.canary != CANARY_VALUE) {
+        @panic("getSlice: header canary mismatch (buffer header corrupted or wrong pointer)");
+    }
+
+    const len = hdr.len;
+    var offset = @sizeOf(BufferHeader);
+    const slice = buf[offset .. offset + len];
+
+    offset += len;
+    const prol_canary: *usize = std.mem.bytesAsValue(usize, buf[offset .. offset + @sizeOf(usize)]);
+    if (prol_canary.* != CANARY_VALUE) {
+        @panic("getSlice: trailer canary mismatch (buffer overrun or wrong length in header)");
+    }
+
+    return slice;
+}
 
 inline fn calculateNumberOfChunks(len: usize) usize {
     const aligned_len = (len - len % MIN_BUFFER_SIZE_PER_WORKER) + MIN_BUFFER_SIZE_PER_WORKER;
@@ -14,12 +74,11 @@ inline fn calculateNumberOfChunks(len: usize) usize {
 }
 
 pub fn prepareReadCommand(
-    self: *Buffer,
     cmd: *CommandQueue,
     allocator: std.mem.Allocator,
     command: CommandQueue.ReadCommand,
 ) CommandQueue.EnqueueError![]const Workers.Slot {
-    const buf = self.buf;
+    const buf = getSlice(@ptrCast(@alignCast(command.buf)));
     const buf_len = buf.len;
     const dst = command.dst;
     var start = command.offset;
@@ -61,12 +120,11 @@ pub fn prepareReadCommand(
 }
 
 pub fn prepareWriteCommand(
-    self: *Buffer,
     cmd: *CommandQueue,
     allocator: std.mem.Allocator,
     command: CommandQueue.WriteCommand,
 ) CommandQueue.EnqueueError![]const Workers.Slot {
-    const buf = self.buf;
+    const buf = getSlice(@ptrCast(@alignCast(command.buf)));
     const buf_len = buf.len;
     const src = command.src;
     var start = command.offset;
@@ -108,16 +166,17 @@ pub fn prepareWriteCommand(
 }
 
 pub fn prepareReadRectCommand(
-    self: *Buffer,
     cmd: *CommandQueue,
     allocator: std.mem.Allocator,
     command: CommandQueue.ReadRectCommand,
 ) CommandQueue.EnqueueError![]const Workers.Slot {
+    const buf = getSlice(@ptrCast(@alignCast(command.buf)));
+
     const region = command.region;
     const buffer_origin = command.buffer_origin;
     const host_origin = command.host_origin;
 
-    if (!fitsInBuffer(self.buf.len, buffer_origin, region, command.buffer_row_pitch, command.buffer_slice_pitch)) {
+    if (!fitsInBuffer(buf.len, buffer_origin, region, command.buffer_row_pitch, command.buffer_slice_pitch)) {
         return CommandQueue.EnqueueError.OutOfBounds;
     }
     if (!fitsInHostBuffer(command.dst.len, host_origin, region, command.host_row_pitch, command.host_slice_pitch)) {
@@ -146,12 +205,12 @@ pub fn prepareReadRectCommand(
                 const slot = &slots[i];
                 const args = slot.args[0..4];
 
-                const src = self.buf[buffer_origin[2] * command.buffer_slice_pitch +
+                const src = buf[buffer_origin[2] * command.buffer_slice_pitch +
                     (buffer_origin[1] + y) * command.buffer_row_pitch +
                     (buffer_origin[0] + row_start) ..][0..take];
                 const dst = command.dst[host_origin[2] * command.host_slice_pitch +
                     (host_origin[1] + y) * command.host_row_pitch +
-                    (host_origin[0] + row_start)..][0..take];
+                    (host_origin[0] + row_start) ..][0..take];
 
                 args[0] = @intFromPtr(src.ptr);
                 args[1] = src.len;
@@ -171,16 +230,17 @@ pub fn prepareReadRectCommand(
 }
 
 pub fn prepareWriteRectCommand(
-    self: *Buffer,
     cmd: *CommandQueue,
     allocator: std.mem.Allocator,
     command: CommandQueue.WriteRectCommand,
 ) CommandQueue.EnqueueError![]const Workers.Slot {
+    const buf = getSlice(@ptrCast(@alignCast(command.buf)));
+
     const region = command.region;
     const buffer_origin = command.buffer_origin;
     const host_origin = command.host_origin;
 
-    if (!fitsInBuffer(self.buf.len, buffer_origin, region, command.buffer_row_pitch, command.buffer_slice_pitch)) {
+    if (!fitsInBuffer(buf.len, buffer_origin, region, command.buffer_row_pitch, command.buffer_slice_pitch)) {
         return CommandQueue.EnqueueError.OutOfBounds;
     }
     if (!fitsInHostBuffer(command.src.len, host_origin, region, command.host_row_pitch, command.host_slice_pitch)) {
@@ -212,9 +272,9 @@ pub fn prepareWriteRectCommand(
                 const src = command.src[host_origin[2] * command.host_slice_pitch +
                     (host_origin[1] + y) * command.host_row_pitch +
                     (host_origin[0] + row_start) ..][0..take];
-                const dst = self.buf[buffer_origin[2] * command.buffer_slice_pitch +
+                const dst = buf[buffer_origin[2] * command.buffer_slice_pitch +
                     (buffer_origin[1] + y) * command.buffer_row_pitch +
-                    (buffer_origin[0] + row_start)..][0..take];
+                    (buffer_origin[0] + row_start) ..][0..take];
 
                 args[0] = @intFromPtr(src.ptr);
                 args[1] = src.len;
@@ -233,7 +293,6 @@ pub fn prepareWriteRectCommand(
     return slots;
 }
 
-
 pub fn prepareCopyCommand(
     allocator: std.mem.Allocator,
     cmd: *CommandQueue,
@@ -247,8 +306,8 @@ pub fn prepareCopyCommand(
 
     const chunk_size = @min(src_len, MIN_BUFFER_SIZE_PER_WORKER);
 
-    const src_buf: [*]const u8 = @ptrCast(command.src_buf);
-    const dst_buf: [*]u8 = @ptrCast(command.dst_buf);
+    const src_buf = getSlice(@ptrCast(@alignCast(command.src_buf)));
+    const dst_buf = getSlice(@ptrCast(@alignCast(command.dst_buf)));
 
     var start: usize = 0;
     var end: usize = chunk_size;
@@ -282,13 +341,13 @@ pub fn prepareCopyRectCommand(
     const src_origin = command.src_origin;
     const dst_origin = command.dst_origin;
 
-    const src: *const Buffer = @ptrCast(@alignCast(command.src_buf));
-    const dst: *Buffer = @ptrCast(@alignCast(command.dst_buf));
+    const src_buf = getSlice(@ptrCast(@alignCast(command.src_buf)));
+    const dst_buf = getSlice(@ptrCast(@alignCast(command.dst_buf)));
 
-    if (!fitsInBuffer(src.buf.len, src_origin, region, command.src_row_pitch, command.src_slice_pitch)) {
+    if (!fitsInBuffer(src_buf.len, src_origin, region, command.src_row_pitch, command.src_slice_pitch)) {
         return CommandQueue.EnqueueError.OutOfBounds;
     }
-    if (!fitsInBuffer(dst.buf.len, dst_origin, region, command.dst_row_pitch, command.dst_slice_pitch)) {
+    if (!fitsInBuffer(dst_buf.len, dst_origin, region, command.dst_row_pitch, command.dst_slice_pitch)) {
         return CommandQueue.EnqueueError.OutOfBounds;
     }
 
@@ -314,12 +373,12 @@ pub fn prepareCopyRectCommand(
                 const slot = &slots[i];
                 const args = slot.args[0..4];
 
-                const slot_src = src.buf[src_origin[2] * command.src_slice_pitch +
+                const slot_src = src_buf[src_origin[2] * command.src_slice_pitch +
                     (src_origin[1] + y) * command.src_row_pitch +
                     (src_origin[0] + row_start) ..][0..take];
-                const slot_dst = dst.buf[dst_origin[2] * command.dst_slice_pitch +
+                const slot_dst = dst_buf[dst_origin[2] * command.dst_slice_pitch +
                     (dst_origin[1] + y) * command.dst_row_pitch +
-                    (dst_origin[0] + row_start)..][0..take];
+                    (dst_origin[0] + row_start) ..][0..take];
 
                 args[0] = @intFromPtr(slot_src.ptr);
                 args[1] = slot_src.len;
@@ -339,12 +398,11 @@ pub fn prepareCopyRectCommand(
 }
 
 pub fn prepareFillCommand(
-    self: *Buffer,
     cmd: *CommandQueue,
     allocator: std.mem.Allocator,
     command: CommandQueue.FillCommand,
 ) CommandQueue.EnqueueError![]const Workers.Slot {
-    const buf = self.buf;
+    const buf = getSlice(@ptrCast(@alignCast(command.buf)));
     const buf_len = buf.len;
     const pattern = command.pattern;
     const start = command.offset;
@@ -386,16 +444,17 @@ pub fn prepareFillCommand(
 }
 
 pub fn prepareFillRectCommand(
-    self: *Buffer,
     cmd: *CommandQueue,
     allocator: std.mem.Allocator,
     command: CommandQueue.FillRectCommand,
 ) CommandQueue.EnqueueError![]const Workers.Slot {
+    const buf = getSlice(@ptrCast(@alignCast(command.buf)));
+
     const pattern = command.pattern;
     const buffer_origin = command.buffer_origin;
     const region = command.region;
 
-    if (!fitsInBuffer(self.buf.len, buffer_origin, region, command.buffer_row_pitch, command.buffer_slice_pitch)) {
+    if (!fitsInBuffer(buf.len, buffer_origin, region, command.buffer_row_pitch, command.buffer_slice_pitch)) {
         return CommandQueue.EnqueueError.OutOfBounds;
     }
 
@@ -426,9 +485,9 @@ pub fn prepareFillRectCommand(
                 const slot = &slots[i];
                 const args = slot.args[0..3];
 
-                const dst = self.buf[buffer_origin[2] * command.buffer_slice_pitch +
+                const dst = buf[buffer_origin[2] * command.buffer_slice_pitch +
                     (buffer_origin[1] + y) * command.buffer_row_pitch +
-                    (buffer_origin[0] + row_start)..][0..take];
+                    (buffer_origin[0] + row_start) ..][0..take];
 
                 args[0] = @intFromPtr(dst.ptr);
                 args[1] = dst.len;
@@ -466,7 +525,7 @@ fn genericFillKernel(args: []const usize) void {
     while (written < dst_len) {
         const remaining = dst_len - written;
         const copy_len = @min(pattern_len, remaining);
-        @memcpy(dst[written..written + copy_len], pattern[0..copy_len]);
+        @memcpy(dst[written .. written + copy_len], pattern[0..copy_len]);
         written += copy_len;
     }
 }
@@ -504,6 +563,3 @@ fn fitsInHostBuffer(
 
     return true;
 }
-
-
-const Buffer = @This();
