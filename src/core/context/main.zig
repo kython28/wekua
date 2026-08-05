@@ -16,7 +16,7 @@ pub const VTable = struct {
         buf: *anyopaque,
     ) void,
 
-    createCommandQueue: *const fn (ctx_ptr: *anyopaque) CommandQueue,
+    createCommandQueue: *const fn (ctx_ptr: *anyopaque) AllocError!CommandQueue,
 
     deinit: *const fn (ctx_ptr: *anyopaque) void,
 };
@@ -33,7 +33,7 @@ pub inline fn free(self: *Context, comptime T: type, ptr: *Buffer(T)) void {
     self.vtable.free(self.ptr, @ptrCast(ptr));
 }
 
-pub inline fn createCommandQueue(self: *Context) CommandQueue {
+pub inline fn createCommandQueue(self: *Context) AllocError!CommandQueue {
     return self.vtable.createCommandQueue(self.ptr);
 }
 

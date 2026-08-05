@@ -6,7 +6,7 @@ const CommandQueue = @import("../../command_queue.zig");
 
 const Workers = @import("workers.zig");
 const CpuCommandQueue = @import("command_queue.zig");
-const CpuBuffer = @import("buffer.zig");
+const cpu_buffer = @import("buffer.zig");
 
 pub const Config = struct {
     allocator: std.mem.Allocator,
@@ -25,6 +25,7 @@ allocator: std.mem.Allocator,
 buffer_allocator: std.mem.Allocator,
 workers: Workers,
 target: std.Target,
+io: std.Io,
 
 pub fn init(io: std.Io, config: Config) Error!*CpuContext {
     const ctx = try config.allocator.create(CpuContext);
@@ -38,6 +39,7 @@ pub fn init(io: std.Io, config: Config) Error!*CpuContext {
             error.Canceled => return error.Canceled,
             else => return e,
         },
+        .io = io,
     };
 
     try ctx.workers.init(config.allocator, config.workers_count, config.work_slots);
@@ -74,20 +76,18 @@ fn detectTarget(io: std.Io) std.zig.system.DetectError!std.Target {
 
 
 fn alloc(ctx_ptr: *anyopaque, len: usize) ?*anyopaque {
-    _ = ctx_ptr;
-    _ = len;
-    return null;
+    const self: *CpuContext = @alignCast(@ptrCast(ctx_ptr));
+    return cpu_buffer.alloc(self.allocator, len);
 }
 
 fn free(ctx_ptr: *anyopaque, buf: *anyopaque) void {
-    _ = ctx_ptr;
-    _ = buf;
-    _ = len;
+    const self: *CpuContext = @alignCast(@ptrCast(ctx_ptr));
+    return cpu_buffer.free(self.allocator, @alignCast(@ptrCast(buf)));
 }
 
-fn createCommandQueue(ctx_ptr: *anyopaque) CommandQueue {
-    _ = ctx_ptr;
-    return CpuCommandQueue.create();
+fn createCommandQueue(ctx_ptr: *anyopaque) std.mem.Allocator.Error!CommandQueue {
+    const self: *CpuContext = @alignCast(@ptrCast(ctx_ptr));
+    return CpuCommandQueue.create(self);
 }
 
 const CpuContext = @This();

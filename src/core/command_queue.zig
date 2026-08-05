@@ -75,8 +75,21 @@ pub const FillRectCommand = struct {
     pattern: []const u8,
 };
 
+pub const CommandTag = enum {
+    read,
+    write,
 
-pub const Command = union(enum) {
+    read_rect,
+    write_rect,
+
+    copy,
+    copy_rect,
+
+    fill,
+    fill_rect,
+};
+
+pub const Command = union(CommandTag) {
     read: ReadCommand,
     write: WriteCommand,
 
@@ -95,12 +108,12 @@ pub const Error = error{
     InvalidBuffer,
     OutOfBounds,
     InvalidPitch,
-};
+} || std.Io.Cancelable;
 
 pub const VTable = struct {
     deinit: *const fn (*anyopaque) void,
     enqueue: *const fn (*anyopaque, Command) Error!void,
-    wait: *const fn (*anyopaque) void,
+    wait: *const fn (*anyopaque) std.Io.Cancelable!void,
 };
 
 ptr: *anyopaque,
@@ -114,7 +127,7 @@ pub inline fn deinit(self: *CommandQueue) void {
     self.vtable.deinit(self.ptr);
 }
 
-pub inline fn wait(self: *CommandQueue) void {
+pub inline fn wait(self: *CommandQueue) std.Io.Cancelable!void {
     self.vtable.wait(self.ptr);
 }
 
