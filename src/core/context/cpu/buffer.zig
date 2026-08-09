@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 
 const Workers = @import("workers.zig");
 const CommandQueue = @import("command_queue.zig");
+const kernel = @import("kernels/memory.zig");
 
 const MIN_BUFFER_SIZE_PER_WORKER = 25 * 1024 * 1024;
 
@@ -49,7 +50,7 @@ pub fn free(allocator: std.mem.Allocator, buf: [*]u8) void {
     allocator.free(slice);
 }
 
-fn getSlice(buf: [*]u8) []u8 {
+pub fn getSlice(buf: [*]u8) []u8 {
     const hdr: *BufferHeader = std.mem.bytesAsValue(BufferHeader, buf[0..@sizeOf(BufferHeader)]);
     if (hdr.canary != CANARY_VALUE) {
         @panic("getSlice: header canary mismatch (buffer header corrupted or wrong pointer)");
@@ -113,7 +114,7 @@ pub fn prepareReadCommand(
         end = @min(end + chunk_size, dst.len);
 
         s.command_queue = cmd;
-        s.callback = transferKernel;
+        s.callback = kernel.transferKernel;
     }
 
     return slots;
@@ -159,7 +160,7 @@ pub fn prepareWriteCommand(
         end = @min(end + chunk_size, src.len);
 
         s.command_queue = cmd;
-        s.callback = transferKernel;
+        s.callback = kernel.transferKernel;
     }
 
     return slots;
@@ -218,7 +219,7 @@ pub fn prepareReadRectCommand(
                 args[3] = dst.len;
 
                 slot.command_queue = cmd;
-                slot.callback = transferKernel;
+                slot.callback = kernel.transferKernel;
 
                 i += 1;
                 x += take;
@@ -282,7 +283,7 @@ pub fn prepareWriteRectCommand(
                 args[3] = dst.len;
 
                 slot.command_queue = cmd;
-                slot.callback = transferKernel;
+                slot.callback = kernel.transferKernel;
 
                 i += 1;
                 x += take;
@@ -326,7 +327,7 @@ pub fn prepareCopyCommand(
         end = @min(end + chunk_size, src_len);
 
         s.command_queue = cmd;
-        s.callback = transferKernel;
+        s.callback = kernel.transferKernel;
     }
 
     return slots;
@@ -386,7 +387,7 @@ pub fn prepareCopyRectCommand(
                 args[3] = slot_dst.len;
 
                 slot.command_queue = cmd;
-                slot.callback = transferKernel;
+                slot.callback = kernel.transferKernel;
 
                 i += 1;
                 x += take;
@@ -437,7 +438,7 @@ pub fn prepareFillCommand(
         chunk_end = @min(chunk_end + chunk_size, command.len);
 
         s.command_queue = cmd;
-        s.callback = genericFillKernel;
+        s.callback = kernel.genericFillKernel;
     }
 
     return slots;
@@ -495,7 +496,7 @@ pub fn prepareFillRectCommand(
                 args[3] = pattern.len;
 
                 slot.command_queue = cmd;
-                slot.callback = genericFillKernel;
+                slot.callback = kernel.genericFillKernel;
 
                 i += 1;
                 x += take;
@@ -506,31 +507,7 @@ pub fn prepareFillRectCommand(
     return slots;
 }
 
-fn transferKernel(args: []const usize) void {
-    const src: [*]const u8 = @ptrFromInt(args[0]);
-    const src_len = args[1];
-    const dst: [*]u8 = @ptrFromInt(args[2]);
-    const dst_len = args[3];
-
-    @memcpy(dst[0..dst_len], src[0..src_len]);
-}
-
-fn genericFillKernel(args: []const usize) void {
-    const dst: [*]u8 = @ptrFromInt(args[0]);
-    const dst_len = args[1];
-    const pattern: [*]const u8 = @ptrFromInt(args[2]);
-    const pattern_len = args[3];
-
-    var written: usize = 0;
-    while (written < dst_len) {
-        const remaining = dst_len - written;
-        const copy_len = @min(pattern_len, remaining);
-        @memcpy(dst[written .. written + copy_len], pattern[0..copy_len]);
-        written += copy_len;
-    }
-}
-
-fn fitsInBuffer(
+pub fn fitsInBuffer(
     len: usize,
     origin: [3]usize,
     region: [3]usize,
@@ -547,7 +524,7 @@ fn fitsInBuffer(
     return true;
 }
 
-fn fitsInHostBuffer(
+pub fn fitsInHostBuffer(
     len: usize,
     origin: [3]usize,
     region: [3]usize,
