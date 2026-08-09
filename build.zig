@@ -1,5 +1,92 @@
 const std = @import("std");
 
+pub fn createCoreModule(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    test_step: *std.Build.Step,
+    run_check_step: *std.Build.Step,
+) *std.Build.Module {
+
+    const native_core_module = b.addModule("core", .{
+        .root_source_file = b.path("src/core/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const x86_64_core_module = b.createModule(.{
+        .root_source_file = b.path("src/core/main.zig"),
+        .target = b.resolveTargetQuery(.{.cpu_arch = .x86_64}),
+        .optimize = optimize,
+    });
+
+    const aarch64_core_module = b.createModule(.{
+        .root_source_file = b.path("src/core/main.zig"),
+        .target = b.resolveTargetQuery(.{.cpu_arch = .aarch64}),
+        .optimize = optimize,
+    });
+
+    const modules_to_test = .{
+        .{ native_core_module, "core" },
+        .{ x86_64_core_module, "core-x86_64" },
+        .{ aarch64_core_module, "core-aarch64" },
+    };
+
+    inline for (modules_to_test) |mt| {
+        const module = mt[0];
+        const name = mt[1];
+
+        const test_compilation_step = b.addTest(.{
+            .root_module = module,
+            .use_llvm = true,
+            .name = name,
+        });
+
+        const run = b.addRunArtifact(test_compilation_step);
+        run.skip_foreign_checks = true;
+
+        test_step.dependOn(&run.step);
+        run_check_step.dependOn(&test_compilation_step.step);
+    }
+
+    return native_core_module;
+}
+
+// pub fn addTests(b: *std.Build, core_module: *std.Build.Module) void {
+
+//     // const module_name_to_test = b.option([]const u8, "module_to_test", "Name of the module to test");
+
+//     const core_tests = b.addTest(.{
+//         .root_module = core_module,
+//         .use_llvm = true,
+//         .name = "core",
+//     });
+
+//     const modules_to_test = .{
+//         .{ core_module, "core" },
+//         // .{tensor_module, "tensor"},
+//         // .{blas_module, "blas"},
+//         // .{math_module, "math"},
+//         // .{nn_module, "nn"},
+//     };
+//     inline for (modules_to_test) |module_to_test| {
+//         const module = module_to_test[0];
+//         const name = module_to_test[1];
+
+//         const test_compilation_step = b.addTest(.{
+//             .root_module = module,
+//             .use_llvm = true,
+//             .name = name,
+//         });
+
+//         const run = b.addRunArtifact(test_compilation_step);
+//         run.has_side_effects = true;
+
+//         test_step.dependOn(&run.step);
+//         run_check_step.dependOn(&test_compilation_step.step);
+//     }
+// }
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -10,11 +97,15 @@ pub fn build(b: *std.Build) void {
     //     .optimize = optimize,
     // });
 
-    const core_module = b.addModule("core", .{
-        .root_source_file = b.path("src/core/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+
+    const test_step = b.step("test", "Run unit tests");
+    const core_test_step = b.step("test_core", "Run unit tests core module");
+    const run_check_step = b.step("check", "ZLS");
+
+    const core_module = createCoreModule(b, target, optimize, core_test_step, run_check_step);
+    _ = core_module;
+
+    test_step.dependOn(core_test_step);
 
     // const tensor_module = b.addModule("tensor", .{
     //     .root_source_file = b.path("src/tensor/main.zig"),
@@ -69,37 +160,6 @@ pub fn build(b: *std.Build) void {
     // wekua_module.addImport("blas", blas_module);
     // wekua_module.addImport("math", math_module);
     // wekua_module.addImport("nn", nn_module);
-
-    const test_step = b.step("test", "Run unit tests");
-    const run_check_step = b.step("check", "ZLS");
-
-    const module_name_to_test = b.option([]const u8, "module_to_test", "Name of the module to test");
-
-    const modules_to_test = .{
-        .{core_module, "core"},
-        // .{tensor_module, "tensor"},
-        // .{blas_module, "blas"},
-        // .{math_module, "math"},
-        // .{nn_module, "nn"},
-    };
-    inline for (modules_to_test) |module_to_test| {
-        const module = module_to_test[0];
-        const name = module_to_test[1];
-
-        if (module_name_to_test == null or std.mem.eql(u8, name, module_name_to_test.?)) {
-            const test_compilation_step = b.addTest(.{
-                .root_module = module,
-                .use_llvm = true,
-                .name = name,
-            });
-
-            const run = b.addRunArtifact(test_compilation_step);
-            run.has_side_effects = true;
-
-            test_step.dependOn(&run.step);
-            run_check_step.dependOn(&test_compilation_step.step);
-        }
-    }
 
     // Examples
     // const example_name = b.option([]const u8, "example", "Name of the example to run");
