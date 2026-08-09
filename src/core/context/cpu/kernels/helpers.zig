@@ -127,25 +127,25 @@ pub inline fn x86_64Store(comptime T: type, dst: [*]T, value1: T, value2: T) voi
                 asm volatile ("movntps %%xmm0, (%[addr])"
                     :
                     : [addr] "r" (dst),
-                      "{xmm0}" (value1),
+                      [val] "x" (value1),
                     : .{ .memory = true });
                 const dst2: [*]T = dst + 1;
                 asm volatile ("movntps %%xmm0, (%[addr])"
                     :
                     : [addr] "r" (dst2),
-                      "{xmm0}" (value2),
+                      [val] "x" (value2),
                     : .{ .memory = true });
             } else if (total_bits == 256) {
                 asm volatile ("vmovntps %%ymm0, (%[addr])"
                     :
                     : [addr] "r" (dst),
-                      "{ymm0}" (value1),
+                      [val] "x" (value1),
                     : .{ .memory = true });
                 const dst2: [*]T = dst + 1;
                 asm volatile ("vmovntps %%ymm0, (%[addr])"
                     :
                     : [addr] "r" (dst2),
-                      "{ymm0}" (value2),
+                      [val] "x" (value2),
                     : .{ .memory = true });
             } else {
                 dst[0] = value1;
@@ -216,8 +216,8 @@ pub inline fn armStore(comptime T: type, dst: [*]T, value1: T, value2: T) void {
                 asm volatile ("stnp q0, q1, [%[addr]]"
                     :
                     : [addr] "r" (dst),
-                      "{q0}" (value1),
-                      "{q1}" (value2),
+                      [v1] "w" (value1),
+                      [v2] "w" (value2),
                     : .{ .memory = true });
             } else {
                 dst[0] = value1;
