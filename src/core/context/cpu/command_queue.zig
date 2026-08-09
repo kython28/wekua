@@ -98,6 +98,7 @@ allocator: std.mem.Allocator,
 arena: std.heap.ArenaAllocator,
 pending_work: PendingWorkList,
 slots_to_process: std.atomic.Value(u16) align(std.atomic.cache_line),
+context: *Context,
 workers: *Workers,
 io: std.Io,
 
@@ -110,6 +111,7 @@ pub fn create(ctx: *Context) std.mem.Allocator.Error!CommandQueue {
     cmd.allocator = allocator;
     cmd.arena = .init(allocator);
     cmd.pending_work = PendingWorkList{};
+    cmd.context = ctx;
     cmd.workers = &ctx.workers;
     cmd.io = ctx.io;
 
