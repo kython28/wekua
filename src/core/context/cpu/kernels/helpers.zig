@@ -39,6 +39,7 @@ pub inline fn store(comptime T: type, dst: [*]T, value1: T, value2: T) void {
 ///   a single `maskmovdqu` (one push/pop, one masked store).
 /// - Vectors of 128 bits: two `movntps` stores.
 /// - Vectors of 256 bits: two `vmovntps` stores.
+/// - Vectors of 512 bits: two `vmovntps` (zmm) stores.
 /// - Any other width falls back to normal stores.
 ///
 /// Only available on x86_64.
@@ -143,6 +144,18 @@ pub inline fn x86_64Store(comptime T: type, dst: [*]T, value1: T, value2: T) voi
                     : .{ .memory = true });
                 const dst2: [*]T = dst + 1;
                 asm volatile ("vmovntps %%ymm0, (%[addr])"
+                    :
+                    : [addr] "r" (dst2),
+                      [val] "x" (value2),
+                    : .{ .memory = true });
+            } else if (total_bits == 512) {
+                asm volatile ("vmovntps %[val], (%[addr])"
+                    :
+                    : [addr] "r" (dst),
+                      [val] "x" (value1),
+                    : .{ .memory = true });
+                const dst2: [*]T = dst + 1;
+                asm volatile ("vmovntps %[val], (%[addr])"
                     :
                     : [addr] "r" (dst2),
                       [val] "x" (value2),
