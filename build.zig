@@ -1,5 +1,40 @@
 const std = @import("std");
 
+const x86_features = [_]std.Target.x86.Feature{
+    // Tier 0
+    .sse4_1, .sse4_2, .avx2, .fma, .f16c, .popcnt, .lzcnt,
+    .bmi, .bmi2,
+    // AVX-512 core
+    .avx512f, .avx512dq, .avx512bw, .avx512vl, .avx512cd,
+    .avx512vnni, .avx512bf16, .avx512fp16,
+    // AMX
+    .amx_tile, .amx_int8, .amx_bf16,
+    // T1
+    .avxvnni, .gfni, .clflushopt, .clwb,
+    .rdrnd, .rdseed, .fsgsbase,
+    .xsave, .xsaveopt, .xsavec, .xsaves,
+    .sha, .aes, .pclmul, .crc32,
+};
+
+const aarch64_features = [_]std.Target.aarch64.Feature{
+    .neon, .fullfp16, .dotprod, .i8mm, .bf16,
+    .sve, .sve2, .f32mm, .f64mm,
+    .sha2, .sha3, .aes, .crc,
+};
+
+const x86_query: std.Target.Query = .{
+    .cpu_arch = .x86_64,
+    .cpu_model = .{ .explicit = &std.Target.x86.cpu.x86_64_v4 },
+    .cpu_features_add = std.Target.x86.featureSet(&x86_features),
+};
+
+const arm_query: std.Target.Query = .{
+    .cpu_arch = .aarch64,
+    .cpu_model = .{ .explicit = &std.Target.aarch64.cpu.generic },
+    .cpu_features_add = std.Target.aarch64.featureSet(&aarch64_features),
+};
+
+
 pub fn createCoreModule(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -7,34 +42,28 @@ pub fn createCoreModule(
     test_step: *std.Build.Step,
     run_check_step: *std.Build.Step,
 ) *std.Build.Module {
-
     const native_core_module = b.addModule("core", .{
         .root_source_file = b.path("src/core/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const x86_64_core_module = b.createModule(.{
-        .root_source_file = b.path("src/core/main.zig"),
-        .target = b.resolveTargetQuery(.{.cpu_arch = .x86_64}),
-        .optimize = optimize,
-    });
-
-    const aarch64_core_module = b.createModule(.{
-        .root_source_file = b.path("src/core/main.zig"),
-        .target = b.resolveTargetQuery(.{.cpu_arch = .aarch64}),
-        .optimize = optimize,
-    });
-
-    const modules_to_test = .{
-        .{ native_core_module, "core" },
-        .{ x86_64_core_module, "core-x86_64" },
-        .{ aarch64_core_module, "core-aarch64" },
+    const arch_to_test = .{
+        .{ x86_query, "core-x86_64", "qemu-x86_64-static" },
+        .{ arm_query, "core-aarch64", "qemu-aarch64-static" },
     };
 
-    inline for (modules_to_test) |mt| {
-        const module = mt[0];
-        const name = mt[1];
+    inline for (arch_to_test) |at| {
+        const query = at[0];
+        const name = at[1];
+        const qemu_bin = at[2];
+
+
+        const module = b.createModule(.{
+            .root_source_file = b.path("src/core/main.zig"),
+            .target = b.resolveTargetQuery(query),
+            .optimize = optimize,
+        });
 
         const test_compilation_step = b.addTest(.{
             .root_module = module,
@@ -42,11 +71,11 @@ pub fn createCoreModule(
             .name = name,
         });
 
-        const run = b.addRunArtifact(test_compilation_step);
-        run.skip_foreign_checks = true;
+        const run_test = b.addSystemCommand(&.{qemu_bin, "-cpu", "max"});
+        run_test.addArtifactArg(test_compilation_step);
 
-        test_step.dependOn(&run.step);
         run_check_step.dependOn(&test_compilation_step.step);
+        test_step.dependOn(&run_test.step);
     }
 
     return native_core_module;
